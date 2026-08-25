@@ -1,0 +1,2153 @@
+"use client";
+
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useRouter,
+} from "next/navigation";
+
+import {
+  ArrowLeft,
+  BadgePercent,
+  CreditCard,
+  Save,
+  UserRound,
+} from "lucide-react";
+
+import {
+  createClient,
+} from "@/app/lib/supabase/client";
+
+import {
+  createContract,
+} from "@/app/(dashboard)/contratos/novo/actions";
+
+type Client = {
+  id: string;
+
+  name: string;
+
+  client_companies:
+    | {
+        company_id: string;
+        status: string;
+      }[]
+    | null;
+};
+
+type Company = {
+  id: string;
+  name: string;
+};
+
+type Product = {
+  id: string;
+
+  company_id: string;
+
+  name: string;
+
+  default_price:
+    | number
+    | null;
+
+  billing_frequency:
+    | string
+    | null;
+};
+
+type PaymentMethod = {
+  id: string;
+  name: string;
+  code: string;
+  use_for: string;
+};
+
+type Tv = {
+  id: string;
+  name: string;
+
+  location:
+    | string
+    | null;
+};
+
+type CurrentUser = {
+  id: string;
+
+  name: string;
+
+  email:
+    | string
+    | null;
+};
+
+type SellerSetting = {
+  user_id: string;
+
+  company_id: string;
+
+  commission_percentage:
+    | number
+    | string;
+};
+
+const POTTENCIALIZA_COMPANY_ID =
+  "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
+
+type BillingFrequency =
+  | "one_time"
+  | "monthly"
+  | "quarterly"
+  | "semiannual"
+  | "annual"
+  | "custom";
+
+type ContractFormProps = {
+  initialClientId?: string;
+};
+
+export default function ContractForm({
+  initialClientId = "",
+}: ContractFormProps) {
+  const router =
+    useRouter();
+
+  const [
+    supabase,
+  ] =
+    useState(
+      () =>
+        createClient()
+    );
+
+  /*
+   * =====================================================
+   * DADOS
+   * =====================================================
+   */
+
+  const [
+    clients,
+    setClients,
+  ] =
+    useState<
+      Client[]
+    >([]);
+
+  const [
+    companies,
+    setCompanies,
+  ] =
+    useState<
+      Company[]
+    >([]);
+
+  const [
+    products,
+    setProducts,
+  ] =
+    useState<
+      Product[]
+    >([]);
+
+  const [
+    paymentMethods,
+    setPaymentMethods,
+  ] =
+    useState<
+      PaymentMethod[]
+    >([]);
+
+  const [
+    tvs,
+    setTvs,
+  ] =
+    useState<
+      Tv[]
+    >([]);
+
+  /*
+   * Usuário autenticado.
+   */
+
+  const [
+    currentUser,
+    setCurrentUser,
+  ] =
+    useState<
+      CurrentUser | null
+    >(null);
+
+  /*
+   * Configurações de comissão
+   * SOMENTE do usuário autenticado.
+   */
+
+  const [
+    sellerSettings,
+    setSellerSettings,
+  ] =
+    useState<
+      SellerSetting[]
+    >([]);
+
+  const [
+    userLoading,
+    setUserLoading,
+  ] =
+    useState(
+      true
+    );
+
+  /*
+   * =====================================================
+   * FORM
+   * =====================================================
+   */
+
+  const [
+    selectedTvIds,
+    setSelectedTvIds,
+  ] =
+    useState<
+      string[]
+    >([]);
+
+  const [
+    clientId,
+    setClientId,
+  ] =
+    useState("");
+
+  const [
+    companyId,
+    setCompanyId,
+  ] =
+    useState("");
+
+  const [
+    productId,
+    setProductId,
+  ] =
+    useState("");
+
+  const [
+    title,
+    setTitle,
+  ] =
+    useState("");
+
+  const [
+    startDate,
+    setStartDate,
+  ] =
+    useState(
+      getToday()
+    );
+
+  const [
+    endDate,
+    setEndDate,
+  ] =
+    useState("");
+
+  const [
+    firstDueDate,
+    setFirstDueDate,
+  ] =
+    useState(
+      getToday()
+    );
+
+  const [
+    value,
+    setValue,
+  ] =
+    useState("");
+
+  const [
+    billingFrequency,
+    setBillingFrequency,
+  ] =
+    useState<
+      BillingFrequency
+    >(
+      "monthly"
+    );
+
+  const [
+    paymentMethodId,
+    setPaymentMethodId,
+  ] =
+    useState("");
+
+  const [
+    installments,
+    setInstallments,
+  ] =
+    useState(
+      1
+    );
+
+  const [
+    autoRenew,
+    setAutoRenew,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    notes,
+    setNotes,
+  ] =
+    useState("");
+
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    error,
+    setError,
+  ] =
+    useState("");
+
+  /*
+   * =====================================================
+   * CARREGAMENTO
+   * =====================================================
+   */
+
+  useEffect(
+    () => {
+      async function loadData() {
+        setUserLoading(
+          true
+        );
+
+        /*
+         * ===============================================
+         * USUÁRIO AUTENTICADO
+         * ===============================================
+         */
+
+        const {
+          data:
+            userResult,
+          error:
+            authError,
+        } =
+          await supabase.auth
+            .getUser();
+
+        if (
+          authError ||
+          !userResult.user
+        ) {
+          console.error(
+            "Erro ao carregar usuário autenticado:",
+            authError
+          );
+
+          setError(
+            "Não foi possível identificar o usuário autenticado."
+          );
+
+          setUserLoading(
+            false
+          );
+
+          return;
+        }
+
+        const authenticatedUser =
+          userResult.user;
+
+        /*
+         * ===============================================
+         * PERFIL
+         * ===============================================
+         */
+
+        const {
+          data: profile,
+          error:
+            profileError,
+        } =
+          await supabase
+            .from(
+              "profiles"
+            )
+            .select(`
+              id,
+              full_name,
+              email,
+              active
+            `)
+            .eq(
+              "id",
+              authenticatedUser.id
+            )
+            .maybeSingle();
+
+        if (
+          profileError
+        ) {
+          console.error(
+            "Erro ao carregar perfil do usuário:",
+            profileError
+          );
+        }
+
+        setCurrentUser({
+          id:
+            authenticatedUser.id,
+
+          name:
+            profile?.full_name ??
+            profile?.email ??
+            authenticatedUser.email ??
+            "Usuário",
+
+          email:
+            profile?.email ??
+            authenticatedUser.email ??
+            null,
+        });
+
+        /*
+         * ===============================================
+         * DADOS DO FORMULÁRIO
+         * ===============================================
+         */
+
+        const [
+          clientsResult,
+          companiesResult,
+          productsResult,
+          paymentMethodsResult,
+          tvsResult,
+          sellerSettingsResult,
+        ] =
+          await Promise.all([
+            supabase
+              .from(
+                "clients"
+              )
+              .select(`
+                id,
+                name,
+
+                client_companies (
+                  company_id,
+                  status
+                )
+              `)
+              .eq(
+                "active",
+                true
+              )
+              .order(
+                "name"
+              ),
+
+            supabase
+              .from(
+                "companies"
+              )
+              .select(`
+                id,
+                name
+              `)
+              .eq(
+                "active",
+                true
+              )
+              .order(
+                "name"
+              ),
+
+            supabase
+              .from(
+                "products"
+              )
+              .select(`
+                id,
+                company_id,
+                name,
+                default_price,
+                billing_frequency
+              `)
+              .eq(
+                "active",
+                true
+              )
+              .order(
+                "name"
+              ),
+
+            supabase
+              .from(
+                "payment_methods"
+              )
+              .select(`
+                id,
+                name,
+                code,
+                use_for
+              `)
+              .eq(
+                "active",
+                true
+              )
+              .in(
+                "use_for",
+                [
+                  "income",
+                  "both",
+                ]
+              )
+              .order(
+                "name"
+              ),
+
+            supabase
+              .from(
+                "pottencializa_tvs"
+              )
+              .select(`
+                id,
+                name,
+                location
+              `)
+              .eq(
+                "company_id",
+                POTTENCIALIZA_COMPANY_ID
+              )
+              .eq(
+                "active",
+                true
+              )
+              .order(
+                "name"
+              ),
+
+            /*
+             * IMPORTANTE:
+             *
+             * buscamos somente
+             * seller_settings do
+             * próprio usuário.
+             */
+
+            supabase
+              .from(
+                "seller_settings"
+              )
+              .select(`
+                user_id,
+                company_id,
+                commission_percentage
+              `)
+              .eq(
+                "user_id",
+                authenticatedUser.id
+              )
+              .eq(
+                "active",
+                true
+              ),
+          ]);
+
+        /*
+         * ===============================================
+         * LOGS
+         * ===============================================
+         */
+
+        if (
+          clientsResult.error
+        ) {
+          console.error(
+            "Erro ao carregar clientes:",
+            clientsResult.error
+          );
+        }
+
+        if (
+          companiesResult.error
+        ) {
+          console.error(
+            "Erro ao carregar empresas:",
+            companiesResult.error
+          );
+        }
+
+        if (
+          productsResult.error
+        ) {
+          console.error(
+            "Erro ao carregar produtos:",
+            productsResult.error
+          );
+        }
+
+        if (
+          paymentMethodsResult.error
+        ) {
+          console.error(
+            "Erro ao carregar formas de pagamento:",
+            paymentMethodsResult.error
+          );
+        }
+
+        if (
+          tvsResult.error
+        ) {
+          console.error(
+            "Erro ao carregar TVs:",
+            tvsResult.error
+          );
+        }
+
+        if (
+          sellerSettingsResult.error
+        ) {
+          console.error(
+            "Erro ao carregar comissão do usuário:",
+            sellerSettingsResult.error
+          );
+        }
+
+        /*
+         * ===============================================
+         * DADOS
+         * ===============================================
+         */
+
+        const loadedClients =
+          (
+            clientsResult.data ??
+            []
+          ) as Client[];
+
+        setClients(
+          loadedClients
+        );
+
+        setCompanies(
+          companiesResult.data ??
+            []
+        );
+
+        setProducts(
+          productsResult.data ??
+            []
+        );
+
+        setPaymentMethods(
+          paymentMethodsResult.data ??
+            []
+        );
+
+        setTvs(
+          (
+            tvsResult.data ??
+            []
+          ) as Tv[]
+        );
+
+        setSellerSettings(
+          (
+            sellerSettingsResult.data ??
+            []
+          ) as SellerSetting[]
+        );
+
+        /*
+         * ===============================================
+         * CLIENTE INICIAL
+         * ===============================================
+         */
+
+        if (
+          initialClientId
+        ) {
+          const initialClient =
+            loadedClients.find(
+              (
+                client
+              ) =>
+                client.id ===
+                initialClientId
+            );
+
+          if (
+            initialClient
+          ) {
+            setClientId(
+              initialClientId
+            );
+
+            const relation =
+              initialClient
+                .client_companies
+                ?.find(
+                  (
+                    item
+                  ) =>
+                    item.status ===
+                    "active"
+                );
+
+            if (
+              relation
+            ) {
+              setCompanyId(
+                relation.company_id
+              );
+            }
+          }
+        }
+
+        setUserLoading(
+          false
+        );
+      }
+
+      loadData();
+    },
+    [
+      supabase,
+      initialClientId,
+    ]
+  );
+
+  /*
+   * =====================================================
+   * PRODUTOS DA EMPRESA
+   * =====================================================
+   */
+
+  const availableProducts =
+    useMemo(
+      () =>
+        products.filter(
+          (
+            product
+          ) =>
+            product.company_id ===
+            companyId
+        ),
+      [
+        products,
+        companyId,
+      ]
+    );
+
+  /*
+   * =====================================================
+   * CONFIGURAÇÃO DE COMISSÃO DO USUÁRIO
+   * =====================================================
+   */
+
+  const currentSellerSetting =
+    useMemo(
+      () =>
+        sellerSettings.find(
+          (
+            setting
+          ) =>
+            setting.company_id ===
+            companyId
+        ) ??
+        null,
+      [
+        sellerSettings,
+        companyId,
+      ]
+    );
+
+  const commissionPercentage =
+    currentSellerSetting
+      ? Number(
+          currentSellerSetting
+            .commission_percentage ??
+            0
+        )
+      : 0;
+
+  /*
+   * =====================================================
+   * PRODUTO
+   * =====================================================
+   */
+
+  useEffect(
+    () => {
+      if (
+        productId &&
+        !availableProducts.some(
+          (
+            product
+          ) =>
+            product.id ===
+            productId
+        )
+      ) {
+        setProductId(
+          ""
+        );
+      }
+    },
+    [
+      availableProducts,
+      productId,
+    ]
+  );
+
+  useEffect(
+    () => {
+      if (
+        availableProducts.length ===
+          1 &&
+        !productId
+      ) {
+        const product =
+          availableProducts[0];
+
+        setProductId(
+          product.id
+        );
+
+        setTitle(
+          product.name
+        );
+
+        if (
+          product.default_price !==
+          null
+        ) {
+          setValue(
+            String(
+              product.default_price
+            ).replace(
+              ".",
+              ","
+            )
+          );
+        }
+
+        if (
+          product.billing_frequency
+        ) {
+          setBillingFrequency(
+            product.billing_frequency as BillingFrequency
+          );
+        }
+      }
+    },
+    [
+      availableProducts,
+      productId,
+    ]
+  );
+
+  /*
+   * =====================================================
+   * HANDLERS
+   * =====================================================
+   */
+
+  function handleClientChange(
+    id: string
+  ) {
+    setClientId(
+      id
+    );
+
+    setProductId(
+      ""
+    );
+
+    setCompanyId(
+      ""
+    );
+
+    if (
+      !id
+    ) {
+      return;
+    }
+
+    const client =
+      clients.find(
+        (
+          item
+        ) =>
+          item.id ===
+          id
+      );
+
+    if (
+      !client
+    ) {
+      return;
+    }
+
+    const relation =
+      client
+        .client_companies
+        ?.find(
+          (
+            item
+          ) =>
+            item.status ===
+            "active"
+        );
+
+    if (
+      relation
+    ) {
+      setCompanyId(
+        relation.company_id
+      );
+    }
+  }
+
+  function handleCompanyChange(
+    id: string
+  ) {
+    setCompanyId(
+      id
+    );
+
+    setProductId(
+      ""
+    );
+
+    setTitle(
+      ""
+    );
+
+    setValue(
+      ""
+    );
+
+    setSelectedTvIds(
+      []
+    );
+  }
+
+  function toggleTv(
+    tvId: string
+  ) {
+    setSelectedTvIds(
+      (
+        current
+      ) =>
+        current.includes(
+          tvId
+        )
+          ? current.filter(
+              (
+                id
+              ) =>
+                id !==
+                tvId
+            )
+          : [
+              ...current,
+              tvId,
+            ]
+    );
+  }
+
+  function handleProductChange(
+    id: string
+  ) {
+    setProductId(
+      id
+    );
+
+    const product =
+      products.find(
+        (
+          item
+        ) =>
+          item.id ===
+          id
+      );
+
+    if (
+      !product
+    ) {
+      return;
+    }
+
+    setTitle(
+      product.name
+    );
+
+    if (
+      product.default_price !==
+      null
+    ) {
+      setValue(
+        String(
+          product.default_price
+        ).replace(
+          ".",
+          ","
+        )
+      );
+    }
+
+    if (
+      product.billing_frequency
+    ) {
+      setBillingFrequency(
+        product.billing_frequency as BillingFrequency
+      );
+    }
+  }
+
+  /*
+   * =====================================================
+   * VALOR
+   * =====================================================
+   */
+
+  const numericValue =
+    useMemo(
+      () =>
+        Number(
+          value
+            .replace(
+              /\./g,
+              ""
+            )
+            .replace(
+              ",",
+              "."
+            )
+        ),
+      [
+        value,
+      ]
+    );
+
+  /*
+   * =====================================================
+   * COMISSÃO PREVISTA
+   * =====================================================
+   */
+
+  const commissionPreview =
+    useMemo(
+      () => {
+        if (
+          !currentSellerSetting ||
+          !Number.isFinite(
+            numericValue
+          ) ||
+          numericValue <=
+            0
+        ) {
+          return 0;
+        }
+
+        return roundMoney(
+          numericValue *
+            (
+              commissionPercentage /
+              100
+            )
+        );
+      },
+      [
+        numericValue,
+        commissionPercentage,
+        currentSellerSetting,
+      ]
+    );
+
+  /*
+   * =====================================================
+   * PARCELAS
+   * =====================================================
+   */
+
+  const installmentPreview =
+    useMemo(
+      () => {
+        if (
+          !Number.isFinite(
+            numericValue
+          ) ||
+          numericValue <=
+            0 ||
+          installments <
+            1
+        ) {
+          return null;
+        }
+
+        return (
+          numericValue /
+          installments
+        );
+      },
+      [
+        numericValue,
+        installments,
+      ]
+    );
+
+  /*
+   * =====================================================
+   * SUBMIT
+   * =====================================================
+   */
+
+  async function handleSubmit(
+    event:
+      FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (
+      !currentUser
+    ) {
+      setError(
+        "Usuário não autenticado."
+      );
+
+      return;
+    }
+
+    if (
+      !clientId
+    ) {
+      setError(
+        "Selecione um cliente."
+      );
+
+      return;
+    }
+
+    if (
+      !companyId
+    ) {
+      setError(
+        "Selecione uma empresa."
+      );
+
+      return;
+    }
+
+    /*
+     * A action também valida isso,
+     * mas avisamos antes na tela.
+     */
+
+    if (
+      !currentSellerSetting
+    ) {
+      setError(
+        "Seu usuário não está configurado para receber comissão nesta empresa."
+      );
+
+      return;
+    }
+
+    if (
+      !title.trim()
+    ) {
+      setError(
+        "Informe o título do contrato."
+      );
+
+      return;
+    }
+
+    if (
+      !startDate
+    ) {
+      setError(
+        "Informe a data de início."
+      );
+
+      return;
+    }
+
+    if (
+      !firstDueDate
+    ) {
+      setError(
+        "Informe o primeiro vencimento."
+      );
+
+      return;
+    }
+
+    if (
+      !paymentMethodId
+    ) {
+      setError(
+        "Selecione a forma de pagamento."
+      );
+
+      return;
+    }
+
+    if (
+      !Number.isFinite(
+        numericValue
+      ) ||
+      numericValue <=
+        0
+    ) {
+      setError(
+        "Informe um valor válido."
+      );
+
+      return;
+    }
+
+    if (
+      installments <
+      1
+    ) {
+      setError(
+        "A quantidade de parcelas deve ser pelo menos 1."
+      );
+
+      return;
+    }
+
+    setLoading(
+      true
+    );
+
+    setError(
+      ""
+    );
+
+    /*
+     * IMPORTANTE:
+     *
+     * NÃO enviamos responsibleUserId.
+     *
+     * A action identifica o usuário
+     * autenticado diretamente no servidor.
+     */
+
+    const result =
+      await createContract({
+        clientId,
+
+        companyId,
+
+        productId:
+          productId ||
+          null,
+
+        title,
+
+        startDate,
+
+        endDate:
+          endDate ||
+          null,
+
+        firstDueDate,
+
+        value:
+          numericValue,
+
+        billingFrequency,
+
+        paymentMethodId,
+
+        installments,
+
+        autoRenew,
+
+        tvIds:
+          companyId ===
+          POTTENCIALIZA_COMPANY_ID
+            ? selectedTvIds
+            : [],
+
+        notes:
+          notes ||
+          null,
+      });
+
+    if (
+      !result.success
+    ) {
+      setError(
+        result.error ??
+          "Não foi possível criar o contrato."
+      );
+
+      setLoading(
+        false
+      );
+
+      return;
+    }
+
+    router.push(
+      "/contratos"
+    );
+
+    router.refresh();
+  }
+
+  return (
+    <main className="min-h-screen bg-[#f5f7f6] p-8">
+      <form
+        onSubmit={
+          handleSubmit
+        }
+        className="mx-auto max-w-5xl"
+      >
+        {/* VOLTAR */}
+
+        <button
+          type="button"
+          onClick={() =>
+            router.back()
+          }
+          className="mb-5 flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+        >
+          <ArrowLeft className="h-4 w-4" />
+
+          Voltar
+        </button>
+
+        {/* HEADER */}
+
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900">
+              Novo contrato
+            </h1>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Cadastre o contrato, sua vigência e as condições de cobrança.
+            </p>
+          </div>
+
+          <button
+            type="submit"
+            disabled={
+              loading ||
+              userLoading
+            }
+            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" />
+
+            {loading
+              ? "Salvando..."
+              : "Salvar contrato"}
+          </button>
+        </div>
+
+        {/* ERRO */}
+
+        {error && (
+          <div className="mt-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {error}
+          </div>
+        )}
+
+        {/* PRINCIPAL */}
+
+        <section className="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-semibold text-slate-900">
+            Informações principais
+          </h2>
+
+          <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+
+            <Field label="Cliente">
+              <select
+                value={
+                  clientId
+                }
+                onChange={(
+                  event
+                ) =>
+                  handleClientChange(
+                    event.target.value
+                  )
+                }
+                required
+                className="input"
+              >
+                <option value="">
+                  Selecione...
+                </option>
+
+                {clients.map(
+                  (
+                    client
+                  ) => (
+                    <option
+                      key={
+                        client.id
+                      }
+                      value={
+                        client.id
+                      }
+                    >
+                      {
+                        client.name
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+
+            <Field label="Empresa">
+              <select
+                value={
+                  companyId
+                }
+                onChange={(
+                  event
+                ) =>
+                  handleCompanyChange(
+                    event.target.value
+                  )
+                }
+                required
+                className="input"
+              >
+                <option value="">
+                  Selecione...
+                </option>
+
+                {companies.map(
+                  (
+                    company
+                  ) => (
+                    <option
+                      key={
+                        company.id
+                      }
+                      value={
+                        company.id
+                      }
+                    >
+                      {
+                        company.name
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+
+            <Field label="Produto / Serviço">
+              <select
+                value={
+                  productId
+                }
+                onChange={(
+                  event
+                ) =>
+                  handleProductChange(
+                    event.target.value
+                  )
+                }
+                className="input"
+              >
+                <option value="">
+                  Selecione...
+                </option>
+
+                {availableProducts.map(
+                  (
+                    product
+                  ) => (
+                    <option
+                      key={
+                        product.id
+                      }
+                      value={
+                        product.id
+                      }
+                    >
+                      {
+                        product.name
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+
+            <Field label="Título">
+              <input
+                value={
+                  title
+                }
+                onChange={(
+                  event
+                ) =>
+                  setTitle(
+                    event.target.value
+                  )
+                }
+                required
+                className="input"
+              />
+            </Field>
+
+            <Field label="Valor total">
+              <input
+                value={
+                  value
+                }
+                onChange={(
+                  event
+                ) =>
+                  setValue(
+                    event.target.value
+                  )
+                }
+                placeholder="0,00"
+                inputMode="decimal"
+                required
+                className="input"
+              />
+            </Field>
+
+            <Field label="Periodicidade do contrato">
+              <select
+                value={
+                  billingFrequency
+                }
+                onChange={(
+                  event
+                ) =>
+                  setBillingFrequency(
+                    event.target.value as BillingFrequency
+                  )
+                }
+                className="input"
+              >
+                <option value="one_time">
+                  Pagamento único
+                </option>
+
+                <option value="monthly">
+                  Mensal
+                </option>
+
+                <option value="quarterly">
+                  Trimestral
+                </option>
+
+                <option value="semiannual">
+                  Semestral
+                </option>
+
+                <option value="annual">
+                  Anual
+                </option>
+
+                <option value="custom">
+                  Personalizado
+                </option>
+              </select>
+            </Field>
+          </div>
+        </section>
+
+        {/* RESPONSÁVEL / COMISSÃO */}
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#15704f]/10">
+              <UserRound className="h-5 w-5 text-[#15704f]" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-slate-900">
+                Responsável e comissão
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                O responsável pelo contrato é automaticamente o usuário que está criando o registro.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+
+            {/* RESPONSÁVEL */}
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                Responsável pelo contrato
+              </p>
+
+              {userLoading ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Carregando usuário...
+                </p>
+              ) : currentUser ? (
+                <>
+                  <p className="mt-3 text-sm font-semibold text-slate-900">
+                    {
+                      currentUser.name
+                    }
+                  </p>
+
+                  {currentUser.email &&
+                    currentUser.email !==
+                      currentUser.name && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {
+                          currentUser.email
+                        }
+                      </p>
+                    )}
+
+                  <div className="mt-3 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                    Usuário autenticado
+                  </div>
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-red-600">
+                  Usuário não identificado.
+                </p>
+              )}
+            </div>
+
+            {/* COMISSÃO */}
+
+            <div className="rounded-xl border border-[#15704f]/10 bg-[#15704f]/5 p-4">
+              <div className="flex items-center gap-2">
+                <BadgePercent className="h-4 w-4 text-[#15704f]" />
+
+                <p className="text-xs font-medium uppercase tracking-wide text-[#15704f]">
+                  Comissão prevista
+                </p>
+              </div>
+
+              {!companyId ? (
+                <p className="mt-3 text-sm text-slate-500">
+                  Selecione uma empresa para verificar sua comissão.
+                </p>
+              ) : !currentSellerSetting ? (
+                <>
+                  <p className="mt-3 text-sm font-semibold text-amber-700">
+                    Comissão não configurada
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Seu usuário não possui uma configuração de comissão ativa para esta empresa.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="mt-3 text-xl font-semibold text-slate-900">
+                    {formatCurrency(
+                      commissionPreview
+                    )}
+                  </p>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatPercentage(
+                      commissionPercentage
+                    )}{" "}
+                    sobre{" "}
+                    {Number.isFinite(
+                      numericValue
+                    )
+                      ? formatCurrency(
+                          numericValue
+                        )
+                      : "R$ 0,00"}
+                  </p>
+
+                  <p className="mt-2 text-xs text-slate-400">
+                    A comissão será liberada conforme o cliente efetivamente pagar o contrato.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+        {/* TVs POTTENCIALIZA */}
+
+        {companyId ===
+          POTTENCIALIZA_COMPANY_ID && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+            <div>
+              <h2 className="font-semibold text-slate-900">
+                TVs / Telões vinculados
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Selecione em quais pontos este contrato será exibido.
+              </p>
+            </div>
+
+            {tvs.length >
+            0 ? (
+              <>
+                <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {tvs.map(
+                    (
+                      tv
+                    ) => {
+                      const selected =
+                        selectedTvIds.includes(
+                          tv.id
+                        );
+
+                      return (
+                        <button
+                          key={
+                            tv.id
+                          }
+                          type="button"
+                          onClick={() =>
+                            toggleTv(
+                              tv.id
+                            )
+                          }
+                          className={`rounded-xl border p-4 text-left transition ${
+                            selected
+                              ? "border-[#15704f] bg-[#15704f]/5"
+                              : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={
+                                selected
+                              }
+                              readOnly
+                              className="mt-0.5 h-4 w-4 accent-[#15704f]"
+                            />
+
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {
+                                  tv.name
+                                }
+                              </p>
+
+                              <p className="mt-1 text-xs text-slate-500">
+                                {tv.location ||
+                                  "Localização não informada"}
+                              </p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    }
+                  )}
+                </div>
+
+                <div className="mt-5 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+                  <span className="text-sm text-slate-500">
+                    Pontos selecionados
+                  </span>
+
+                  <span className="text-sm font-semibold text-[#15704f]">
+                    {
+                      selectedTvIds.length
+                    }{" "}
+                    de{" "}
+                    {
+                      tvs.length
+                    }
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="mt-5 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                Nenhuma TV ativa cadastrada.
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* VIGÊNCIA */}
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <h2 className="font-semibold text-slate-900">
+            Vigência
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Período em que o contrato estará em vigor.
+          </p>
+
+          <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+            <Field label="Data de início">
+              <input
+                type="date"
+                value={
+                  startDate
+                }
+                onChange={(
+                  event
+                ) =>
+                  setStartDate(
+                    event.target.value
+                  )
+                }
+                required
+                className="input"
+              />
+            </Field>
+
+            <Field label="Data de término">
+              <input
+                type="date"
+                value={
+                  endDate
+                }
+                onChange={(
+                  event
+                ) =>
+                  setEndDate(
+                    event.target.value
+                  )
+                }
+                className="input"
+              />
+            </Field>
+          </div>
+
+          <label className="mt-6 flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <input
+              type="checkbox"
+              checked={
+                autoRenew
+              }
+              onChange={(
+                event
+              ) =>
+                setAutoRenew(
+                  event.target.checked
+                )
+              }
+              className="h-4 w-4"
+            />
+
+            <div>
+              <p className="text-sm font-medium text-slate-700">
+                Renovação automática
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Indica que o contrato poderá ser renovado ao fim da vigência.
+              </p>
+            </div>
+          </label>
+        </section>
+
+        {/* COBRANÇA */}
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#15704f]/10">
+              <CreditCard className="h-5 w-5 text-[#15704f]" />
+            </div>
+
+            <div>
+              <h2 className="font-semibold text-slate-900">
+                Condições de cobrança
+              </h2>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Defina como o cliente realizará o pagamento.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-3">
+            <Field label="Forma de pagamento">
+              <select
+                value={
+                  paymentMethodId
+                }
+                onChange={(
+                  event
+                ) =>
+                  setPaymentMethodId(
+                    event.target.value
+                  )
+                }
+                required
+                className="input"
+              >
+                <option value="">
+                  Selecione...
+                </option>
+
+                {paymentMethods.map(
+                  (
+                    method
+                  ) => (
+                    <option
+                      key={
+                        method.id
+                      }
+                      value={
+                        method.id
+                      }
+                    >
+                      {
+                        method.name
+                      }
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+
+            <Field label="Quantidade de parcelas">
+              <input
+                type="number"
+                min={
+                  1
+                }
+                max={
+                  120
+                }
+                value={
+                  installments
+                }
+                onChange={(
+                  event
+                ) =>
+                  setInstallments(
+                    Math.max(
+                      1,
+                      Number(
+                        event.target.value
+                      ) ||
+                        1
+                    )
+                  )
+                }
+                required
+                className="input"
+              />
+            </Field>
+
+            <Field label="1º vencimento">
+              <input
+                type="date"
+                value={
+                  firstDueDate
+                }
+                onChange={(
+                  event
+                ) =>
+                  setFirstDueDate(
+                    event.target.value
+                  )
+                }
+                required
+                className="input"
+              />
+            </Field>
+          </div>
+
+          {installmentPreview !==
+            null && (
+            <div className="mt-5 rounded-xl border border-[#15704f]/10 bg-[#15704f]/5 px-4 py-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#15704f]">
+                Resumo da cobrança
+              </p>
+
+              <p className="mt-1 text-sm font-semibold text-slate-900">
+                {
+                  installments
+                }x de aproximadamente{" "}
+                {formatCurrency(
+                  installmentPreview
+                )}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                O sistema ajustará automaticamente os centavos para que a soma das parcelas seja exatamente{" "}
+                {formatCurrency(
+                  numericValue
+                )}
+                .
+              </p>
+            </div>
+          )}
+        </section>
+
+        {/* OBSERVAÇÕES */}
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+          <Field label="Observações">
+            <textarea
+              value={
+                notes
+              }
+              onChange={(
+                event
+              ) =>
+                setNotes(
+                  event.target.value
+                )
+              }
+              rows={
+                5
+              }
+              className="input min-h-[130px]"
+            />
+          </Field>
+        </section>
+      </form>
+    </main>
+  );
+}
+
+/*
+ * =====================================================
+ * FIELD
+ * =====================================================
+ */
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+
+  children:
+    React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </span>
+
+      {
+        children
+      }
+    </label>
+  );
+}
+
+/*
+ * =====================================================
+ * HELPERS
+ * =====================================================
+ */
+
+function getToday() {
+  const now =
+    new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(
+      now.getMonth() +
+        1
+    ).padStart(
+      2,
+      "0"
+    );
+
+  const day =
+    String(
+      now.getDate()
+    ).padStart(
+      2,
+      "0"
+    );
+
+  return `${year}-${month}-${day}`;
+}
+
+function roundMoney(
+  value: number
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
+  );
+}
+
+function formatCurrency(
+  value: number
+) {
+  return new Intl.NumberFormat(
+    "pt-BR",
+    {
+      style:
+        "currency",
+
+      currency:
+        "BRL",
+    }
+  ).format(
+    Number.isFinite(
+      value
+    )
+      ? value
+      : 0
+  );
+}
+
+function formatPercentage(
+  value: number
+) {
+  return (
+    new Intl.NumberFormat(
+      "pt-BR",
+      {
+        maximumFractionDigits:
+          2,
+      }
+    ).format(
+      value
+    ) + "%"
+  );
+}

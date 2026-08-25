@@ -1,0 +1,218 @@
+[
+  {
+    "type": "client_not_found",
+    "legacy_code": "003370",
+    "subscription_number": "001630",
+    "client_name": "OSWALDO FARINA - IMPRESSO",
+    "route_code": "000004",
+    "route_name": "ETIQUETAS - DVS - CORREIOS - DÉ"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "012952",
+    "subscription_number": "001670",
+    "client_name": "BRUNO FONTANA BOFF",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "012625",
+    "subscription_number": "001286",
+    "client_name": "ESTUDIO LIFE DANCE",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001944",
+    "subscription_number": "000293",
+    "client_name": "ROGÉRIO VALDUGA",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001941",
+    "subscription_number": "000290",
+    "client_name": "ESCRITÓRIO GOTARDO",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001942",
+    "subscription_number": "000291",
+    "client_name": "CÉZAR GOTARDO",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "013199",
+    "subscription_number": "001927",
+    "client_name": "RODRIGO BARBOSA",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "013219",
+    "subscription_number": "001953",
+    "client_name": "DANIELA BUSATTO",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "004261",
+    "subscription_number": "000958",
+    "client_name": "IDALMIR ZANDONA",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "012799",
+    "subscription_number": "001980",
+    "client_name": "CAMILA BORDIGNON BIM",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001933",
+    "subscription_number": "000284",
+    "client_name": "RÁDIO 96.1",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "003070",
+    "subscription_number": "000514",
+    "client_name": "SHOPPING CENTER",
+    "route_code": "000007",
+    "route_name": "ROTA 02 - CARLOS/IRI"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "002799",
+    "subscription_number": "000468",
+    "client_name": "JORNAL CORREIO LIVRE",
+    "route_code": "000010",
+    "route_name": "ETIQUETAS ROTEIRO - MIZA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001934",
+    "subscription_number": "000285",
+    "client_name": "JORNAL POPULAR",
+    "route_code": "000010",
+    "route_name": "ETIQUETAS ROTEIRO - MIZA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "003071",
+    "subscription_number": "000515",
+    "client_name": "POLÍCIA RODOVIÁRIA",
+    "route_code": "000010",
+    "route_name": "ETIQUETAS ROTEIRO - MIZA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "013225",
+    "subscription_number": "001961",
+    "client_name": "LOIDIR REGINATTO",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "002655",
+    "subscription_number": "000434",
+    "client_name": "IVO JOSÉ FRAINER",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001931",
+    "subscription_number": "000282",
+    "client_name": "SEMINÁRIO SERÁFICO SÃO JOSÉ",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "013262",
+    "subscription_number": "002071",
+    "client_name": "VANESSA PESSATO FARENZENA",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001936",
+    "subscription_number": "000287",
+    "client_name": "DELEGACIA",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "002004",
+    "subscription_number": "000312",
+    "client_name": "ADELINA PARISE PESSIN",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001938",
+    "subscription_number": "000288",
+    "client_name": "BRIGADA MILITAR",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001939",
+    "subscription_number": "000289",
+    "client_name": "CORPO DE BOMBEIROS",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "001932",
+    "subscription_number": "000283",
+    "client_name": "RÁDIO VERANENSE",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "012599",
+    "subscription_number": "001718",
+    "client_name": "GRACIELE RUI",
+    "route_code": "000011",
+    "route_name": "ROTA 01 - FERNANDA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "004578",
+    "subscription_number": "001191",
+    "client_name": "8 UNIDADES FAGUNDES",
+    "route_code": "000012",
+    "route_name": "FAGUNDES VARELA"
+  },
+  {
+    "type": "client_not_found",
+    "legacy_code": "013175",
+    "subscription_number": "001902",
+    "client_name": "ROBERTA MATTIELLO DEMARCHI",
+    "route_code": "000012",
+    "route_name": "FAGUNDES VARELA"
+  }
+]
