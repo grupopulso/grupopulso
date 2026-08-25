@@ -168,35 +168,48 @@ export default function PayCommissionButton({
       notes.trim() ||
       undefined,
   });
+if (
+  !result.success
+) {
+  setMessage(
+    result.message ??
+      "Não foi possível gerar o pagamento."
+  );
 
-        if (
-          !result.success
-        ) {
-          setMessage(
-            result.message ??
-              "Não foi possível gerar o pagamento."
-          );
+  return;
+}
 
-          return;
-        }
+/*
+ * O TypeScript precisa confirmar
+ * que esta propriedade realmente
+ * existe no retorno de sucesso.
+ */
 
-        setOpen(
-          false
-        );
+if (
+  !(
+    "financialEntryId" in
+    result
+  ) ||
+  !result.financialEntryId
+) {
+  setMessage(
+    "O pagamento foi gerado, mas o lançamento financeiro não foi identificado."
+  );
 
-        if (
-          result.financialEntryId
-        ) {
-          router.push(
-            `/financeiro/${result.financialEntryId}`
-          );
+  router.refresh();
 
-          router.refresh();
+  return;
+}
 
-          return;
-        }
+setOpen(
+  false
+);
 
-        router.refresh();
+router.push(
+  `/financeiro/${result.financialEntryId}`
+);
+
+router.refresh();
       }
     );
   }
