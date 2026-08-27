@@ -97,9 +97,71 @@ type UnifiedCommission = {
     string;
 };
 
-export default async function CommissionsPage() {
+type PageProps = {
+  searchParams: Promise<{
+    q?: string;
+    origem?: string;
+    status?: string;
+    vendedor?: string;
+    de?: string;
+    ate?: string;
+  }>;
+};
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+const STATUS_FILTERS = [
+  { value: "all", label: "Todos os status" },
+  { value: "pending", label: "Pendente" },
+  { value: "generated", label: "Liberada" },
+  { value: "paid", label: "Paga" },
+  { value: "cancelled", label: "Cancelada" },
+];
+
+export default async function CommissionsPage({
+  searchParams,
+}: PageProps) {
   const access =
     await requireEstafetaAccess();
+
+  const {
+    q: qParam,
+    origem: origemParam,
+    status: statusParam,
+    vendedor: vendedorParam,
+    de: deParam,
+    ate: ateParam,
+  } = await searchParams;
+
+  const searchTerm =
+    (qParam ?? "").trim();
+
+  const originFilter =
+    origemParam === "sale" ||
+    origemParam === "contract"
+      ? origemParam
+      : "all";
+
+  const statusFilter =
+    STATUS_FILTERS.some(
+      (option) =>
+        option.value === statusParam
+    )
+      ? (statusParam as string)
+      : "all";
+
+  const beneficiaryFilter =
+    (vendedorParam ?? "").trim();
+
+  const dateFrom =
+    deParam && DATE_ONLY.test(deParam)
+      ? deParam
+      : "";
+
+  const dateTo =
+    ateParam && DATE_ONLY.test(ateParam)
+      ? ateParam
+      : "";
 
   const supabase =
     await createClient();
@@ -475,6 +537,101 @@ export default async function CommissionsPage() {
 
   /*
    * =====================================================
+   * FILTROS
+   * =====================================================
+   */
+
+  const normalizedSearch =
+    searchTerm.toLocaleLowerCase(
+      "pt-BR"
+    );
+
+  const filteredCommissions =
+    unifiedCommissions.filter(
+      (commission) => {
+        if (
+          originFilter !== "all" &&
+          commission.originType !==
+            originFilter
+        ) {
+          return false;
+        }
+
+        if (
+          statusFilter !== "all" &&
+          commission.status !==
+            statusFilter
+        ) {
+          return false;
+        }
+
+        if (
+          beneficiaryFilter &&
+          commission.beneficiaryUserId !==
+            beneficiaryFilter
+        ) {
+          return false;
+        }
+
+        if (dateFrom) {
+          const created =
+            commission.createdAt.slice(
+              0,
+              10
+            );
+
+          if (created < dateFrom) {
+            return false;
+          }
+        }
+
+        if (dateTo) {
+          const created =
+            commission.createdAt.slice(
+              0,
+              10
+            );
+
+          if (created > dateTo) {
+            return false;
+          }
+        }
+
+        if (normalizedSearch) {
+          const haystack = [
+            commission.clientName ?? "",
+            commission.contractTitle ??
+              "",
+            commission.editionName ?? "",
+          ]
+            .join(" ")
+            .toLocaleLowerCase("pt-BR");
+
+          if (
+            !haystack.includes(
+              normalizedSearch
+            )
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      }
+    );
+
+  const hasActiveFilters =
+    Boolean(
+      searchTerm ||
+        originFilter !== "all" ||
+        statusFilter !== "all" ||
+        beneficiaryFilter ||
+        dateFrom ||
+        dateTo
+    );
+
+  /*
+   * =====================================================
    * PERFIS
    * =====================================================
    */
@@ -796,7 +953,7 @@ export default async function CommissionsPage() {
    */
 
   const activeCommissions =
-    unifiedCommissions.filter(
+    filteredCommissions.filter(
       (
         commission
       ) =>
@@ -1114,6 +1271,28 @@ export default async function CommissionsPage() {
           a.expected
       );
 
+  const beneficiaryOptions =
+    Array.from(
+      new Set(
+        unifiedCommissions.map(
+          (commission) =>
+            commission.beneficiaryUserId
+        )
+      )
+    )
+      .map((userId) => ({
+        id: userId,
+        name:
+          profilesById.get(userId)
+            ?.name ?? "Usuário",
+      }))
+      .sort((a, b) =>
+        a.name.localeCompare(
+          b.name,
+          "pt-BR"
+        )
+      );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-[1650px]">
@@ -1145,6 +1324,124 @@ export default async function CommissionsPage() {
             </div>
           )}
         </div>
+
+        {/* FILTROS */}
+
+        <form
+          method="get"
+          className="mt-6 grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-2 xl:grid-cols-6"
+        >
+          <input
+            type="search"
+            name="q"
+            defaultValue={searchTerm}
+            placeholder="Cliente, contrato ou edição..."
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm text-slate-700 outline-none focus:border-[#15704f] xl:col-span-2"
+          />
+
+          <select
+            name="origem"
+            defaultValue={originFilter}
+            className="h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+          >
+            <option value="all">
+              Todas as origens
+            </option>
+            <option value="sale">
+              Vendas
+            </option>
+            <option value="contract">
+              Contratos
+            </option>
+          </select>
+
+          <select
+            name="status"
+            defaultValue={statusFilter}
+            className="h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+          >
+            {STATUS_FILTERS.map(
+              (option) => (
+                <option
+                  key={option.value}
+                  value={option.value}
+                >
+                  {option.label}
+                </option>
+              )
+            )}
+          </select>
+
+          {canManageCommissions && (
+            <select
+              name="vendedor"
+              defaultValue={
+                beneficiaryFilter
+              }
+              className="h-11 rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+            >
+              <option value="">
+                Todos os beneficiários
+              </option>
+
+              {beneficiaryOptions.map(
+                (option) => (
+                  <option
+                    key={option.id}
+                    value={option.id}
+                  >
+                    {option.name}
+                  </option>
+                )
+              )}
+            </select>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              name="de"
+              defaultValue={dateFrom}
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+            />
+
+            <span className="text-xs text-slate-400">
+              até
+            </span>
+
+            <input
+              type="date"
+              name="ate"
+              defaultValue={dateTo}
+              className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 xl:col-span-6">
+            <button
+              type="submit"
+              className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-700"
+            >
+              Filtrar
+            </button>
+
+            {hasActiveFilters && (
+              <Link
+                href="/comissoes"
+                className="text-sm font-medium text-slate-500 hover:text-slate-900"
+              >
+                Limpar filtros
+              </Link>
+            )}
+
+            <span className="ml-auto text-xs text-slate-400">
+              {filteredCommissions.length}{" "}
+              de{" "}
+              {unifiedCommissions.length}{" "}
+              comissões
+            </span>
+          </div>
+        </form>
 
         {/* INDICADORES */}
 
@@ -1366,7 +1663,7 @@ export default async function CommissionsPage() {
             </p>
           </div>
 
-          {unifiedCommissions.length ? (
+          {filteredCommissions.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50">
@@ -1426,7 +1723,7 @@ export default async function CommissionsPage() {
                 </thead>
 
                 <tbody className="divide-y divide-slate-100">
-                  {unifiedCommissions.map(
+                  {filteredCommissions.map(
                     (
                       commission
                     ) => {
@@ -1632,7 +1929,11 @@ export default async function CommissionsPage() {
             </div>
           ) : (
             <EmptyState
-              text="Ainda não existem comissões."
+              text={
+                hasActiveFilters
+                  ? "Nenhuma comissão para os filtros selecionados."
+                  : "Ainda não existem comissões."
+              }
             />
           )}
         </section>
