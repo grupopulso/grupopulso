@@ -7,6 +7,7 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -89,6 +90,14 @@ export default async function EditContractPage({
   ) {
     notFound();
   }
+
+  /*
+   * Escopo de empresa: impede editar contrato de empresa
+   * à qual o usuário não tem acesso trocando o id na URL.
+   */
+  await requireCompanyAccess(
+    contract.company_id
+  );
 
   if (
     contractTvsResult.error

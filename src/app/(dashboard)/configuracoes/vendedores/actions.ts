@@ -74,7 +74,7 @@ export async function saveSellerSettings(
     error: profileError,
   } =
     await supabase
-      .from("profiles")
+      .from("user_profiles")
       .select(`
         id,
         role,
@@ -191,7 +191,7 @@ export async function saveSellerSettings(
       error: roleError,
     } =
       await supabase
-        .from("profiles")
+        .from("user_profiles")
         .update({
           role: "seller",
           updated_at:

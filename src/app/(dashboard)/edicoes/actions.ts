@@ -12,26 +12,125 @@ import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
+/*
+ * =====================================================
+ * TIPOS
+ * =====================================================
+ */
+
+type CreateEditionSectionInput = {
+  name: string;
+
+  description?:
+    | string
+    | null;
+
+  salesGoal: number;
+};
+
 type CreateEditionInput = {
   companyId: string;
+
   name: string;
+
   editionNumber?: string;
+
   publicationDate: string;
+
+  salesGoal: number;
+
+  sections?:
+    CreateEditionSectionInput[];
+
   notes?: string;
 };
 
 type UpdateEditionInput = {
   id: string;
+
   name: string;
+
   editionNumber?: string;
+
   publicationDate: string;
+
+  /*
+   * Opcional por enquanto para
+   * manter compatibilidade com
+   * a tela antiga de edição.
+   */
+  salesGoal?: number;
+
   notes?: string;
 };
 
 /*
- * =========================================
+ * =====================================================
+ * POSIÇÕES PADRÃO
+ * =====================================================
+ */
+
+const DEFAULT_AD_POSITIONS = [
+  {
+    code:
+      "cover",
+
+    name:
+      "Capa",
+
+    capacity:
+      1,
+  },
+
+  {
+    code:
+      "back_cover",
+
+    name:
+      "Contracapa",
+
+    capacity:
+      1,
+  },
+
+  {
+    code:
+      "inside_bw",
+
+    name:
+      "Interno preto e branco",
+
+    capacity:
+      null,
+  },
+
+  {
+    code:
+      "inside_color",
+
+    name:
+      "Interno colorido",
+
+    capacity:
+      null,
+  },
+
+  {
+    code:
+      "overcover",
+
+    name:
+      "Sobrecapa",
+
+    capacity:
+      1,
+  },
+] as const;
+
+/*
+ * =====================================================
  * CRIAR EDIÇÃO
- * =========================================
+ * =====================================================
  */
 
 export async function createEdition(
@@ -40,20 +139,72 @@ export async function createEdition(
   const access =
     await requireEstafetaAccess();
 
+  /*
+   * =====================================================
+   * NORMALIZAÇÃO
+   * =====================================================
+   */
+
   const name =
     input.name.trim();
 
   const editionNumber =
     input.editionNumber
-      ?.trim() || null;
+      ?.trim() ||
+    null;
 
   const notes =
     input.notes
-      ?.trim() || null;
+      ?.trim() ||
+    null;
 
-  if (!name) {
+  const salesGoal =
+    roundMoney(
+      Number(
+        input.salesGoal ??
+          0
+      )
+    );
+
+  const sections =
+    (
+      input.sections ??
+      []
+    ).map(
+      (
+        section
+      ) => ({
+        name:
+          section.name
+            .trim(),
+
+        description:
+          section.description
+            ?.trim() ||
+          null,
+
+        salesGoal:
+          roundMoney(
+            Number(
+              section.salesGoal ??
+                0
+            )
+          ),
+      })
+    );
+
+  /*
+   * =====================================================
+   * VALIDAÇÕES
+   * =====================================================
+   */
+
+  if (
+    !name
+  ) {
     return {
       success: false,
+
       message:
         "Informe o nome da edição.",
     };
@@ -64,18 +215,77 @@ export async function createEdition(
   ) {
     return {
       success: false,
+
       message:
         "Informe a data de publicação.",
     };
   }
 
+  if (
+    !Number.isFinite(
+      salesGoal
+    ) ||
+    salesGoal <
+      0
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Informe uma meta válida para a edição.",
+    };
+  }
+
+  for (
+    let index = 0;
+    index <
+    sections.length;
+    index++
+  ) {
+    const section =
+      sections[
+        index
+      ];
+
+    if (
+      !section.name
+    ) {
+      return {
+        success: false,
+
+        message:
+          `Informe o nome do caderno ${index + 1}.`,
+      };
+    }
+
+    if (
+      !Number.isFinite(
+        section.salesGoal
+      ) ||
+      section.salesGoal <
+        0
+    ) {
+      return {
+        success: false,
+
+        message:
+          `Informe uma meta válida para o caderno ${section.name}.`,
+      };
+    }
+  }
+
   /*
-   * Não confiamos no companyId
-   * enviado pelo formulário.
+   * =====================================================
+   * EMPRESA
+   * =====================================================
    *
-   * A empresa oficial da edição
-   * é sempre O Estafeta.
+   * Não confiamos no companyId
+   * enviado pelo frontend.
+   *
+   * Edições pertencem somente
+   * ao O Estafeta.
    */
+
   const estafetaCompanyId =
     access.estafetaCompany.id;
 
@@ -85,6 +295,7 @@ export async function createEdition(
   ) {
     return {
       success: false,
+
       message:
         "Edições só podem ser criadas para O Estafeta.",
     };
@@ -93,9 +304,16 @@ export async function createEdition(
   const supabase =
     await createClient();
 
+  /*
+   * =====================================================
+   * CRIAR EDIÇÃO
+   * =====================================================
+   */
+
   const {
     data: edition,
-    error,
+    error:
+      editionError,
   } =
     await supabase
       .from(
@@ -113,6 +331,9 @@ export async function createEdition(
         publication_date:
           input.publicationDate,
 
+        sales_goal:
+          salesGoal,
+
         status:
           "open",
 
@@ -124,36 +345,276 @@ export async function createEdition(
       .single();
 
   if (
-    error ||
+    editionError ||
     !edition
   ) {
     console.error(
       "Erro ao criar edição:",
-      error
+      editionError
     );
 
     return {
       success: false,
+
       message:
-        error?.message ??
+        editionError
+          ?.message ??
         "Não foi possível criar a edição.",
     };
   }
+
+    /*
+   * =====================================================
+   * CRIAR POSIÇÕES GERAIS DA EDIÇÃO
+   * =====================================================
+   *
+   * Estas posições não pertencem a nenhum caderno.
+   *
+   * section_id = null
+   *
+   * Assim uma venda pode ser registrada diretamente
+   * na edição sem precisar selecionar um caderno.
+   */
+
+  const generalPositionRows =
+    DEFAULT_AD_POSITIONS.map(
+      (
+        position
+      ) => ({
+        edition_id:
+          edition.id,
+
+        section_id:
+          null,
+
+        position_code:
+          position.code,
+
+        name:
+          position.name,
+
+        capacity:
+          position.capacity,
+
+        manually_blocked:
+          false,
+
+        blocked_reason:
+          null,
+
+        active:
+          true,
+      })
+    );
+
+  const {
+    error:
+      generalPositionsError,
+  } =
+    await supabase
+      .from(
+        "edition_ad_positions"
+      )
+      .insert(
+        generalPositionRows
+      );
+
+  if (
+    generalPositionsError
+  ) {
+    console.error(
+      "Erro ao criar posições gerais da edição:",
+      generalPositionsError
+    );
+
+    await rollbackEdition(
+      supabase,
+      edition.id
+    );
+
+    return {
+      success: false,
+
+      message:
+        `Não foi possível criar as posições gerais da edição: ${generalPositionsError.message}`,
+    };
+  }
+
+  /*
+   * =====================================================
+   * CRIAR CADERNOS
+   * =====================================================
+   */
+
+  try {
+    for (
+      const section of
+        sections
+    ) {
+      const {
+        data:
+          createdSection,
+
+        error:
+          sectionError,
+      } =
+        await supabase
+          .from(
+            "edition_sections"
+          )
+          .insert({
+            edition_id:
+              edition.id,
+
+            name:
+              section.name,
+
+            description:
+              section.description,
+
+            sales_goal:
+              section.salesGoal,
+
+            active:
+              true,
+          })
+          .select(`
+            id
+          `)
+          .single();
+
+      if (
+        sectionError ||
+        !createdSection
+      ) {
+        throw new Error(
+          sectionError
+            ?.message ??
+            `Não foi possível criar o caderno ${section.name}.`
+        );
+      }
+
+      /*
+       * ===============================================
+       * POSIÇÕES PADRÃO DO CADERNO
+       * ===============================================
+       */
+
+      const positionRows =
+        DEFAULT_AD_POSITIONS.map(
+          (
+            position
+          ) => ({
+            edition_id:
+              edition.id,
+
+            section_id:
+              createdSection.id,
+
+            position_code:
+              position.code,
+
+            name:
+              position.name,
+
+            capacity:
+              position.capacity,
+
+            manually_blocked:
+              false,
+
+            blocked_reason:
+              null,
+
+            active:
+              true,
+          })
+        );
+
+      const {
+        error:
+          positionsError,
+      } =
+        await supabase
+          .from(
+            "edition_ad_positions"
+          )
+          .insert(
+            positionRows
+          );
+
+      if (
+        positionsError
+      ) {
+        throw new Error(
+          `Não foi possível criar as posições do caderno ${section.name}: ${positionsError.message}`
+        );
+      }
+    }
+  } catch (
+    error
+  ) {
+    console.error(
+      "Erro ao configurar edição:",
+      error
+    );
+
+    /*
+     * =================================================
+     * ROLLBACK
+     * =================================================
+     *
+     * Ao remover a edição:
+     *
+     * newspaper_editions
+     *      ↓ CASCADE
+     * edition_sections
+     *      ↓ CASCADE
+     * edition_ad_positions
+     */
+
+    await rollbackEdition(
+      supabase,
+      edition.id
+    );
+
+    return {
+      success: false,
+
+      message:
+        error instanceof
+        Error
+          ? `Não foi possível concluir a criação da edição: ${error.message}`
+          : "Não foi possível configurar os cadernos da edição.",
+    };
+  }
+
+  /*
+   * =====================================================
+   * REVALIDAÇÃO
+   * =====================================================
+   */
 
   revalidatePath(
     "/edicoes"
   );
 
+  revalidatePath(
+    `/edicoes/${edition.id}`
+  );
+
   return {
     success: true,
-    id: edition.id,
+
+    id:
+      edition.id,
   };
 }
 
 /*
- * =========================================
+ * =====================================================
  * EDITAR EDIÇÃO
- * =========================================
+ * =====================================================
  */
 
 export async function updateEdition(
@@ -165,17 +626,23 @@ export async function updateEdition(
   const name =
     input.name.trim();
 
-  if (!input.id) {
+  if (
+    !input.id
+  ) {
     return {
       success: false,
+
       message:
         "Edição inválida.",
     };
   }
 
-  if (!name) {
+  if (
+    !name
+  ) {
     return {
       success: false,
+
       message:
         "Informe o nome da edição.",
     };
@@ -186,13 +653,39 @@ export async function updateEdition(
   ) {
     return {
       success: false,
+
       message:
         "Informe a data de publicação.",
     };
   }
 
+  if (
+    input.salesGoal !==
+      undefined &&
+    (
+      !Number.isFinite(
+        input.salesGoal
+      ) ||
+      input.salesGoal <
+        0
+    )
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Informe uma meta válida para a edição.",
+    };
+  }
+
   const supabase =
     await createClient();
+
+  /*
+   * =====================================================
+   * EDIÇÃO ATUAL
+   * =====================================================
+   */
 
   const {
     data: edition,
@@ -206,7 +699,8 @@ export async function updateEdition(
       .select(`
         id,
         company_id,
-        status
+        status,
+        sales_goal
       `)
       .eq(
         "id",
@@ -220,21 +714,23 @@ export async function updateEdition(
   ) {
     return {
       success: false,
+
       message:
         "Edição não encontrada.",
     };
   }
 
   /*
-   * Confirma que a edição pertence
-   * realmente ao O Estafeta.
+   * Confirma O Estafeta.
    */
+
   if (
     edition.company_id !==
     access.estafetaCompany.id
   ) {
     return {
       success: false,
+
       message:
         "Esta edição não pertence ao O Estafeta.",
     };
@@ -246,9 +742,69 @@ export async function updateEdition(
   ) {
     return {
       success: false,
+
       message:
         "Uma edição cancelada não pode ser editada.",
     };
+  }
+
+  /*
+   * =====================================================
+   * ATUALIZAÇÃO
+   * =====================================================
+   */
+
+  const updateData: {
+    name: string;
+
+    edition_number:
+      string | null;
+
+    publication_date:
+      string;
+
+    sales_goal?:
+      number;
+
+    notes:
+      string | null;
+
+    updated_at:
+      string;
+  } = {
+    name,
+
+    edition_number:
+      input.editionNumber
+        ?.trim() ||
+      null,
+
+    publication_date:
+      input.publicationDate,
+
+    notes:
+      input.notes
+        ?.trim() ||
+      null,
+
+    updated_at:
+      new Date()
+        .toISOString(),
+  };
+
+  /*
+   * Mantém compatibilidade com
+   * o formulário antigo.
+   */
+
+  if (
+    input.salesGoal !==
+    undefined
+  ) {
+    updateData.sales_goal =
+      roundMoney(
+        input.salesGoal
+      );
   }
 
   const {
@@ -258,26 +814,9 @@ export async function updateEdition(
       .from(
         "newspaper_editions"
       )
-      .update({
-        name,
-
-        edition_number:
-          input.editionNumber
-            ?.trim() ||
-          null,
-
-        publication_date:
-          input.publicationDate,
-
-        notes:
-          input.notes
-            ?.trim() ||
-          null,
-
-        updated_at:
-          new Date()
-            .toISOString(),
-      })
+      .update(
+        updateData
+      )
       .eq(
         "id",
         input.id
@@ -287,7 +826,9 @@ export async function updateEdition(
         access.estafetaCompany.id
       );
 
-  if (error) {
+  if (
+    error
+  ) {
     console.error(
       "Erro ao editar edição:",
       error
@@ -295,6 +836,7 @@ export async function updateEdition(
 
     return {
       success: false,
+
       message:
         error.message,
     };
@@ -314,9 +856,9 @@ export async function updateEdition(
 }
 
 /*
- * =========================================
+ * =====================================================
  * ALTERAR STATUS
- * =========================================
+ * =====================================================
  */
 
 export async function changeEditionStatus(
@@ -329,9 +871,12 @@ export async function changeEditionStatus(
   const access =
     await requireEstafetaAccess();
 
-  if (!editionId) {
+  if (
+    !editionId
+  ) {
     return {
       success: false,
+
       message:
         "Edição inválida.",
     };
@@ -366,6 +911,7 @@ export async function changeEditionStatus(
   ) {
     return {
       success: false,
+
       message:
         "Edição não encontrada.",
     };
@@ -377,6 +923,7 @@ export async function changeEditionStatus(
   ) {
     return {
       success: false,
+
       message:
         "Esta edição não pertence ao O Estafeta.",
     };
@@ -386,6 +933,7 @@ export async function changeEditionStatus(
    * Se estiver cancelada,
    * não permitimos reabrir.
    */
+
   if (
     edition.status ===
       "cancelled" &&
@@ -394,6 +942,7 @@ export async function changeEditionStatus(
   ) {
     return {
       success: false,
+
       message:
         "Uma edição cancelada não pode ser reaberta.",
     };
@@ -422,7 +971,9 @@ export async function changeEditionStatus(
         access.estafetaCompany.id
       );
 
-  if (error) {
+  if (
+    error
+  ) {
     console.error(
       "Erro ao alterar status da edição:",
       error
@@ -430,6 +981,7 @@ export async function changeEditionStatus(
 
     return {
       success: false,
+
       message:
         error.message,
     };
@@ -449,9 +1001,9 @@ export async function changeEditionStatus(
 }
 
 /*
- * =========================================
+ * =====================================================
  * FECHAR EDIÇÃO
- * =========================================
+ * =====================================================
  */
 
 export async function closeEdition(
@@ -464,9 +1016,9 @@ export async function closeEdition(
 }
 
 /*
- * =========================================
+ * =====================================================
  * REABRIR EDIÇÃO
- * =========================================
+ * =====================================================
  */
 
 export async function reopenEdition(
@@ -479,9 +1031,9 @@ export async function reopenEdition(
 }
 
 /*
- * =========================================
+ * =====================================================
  * CANCELAR EDIÇÃO
- * =========================================
+ * =====================================================
  */
 
 export async function cancelEdition(
@@ -490,9 +1042,12 @@ export async function cancelEdition(
   const access =
     await requireEstafetaAccess();
 
-  if (!editionId) {
+  if (
+    !editionId
+  ) {
     return {
       success: false,
+
       message:
         "Edição inválida.",
     };
@@ -502,8 +1057,9 @@ export async function cancelEdition(
     await createClient();
 
   /*
-   * Primeiro confirma que a edição
-   * pertence ao O Estafeta.
+   * =====================================================
+   * CONFIRMAR EDIÇÃO
+   * =====================================================
    */
 
   const {
@@ -532,6 +1088,7 @@ export async function cancelEdition(
   ) {
     return {
       success: false,
+
       message:
         "Edição não encontrada.",
     };
@@ -543,15 +1100,16 @@ export async function cancelEdition(
   ) {
     return {
       success: false,
+
       message:
         "Esta edição não pertence ao O Estafeta.",
     };
   }
 
   /*
-   * Não permitimos cancelar uma
-   * edição que já tenha vendas
-   * confirmadas.
+   * =====================================================
+   * VENDAS CONFIRMADAS
+   * =====================================================
    */
 
   const {
@@ -586,7 +1144,9 @@ export async function cancelEdition(
         "confirmed"
       );
 
-  if (salesError) {
+  if (
+    salesError
+  ) {
     console.error(
       "Erro ao verificar vendas:",
       salesError
@@ -594,17 +1154,22 @@ export async function cancelEdition(
 
     return {
       success: false,
+
       message:
         "Não foi possível verificar as vendas desta edição.",
     };
   }
 
   if (
-    (count ?? 0) >
+    (
+      count ??
+      0
+    ) >
     0
   ) {
     return {
       success: false,
+
       message:
         "Esta edição possui vendas confirmadas e não pode ser cancelada.",
     };
@@ -613,5 +1178,65 @@ export async function cancelEdition(
   return changeEditionStatus(
     editionId,
     "cancelled"
+  );
+}
+
+/*
+ * =====================================================
+ * ROLLBACK DA EDIÇÃO
+ * =====================================================
+ */
+
+async function rollbackEdition(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  editionId: string
+) {
+  const {
+    error,
+  } =
+    await supabase
+      .from(
+        "newspaper_editions"
+      )
+      .delete()
+      .eq(
+        "id",
+        editionId
+      );
+
+  if (
+    error
+  ) {
+    console.error(
+      "Erro ao remover edição no rollback:",
+      error
+    );
+  }
+}
+
+/*
+ * =====================================================
+ * DINHEIRO
+ * =====================================================
+ */
+
+function roundMoney(
+  value: number
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        100
+    ) /
+    100
   );
 }

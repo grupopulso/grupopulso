@@ -16,6 +16,11 @@ import {
   updateDriver,
 } from "./actions";
 
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -30,6 +35,11 @@ export default async function EditarEntregadorPage({
   params,
   searchParams,
 }: PageProps) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
   const { id } = await params;
 
   const query =
@@ -88,6 +98,10 @@ export default async function EditarEntregadorPage({
   if (!driver) {
     notFound();
   }
+
+  await requireCompanyAccess(
+    driver.company_id
+  );
 
   if (
     selectedCompanyId &&

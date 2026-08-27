@@ -6,6 +6,11 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
+import {
+  getMostUrgentContractStatus,
+  normalizeStoredStatus,
+} from "@/app/lib/contract-status";
+
 type Company = {
   id: string;
   name: string;
@@ -14,8 +19,17 @@ type Company = {
 };
 
 type ClientCompany = {
+  client_id: string;
   company_id: string;
   status: string;
+};
+
+type ContractStatusRow = {
+  client_id: string;
+  company_id: string;
+  status: string;
+  start_date: string;
+  end_date: string | null;
 };
 
 type FinancialEntry = {
@@ -188,6 +202,7 @@ export default async function HomePage() {
         "client_companies"
       )
       .select(`
+        client_id,
         company_id,
         status
       `);
@@ -224,6 +239,59 @@ export default async function HomePage() {
   const clientCompanies =
     (clientCompaniesData ??
       []) as ClientCompany[];
+
+  /*
+   * ==========================
+   * CONTRATOS (para calcular o
+   * status real dos vínculos)
+   * ==========================
+   */
+
+  let contractsStatusQuery =
+    supabase
+      .from(
+        "contracts"
+      )
+      .select(`
+        client_id,
+        company_id,
+        status,
+        start_date,
+        end_date
+      `);
+
+  if (
+    allowedCompanyIds.length
+  ) {
+    contractsStatusQuery =
+      contractsStatusQuery.in(
+        "company_id",
+        allowedCompanyIds
+      );
+  }
+
+  const {
+    data: contractsStatusData,
+    error: contractsStatusError,
+  } =
+    await contractsStatusQuery;
+
+  if (
+    contractsStatusError
+  ) {
+    console.error(
+      "Erro ao carregar contratos para status dos vínculos:",
+      JSON.stringify(
+        contractsStatusError,
+        null,
+        2
+      )
+    );
+  }
+
+  const contractsForStatus =
+    (contractsStatusData ??
+      []) as ContractStatusRow[];
 
   /*
    * ==========================
@@ -390,6 +458,8 @@ export default async function HomePage() {
     calculateMetrics({
       companyId: null,
       clientCompanies,
+      contracts:
+        contractsForStatus,
       entries,
       transactions:
         allowedTransactions,
@@ -412,6 +482,13 @@ export default async function HomePage() {
             clientCompanies.filter(
               (relation) =>
                 relation.company_id ===
+                company.id
+            ),
+
+          contracts:
+            contractsForStatus.filter(
+              (contract) =>
+                contract.company_id ===
                 company.id
             ),
 
@@ -478,6 +555,7 @@ export default async function HomePage() {
 function calculateMetrics({
   companyId,
   clientCompanies,
+  contracts,
   entries,
   transactions,
 }: {
@@ -487,6 +565,9 @@ function calculateMetrics({
 
   clientCompanies:
     ClientCompany[];
+
+  contracts:
+    ContractStatusRow[];
 
   entries:
     FinancialEntry[];
@@ -501,12 +582,38 @@ function calculateMetrics({
 
   /*
    * CLIENTES
+   *
+   * O status de cada vínculo é calculado a partir dos contratos reais
+   * do cliente naquela empresa (mesma regra de contract-status.ts).
+   * Quando não existe nenhum contrato formal para o vínculo, cai no
+   * valor gravado em client_companies.status como último recurso.
    */
 
+  const clientCompaniesWithStatus =
+    clientCompanies.map(
+      (relation) => ({
+        ...relation,
+
+        effectiveStatus:
+          getMostUrgentContractStatus(
+            contracts.filter(
+              (contract) =>
+                contract.client_id ===
+                  relation.client_id &&
+                contract.company_id ===
+                  relation.company_id
+            )
+          ) ??
+          normalizeStoredStatus(
+            relation.status
+          ),
+      })
+    );
+
   const activeClients =
-    clientCompanies.filter(
+    clientCompaniesWithStatus.filter(
       (relation) =>
-        relation.status ===
+        relation.effectiveStatus ===
         "active"
     ).length;
 
@@ -514,23 +621,23 @@ function calculateMetrics({
     activeClients;
 
   const expiring =
-    clientCompanies.filter(
+    clientCompaniesWithStatus.filter(
       (relation) =>
-        relation.status ===
+        relation.effectiveStatus ===
         "expiring"
     ).length;
 
   const expired =
-    clientCompanies.filter(
+    clientCompaniesWithStatus.filter(
       (relation) =>
-        relation.status ===
+        relation.effectiveStatus ===
         "expired"
     ).length;
 
   const cancelled =
-    clientCompanies.filter(
+    clientCompaniesWithStatus.filter(
       (relation) =>
-        relation.status ===
+        relation.effectiveStatus ===
         "cancelled"
     ).length;
 

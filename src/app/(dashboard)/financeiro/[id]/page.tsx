@@ -25,6 +25,14 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
+import {
+  calculateEntryOpenAmount,
+  calculateEntryTotal,
+  FINANCIAL_ENTRY_STATUS_LABELS,
+  FINANCIAL_ENTRY_STATUS_STYLES,
+  getFinancialEntryStatus,
+} from "@/app/lib/financial-entry-status";
+
 type PageProps = {
   params: Promise<{
     id: string;
@@ -180,22 +188,13 @@ charge_sent_at,
   const account = getFirst(entry.financial_account);
 
   const totalValue =
-    Number(entry.amount) +
-    Number(entry.interest) +
-    Number(entry.fine) -
-    Number(entry.discount);
+    calculateEntryTotal(entry);
 
-  const openAmount = Math.max(
-    totalValue - Number(entry.amount_paid),
-    0
-  );
+  const openAmount =
+    calculateEntryOpenAmount(entry);
 
-  const calculatedStatus = calculateStatus(
-    entry.status,
-    entry.due_date,
-    Number(entry.amount_paid),
-    totalValue
-  );
+  const calculatedStatus =
+    getFinancialEntryStatus(entry);
 
   /*
    * Deixamos as movimentações mais recentes
@@ -658,74 +657,15 @@ function TableHeader({
 function StatusBadge({
   status,
 }: {
-  status: string;
+  status: ReturnType<typeof getFinancialEntryStatus>;
 }) {
-  const styles: Record<string, string> = {
-    pending:
-      "bg-amber-50 text-amber-700",
-    overdue:
-      "bg-red-50 text-red-700",
-    partial:
-      "bg-blue-50 text-blue-700",
-    paid:
-      "bg-emerald-50 text-emerald-700",
-    cancelled:
-      "bg-slate-100 text-slate-600",
-  };
-
-  const labels: Record<string, string> = {
-    pending: "A vencer",
-    overdue: "Vencido",
-    partial: "Parcial",
-    paid: "Pago",
-    cancelled: "Cancelado",
-  };
-
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${
-        styles[status] ??
-        "bg-slate-100 text-slate-600"
-      }`}
+      className={`rounded-full px-3 py-1 text-xs font-medium ${FINANCIAL_ENTRY_STATUS_STYLES[status]}`}
     >
-      {labels[status] ?? status}
+      {FINANCIAL_ENTRY_STATUS_LABELS[status]}
     </span>
   );
-}
-
-function calculateStatus(
-  currentStatus: string,
-  dueDate: string,
-  paid: number,
-  total: number
-) {
-  if (
-    currentStatus ===
-    "cancelled"
-  ) {
-    return "cancelled";
-  }
-
-  if (
-    paid >= total &&
-    total > 0
-  ) {
-    return "paid";
-  }
-
-  if (paid > 0) {
-    return "partial";
-  }
-
-  const today = new Date()
-    .toISOString()
-    .slice(0, 10);
-
-  if (dueDate < today) {
-    return "overdue";
-  }
-
-  return "pending";
 }
 
 function getFirst<T>(

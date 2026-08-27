@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
 import {
+  requireAnyCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -16,13 +17,14 @@ export async function updateClient(
   clientId: string,
   formData: FormData
 ) {
-  await requireModulePermission(
-    "clients",
-    "edit"
-  );
+  const access =
+    await requireModulePermission(
+      "clients",
+      "edit"
+    );
 
   const supabase = await createClient();
-  
+
   const {
   data: oldClient,
 } = await supabase
@@ -39,6 +41,28 @@ export async function updateClient(
   `)
   .eq("id", clientId)
   .maybeSingle();
+
+  /*
+   * Escopo de empresa: cliente é N:N com empresa. O usuário
+   * só pode editar se já tiver vínculo com pelo menos uma
+   * das empresas atuais do cliente (admin sempre passa).
+   */
+  const {
+    data: currentRelations,
+  } = await supabase
+    .from("client_companies")
+    .select("company_id")
+    .eq("client_id", clientId);
+
+  const currentCompanyIds =
+    (currentRelations ?? []).map(
+      (relation) =>
+        relation.company_id
+    );
+
+  await requireAnyCompanyAccess(
+    currentCompanyIds
+  );
 
   const name = String(
     formData.get("name") ?? ""
@@ -72,6 +96,33 @@ export async function updateClient(
       .getAll("companies")
       .map(String)
       .filter(Boolean);
+
+  /*
+   * O formulário lista todas as empresas do grupo. Um usuário
+   * não-admin não pode vincular o cliente a uma empresa nova
+   * fora do seu escopo — mas pode manter as que o cliente já
+   * possuía (mesmo que não sejam dele).
+   */
+  if (
+    access.profile.role !== "admin"
+  ) {
+    const invalidCompany =
+      companyIds.find(
+        (companyId) =>
+          !access.companyIds.includes(
+            companyId
+          ) &&
+          !currentCompanyIds.includes(
+            companyId
+          )
+      );
+
+    if (invalidCompany) {
+      redirect(
+        `/clientes/${clientId}/editar?error=empresas`
+      );
+    }
+  }
 
   const street = String(
     formData.get("street") ?? ""

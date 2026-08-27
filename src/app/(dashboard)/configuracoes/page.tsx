@@ -10,6 +10,7 @@ import {
   Truck,
   Users,
   Monitor,
+  UserCog,
 } from "lucide-react";
 
 import {
@@ -55,6 +56,14 @@ const sections = [
       "Controle quem pode acessar e administrar o sistema.",
     href: "/configuracoes/usuarios",
     icon: Users,
+    adminOnly: true,
+  },
+  {
+    title: "Vendedores",
+    description:
+      "Configure vendedores e percentuais de comissão.",
+    href: "/configuracoes/vendedores",
+    icon: UserCog,
     adminOnly: true,
   },
   {

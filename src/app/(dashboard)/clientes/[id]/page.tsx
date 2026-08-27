@@ -25,8 +25,15 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireAnyCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
+
+import {
+  getContractStatus,
+  getMostUrgentContractStatus,
+  normalizeStoredStatus,
+} from "@/app/lib/contract-status";
 
 type ClientPageProps = {
   params: Promise<{
@@ -41,6 +48,7 @@ type Company = {
 };
 
 type ClientCompany = {
+  company_id: string;
   status: string;
   company:
     | Company[]
@@ -166,6 +174,7 @@ export default async function ClientPage({
       ),
 
       client_companies (
+        company_id,
         status,
 
         company:companies (
@@ -184,6 +193,22 @@ export default async function ClientPage({
   ) {
     notFound();
   }
+
+  /*
+   * Escopo de empresa: cliente é N:N com empresa
+   * (client_companies). O usuário só pode ver a ficha se
+   * tiver vínculo com pelo menos uma das empresas do
+   * cliente (admin sempre passa).
+   */
+  await requireAnyCompanyAccess(
+    (
+      client.client_companies ??
+      []
+    ).map(
+      (relation) =>
+        relation.company_id
+    )
+  );
 
   /*
    * =========================
@@ -318,10 +343,15 @@ export default async function ClientPage({
     null;
 
   const mainStatus =
-    getMainStatus(
-      relations.map(
-        (relation) =>
-          relation.status
+    getMostUrgentContractStatus(
+      contracts
+    ) ??
+    normalizeStoredStatus(
+      getMainStatus(
+        relations.map(
+          (relation) =>
+            relation.status
+        )
       )
     );
 
@@ -333,11 +363,19 @@ export default async function ClientPage({
 
   const activeContracts =
     contracts.filter(
-      (contract) =>
-        contract.status ===
-          "active" ||
-        contract.status ===
-          "expiring"
+      (contract) => {
+        const status =
+          getContractStatus(
+            contract
+          );
+
+        return (
+          status ===
+            "active" ||
+          status ===
+            "expiring"
+        );
+      }
     );
 
   const openFinancialEntries =
@@ -693,7 +731,18 @@ export default async function ClientPage({
 
                           <StatusBadge
                             status={
-                              relation.status
+                              getMostUrgentContractStatus(
+                                contracts.filter(
+                                  (contract) =>
+                                    getCompany(
+                                      contract.company
+                                    )?.id ===
+                                    company.id
+                                )
+                              ) ??
+                              normalizeStoredStatus(
+                                relation.status
+                              )
                             }
                           />
                         </div>
@@ -804,9 +853,9 @@ export default async function ClientPage({
                               </p>
 
                               <StatusBadge
-                                status={
-                                  contract.status
-                                }
+                                status={getContractStatus(
+                                  contract
+                                )}
                               />
                             </div>
                           </div>

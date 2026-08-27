@@ -1,21 +1,23 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/client";
+import { createClientRecord } from "@/app/(dashboard)/clientes/novo/actions";
 
 type Company = {
   id: string;
   name: string;
 };
 
-export default function ClientForm() {
-  const router = useRouter();
-  const supabase = createClient();
+type Props = {
+  companies: Company[];
+};
 
-  const [companies, setCompanies] = useState<Company[]>([]);
+export default function ClientForm({ companies }: Props) {
+  const router = useRouter();
+
   const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
 
   const [type, setType] = useState("individual");
@@ -38,22 +40,8 @@ export default function ClientForm() {
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState("active");
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    async function loadCompanies() {
-      const { data } = await supabase
-        .from("companies")
-        .select("id, name")
-        .eq("active", true)
-        .order("name");
-
-      setCompanies(data ?? []);
-    }
-
-    loadCompanies();
-  }, [supabase]);
 
   function toggleCompany(companyId: string) {
     setSelectedCompanies((current) =>
@@ -63,7 +51,7 @@ export default function ClientForm() {
     );
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!selectedCompanies.length) {
@@ -71,80 +59,40 @@ export default function ClientForm() {
       return;
     }
 
-    setLoading(true);
     setError("");
 
-    const { data: client, error: clientError } = await supabase
-      .from("clients")
-      .insert({
+    startTransition(async () => {
+      const result = await createClientRecord({
         type,
         name,
-        trade_name: tradeName || null,
-        cpf_cnpj: cpfCnpj || null,
+        tradeName: tradeName || null,
+        cpfCnpj: cpfCnpj || null,
         email: email || null,
         phone: phone || null,
         whatsapp: whatsapp || null,
         notes: notes || null,
-      })
-      .select("id")
-      .single();
-
-    if (clientError || !client) {
-      setError(
-        clientError?.message ??
-          "Não foi possível cadastrar o cliente."
-      );
-      setLoading(false);
-      return;
-    }
-
-    if (
-      street ||
-      number ||
-      neighborhood ||
-      city ||
-      postalCode
-    ) {
-      const { error: addressError } = await supabase
-        .from("client_addresses")
-        .insert({
-          client_id: client.id,
+        status,
+        companyIds: selectedCompanies,
+        address: {
           street: street || null,
           number: number || null,
           complement: complement || null,
           neighborhood: neighborhood || null,
           city: city || null,
           state: state || null,
-          postal_code: postalCode || null,
+          postalCode: postalCode || null,
           reference: reference || null,
-          is_primary: true,
-        });
+        },
+      });
 
-      if (addressError) {
-        setError(addressError.message);
-        setLoading(false);
+      if (!result.success) {
+        setError(result.error);
         return;
       }
-    }
 
-    const { error: relationsError } = await supabase
-      .from("client_companies")
-      .insert(
-        selectedCompanies.map((companyId) => ({
-          client_id: client.id,
-          company_id: companyId,
-          status,
-        }))
-      );
-
-    if (relationsError) {
-      setError(relationsError.message);
-      setLoading(false);
-      return;
-    }
-
-    router.push("/clientes");
-    router.refresh();
+      router.push(`/clientes/${result.clientId}`);
+      router.refresh();
+    });
   }
 
   return (
@@ -175,11 +123,11 @@ export default function ClientForm() {
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isPending}
             className="flex h-11 items-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white hover:bg-[#105c41] disabled:opacity-60"
           >
             <Save className="h-4 w-4" />
-            {loading ? "Salvando..." : "Salvar cliente"}
+            {isPending ? "Salvando..." : "Salvar cliente"}
           </button>
         </div>
 

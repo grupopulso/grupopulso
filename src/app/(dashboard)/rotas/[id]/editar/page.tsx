@@ -17,6 +17,7 @@ import {
 
 import DeleteRouteButton from "@/app/components/delete-route-button";
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -97,6 +98,10 @@ export default async function EditarRotaPage({
   if (!route) {
     notFound();
   }
+
+  await requireCompanyAccess(
+    route.company_id
+  );
 
   if (
     selectedCompanyId &&

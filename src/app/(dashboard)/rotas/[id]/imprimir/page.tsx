@@ -5,6 +5,10 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import PrintRouteButton from "@/app/components/print-route-button";
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 type PageProps = {
   params: Promise<{
@@ -54,6 +58,11 @@ type RouteClient = {
 export default async function ImprimirRotaPage({
   params,
 }: PageProps) {
+  await requireModulePermission(
+    "routes",
+    "view"
+  );
+
   const { id } = await params;
 
   const supabase = await createClient();
@@ -121,6 +130,10 @@ export default async function ImprimirRotaPage({
   if (!route) {
     notFound();
   }
+
+  await requireCompanyAccess(
+    route.company_id
+  );
 
   if (
     selectedCompanyId &&

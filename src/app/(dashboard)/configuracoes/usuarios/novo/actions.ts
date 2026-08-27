@@ -285,20 +285,34 @@ export async function createUser(
    * =============================
    */
 
+  /*
+   * upsert (não insert) porque um trigger no banco
+   * (on_auth_user_created) já cria uma linha padrão
+   * em user_profiles assim que o usuário é criado no
+   * Auth, para garantir que ninguém fique sem perfil
+   * mesmo se for criado fora deste fluxo. Aqui a gente
+   * só sobrescreve com os dados reais informados no
+   * formulário.
+   */
   const {
     error: profileError,
   } = await admin
     .from("user_profiles")
-    .insert({
-      id:
-        newUserId,
+    .upsert(
+      {
+        id:
+          newUserId,
 
-      name,
+        name,
 
-      role,
+        role,
 
-      active,
-    });
+        active,
+      },
+      {
+        onConflict: "id",
+      }
+    );
 
   if (profileError) {
     await rollbackUser();

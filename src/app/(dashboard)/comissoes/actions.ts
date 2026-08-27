@@ -12,6 +12,10 @@ import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
+import {
+  requireModulePermission,
+} from "@/app/lib/permissions";
+
 type CommissionOriginType =
   | "sale"
   | "contract";
@@ -34,6 +38,21 @@ export async function payCommission(
 ) {
   const access =
     await requireEstafetaAccess();
+
+  /*
+   * requireEstafetaAccess só garante que o usuário está
+   * vinculado ao O Estafeta — não que ele pode MOVIMENTAR
+   * dinheiro. Pagar/gerar uma comissão cria um lançamento
+   * financeiro (contas a pagar), então exigimos também a
+   * permissão de edição do módulo financeiro. Isso evita
+   * que qualquer papel com acesso ao Estafeta (ex.: viewer,
+   * operations) pague comissão só escondendo o botão no
+   * frontend.
+   */
+  await requireModulePermission(
+    "financial",
+    "edit"
+  );
 
   const supabase =
     await createClient();
@@ -1051,12 +1070,11 @@ async function getBeneficiaryName(
   } =
     await supabase
       .from(
-        "profiles"
+        "user_profiles"
       )
       .select(`
         id,
-        full_name,
-        email
+        name
       `)
       .eq(
         "id",
@@ -1074,8 +1092,7 @@ async function getBeneficiaryName(
   }
 
   return (
-    profile?.full_name ??
-    profile?.email ??
+    profile?.name ??
     "Beneficiário"
   );
 }

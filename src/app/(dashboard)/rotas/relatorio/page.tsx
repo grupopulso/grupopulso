@@ -10,6 +10,9 @@ import {
 
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
+import {
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 type Company = {
   id: string;
@@ -23,6 +26,12 @@ type Driver = {
 };
 
 export default async function RelatorioRotasPage() {
+  const access =
+    await requireModulePermission(
+      "routes",
+      "view"
+    );
+
   const supabase = await createClient();
 
   const selectedCompanyId =
@@ -60,6 +69,20 @@ export default async function RelatorioRotasPage() {
       "company_id",
       selectedCompanyId
     );
+  } else if (
+    access.profile.role !== "admin"
+  ) {
+    if (access.companyIds.length > 0) {
+      query = query.in(
+        "company_id",
+        access.companyIds
+      );
+    } else {
+      query = query.eq(
+        "company_id",
+        "00000000-0000-0000-0000-000000000000"
+      );
+    }
   }
 
   const { data: routes, error } =

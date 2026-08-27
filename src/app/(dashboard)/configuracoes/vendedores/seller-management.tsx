@@ -15,8 +15,7 @@ import SellerForm, {
 
 type User = {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  name: string | null;
   role: string;
 };
 
@@ -225,14 +224,8 @@ export default function SellerManagement({
                       >
                         <td className="px-6 py-4">
                           <p className="text-sm font-semibold text-slate-900">
-                            {user.full_name ??
+                            {user.name ??
                               "Sem nome"}
-                          </p>
-
-                          <p className="mt-1 text-xs text-slate-400">
-                            {
-                              user.email
-                            }
                           </p>
                         </td>
 
@@ -302,14 +295,8 @@ export default function SellerManagement({
                         >
                           <td className="px-6 py-4">
                             <p className="text-sm font-semibold text-slate-900">
-                              {user.full_name ??
+                              {user.name ??
                                 "Sem nome"}
-                            </p>
-
-                            <p className="mt-1 text-xs text-slate-400">
-                              {
-                                user.email
-                              }
                             </p>
                           </td>
 

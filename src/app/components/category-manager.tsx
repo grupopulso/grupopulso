@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/client";
+import { createFinancialCategory } from "@/app/(dashboard)/financeiro/configuracoes/actions";
 
 type Category = {
   id: string;
@@ -17,38 +17,39 @@ export default function CategoryManager({
 }: {
   initialCategories: Category[];
 }) {
-  const supabase = createClient();
-
   const [categories, setCategories] =
     useState(initialCategories);
 
   const [name, setName] = useState("");
   const [type, setType] = useState("expense");
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
 
-  async function handleSubmit(
+  function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+    setError("");
 
-    const { data, error } = await supabase
-      .from("financial_categories")
-      .insert({
+    startTransition(async () => {
+      const result = await createFinancialCategory({
         name,
         type,
-        active: true,
-      })
-      .select()
-      .single();
+      });
 
-    if (!error && data) {
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+
       setCategories((current) =>
-        [...current, data].sort((a, b) =>
+        [...current, result.category].sort((a, b) =>
           a.name.localeCompare(b.name)
         )
       );
 
       setName("");
-    }
+    });
   }
 
   return (
@@ -84,11 +85,20 @@ export default function CategoryManager({
             <option value="both">Ambos</option>
           </select>
 
-          <button className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white">
+          <button
+            disabled={isPending}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white disabled:opacity-60"
+          >
             <Plus className="h-4 w-4" />
-            Adicionar
+            {isPending ? "Adicionando..." : "Adicionar"}
           </button>
         </form>
+
+        {error && (
+          <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+            {error}
+          </div>
+        )}
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white">
           {categories.map((category) => (

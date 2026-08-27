@@ -1,14 +1,13 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/client";
+import { createSupplier } from "@/app/(dashboard)/financeiro/configuracoes/actions";
 
 export default function SupplierForm() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [name, setName] = useState("");
   const [tradeName, setTradeName] = useState("");
@@ -18,41 +17,37 @@ export default function SupplierForm() {
   const [whatsapp, setWhatsapp] = useState("");
   const [notes, setNotes] = useState("");
 
-  const [loading, setLoading] = useState(false);
+  const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
 
-  async function handleSubmit(
+  function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
-
-    setLoading(true);
     setError("");
 
-    const { error } = await supabase
-      .from("suppliers")
-      .insert({
+    startTransition(async () => {
+      const result = await createSupplier({
         name,
-        trade_name: tradeName || null,
-        cpf_cnpj: cpfCnpj || null,
+        tradeName: tradeName || null,
+        cpfCnpj: cpfCnpj || null,
         email: email || null,
         phone: phone || null,
         whatsapp: whatsapp || null,
         notes: notes || null,
-        active: true,
       });
 
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
 
-    router.push(
-      "/financeiro/configuracoes/fornecedores"
-    );
+      router.push(
+        "/financeiro/configuracoes/fornecedores"
+      );
 
-    router.refresh();
+      router.refresh();
+    });
   }
 
   return (
@@ -83,11 +78,11 @@ export default function SupplierForm() {
           </div>
 
           <button
-            disabled={loading}
-            className="flex h-11 items-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white"
+            disabled={isPending}
+            className="flex h-11 items-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white disabled:opacity-60"
           >
             <Save className="h-4 w-4" />
-            {loading ? "Salvando..." : "Salvar"}
+            {isPending ? "Salvando..." : "Salvar"}
           </button>
         </div>
 

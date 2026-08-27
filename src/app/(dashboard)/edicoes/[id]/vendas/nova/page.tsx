@@ -27,6 +27,28 @@ type PageProps = {
   }>;
 };
 
+type RawPosition = {
+  id: string;
+
+  position_code: string;
+
+  name: string;
+
+  capacity:
+    | number
+    | null;
+
+  manually_blocked:
+    boolean;
+
+  blocked_reason:
+    | string
+    | null;
+
+  active:
+    boolean;
+};
+
 export default async function NewEditionSalePage({
   params,
 }: PageProps) {
@@ -35,20 +57,22 @@ export default async function NewEditionSalePage({
 
   const {
     id: editionId,
-  } = await params;
+  } =
+    await params;
 
   const supabase =
     await createClient();
 
   /*
-   * =========================
+   * =====================================================
    * EDIÇÃO
-   * =========================
+   * =====================================================
    */
 
   const {
     data: edition,
-    error: editionError,
+    error:
+      editionError,
   } =
     await supabase
       .from(
@@ -73,7 +97,9 @@ export default async function NewEditionSalePage({
       )
       .eq(
         "company_id",
-        access.estafetaCompany.id
+        access
+          .estafetaCompany
+          .id
       )
       .maybeSingle();
 
@@ -120,14 +146,15 @@ export default async function NewEditionSalePage({
   }
 
   /*
-   * =========================
+   * =====================================================
    * CLIENTES
-   * =========================
+   * =====================================================
    */
 
   const {
     data: clients,
-    error: clientsError,
+    error:
+      clientsError,
   } =
     await supabase
       .from(
@@ -155,14 +182,69 @@ export default async function NewEditionSalePage({
   }
 
   /*
-   * =========================
-   * CADERNOS
-   * =========================
+   * =====================================================
+   * PRODUTOS / SERVIÇOS
+   * =====================================================
+   *
+   * A comissão pode ser:
+   *
+   * null
+   * → usar comissão padrão do vendedor
+   *
+   * 0
+   * → produto sem comissão
+   *
+   * > 0
+   * → comissão específica do produto
+   */
+
+  const {
+    data: products,
+    error:
+      productsError,
+  } =
+    await supabase
+      .from(
+        "products"
+      )
+      .select(`
+        id,
+        name,
+        default_price,
+        commission_percentage,
+        active
+      `)
+      .eq(
+        "company_id",
+        edition.company_id
+      )
+      .eq(
+        "active",
+        true
+      )
+      .order(
+        "name"
+      );
+
+  if (
+    productsError
+  ) {
+    console.error(
+      "Erro ao carregar produtos:",
+      productsError
+    );
+  }
+
+  /*
+   * =====================================================
+   * CADERNOS + POSIÇÕES
+   * =====================================================
    */
 
   const {
     data: sections,
-    error: sectionsError,
+    error:
+      sectionsError,
   } =
     await supabase
       .from(
@@ -171,7 +253,18 @@ export default async function NewEditionSalePage({
       .select(`
         id,
         name,
-        description
+        description,
+        sales_goal,
+
+        positions:edition_ad_positions (
+          id,
+          position_code,
+          name,
+          capacity,
+          manually_blocked,
+          blocked_reason,
+          active
+        )
       `)
       .eq(
         "edition_id",
@@ -195,14 +288,304 @@ export default async function NewEditionSalePage({
   }
 
   /*
-   * =========================
-   * FORMAS DE PAGAMENTO
-   * =========================
+   * =====================================================
+   * POSIÇÕES GERAIS
+   * =====================================================
    */
 
   const {
-    data: paymentMethods,
-    error: paymentMethodsError,
+    data:
+      generalPositions,
+    error:
+      generalPositionsError,
+  } =
+    await supabase
+      .from(
+        "edition_ad_positions"
+      )
+      .select(`
+        id,
+        position_code,
+        name,
+        capacity,
+        manually_blocked,
+        blocked_reason,
+        active
+      `)
+      .eq(
+        "edition_id",
+        edition.id
+      )
+      .is(
+        "section_id",
+        null
+      )
+      .eq(
+        "active",
+        true
+      );
+
+  if (
+    generalPositionsError
+  ) {
+    console.error(
+      "Erro ao carregar posições gerais:",
+      generalPositionsError
+    );
+  }
+
+  /*
+   * =====================================================
+   * POSIÇÕES JÁ UTILIZADAS
+   * =====================================================
+   */
+
+  const {
+    data:
+      confirmedSaleItems,
+    error:
+      confirmedSaleItemsError,
+  } =
+    await supabase
+      .from(
+        "edition_sale_items"
+      )
+      .select(`
+        id,
+        ad_position_id,
+
+        sale:edition_sales!inner (
+          id,
+          edition_id,
+          status
+        )
+      `)
+      .eq(
+        "sale.edition_id",
+        edition.id
+      )
+      .eq(
+        "sale.status",
+        "confirmed"
+      )
+      .not(
+        "ad_position_id",
+        "is",
+        null
+      );
+
+  if (
+    confirmedSaleItemsError
+  ) {
+    console.error(
+      "Erro ao verificar posições utilizadas:",
+      confirmedSaleItemsError
+    );
+  }
+
+  const soldByPosition =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const item of
+      confirmedSaleItems ??
+      []
+  ) {
+    if (
+      !item.ad_position_id
+    ) {
+      continue;
+    }
+
+    soldByPosition.set(
+      item.ad_position_id,
+      (
+        soldByPosition.get(
+          item.ad_position_id
+        ) ??
+        0
+      ) +
+        1
+    );
+  }
+
+  /*
+   * =====================================================
+   * NORMALIZAR POSIÇÃO
+   * =====================================================
+   */
+
+  function normalizePosition(
+    position:
+      RawPosition
+  ) {
+    const soldCount =
+      soldByPosition.get(
+        position.id
+      ) ??
+      0;
+
+    const capacity =
+      position.capacity ===
+      null
+        ? null
+        : Number(
+            position.capacity
+          );
+
+    return {
+      id:
+        position.id,
+
+      positionCode:
+        position.position_code,
+
+      name:
+        position.name,
+
+      capacity,
+
+      soldCount,
+
+      manuallyBlocked:
+        Boolean(
+          position
+            .manually_blocked
+        ),
+
+      blockedReason:
+        position
+          .blocked_reason,
+
+      exhausted:
+        capacity !==
+          null &&
+        soldCount >=
+          capacity,
+    };
+  }
+
+  /*
+   * =====================================================
+   * CADERNOS PARA O FORM
+   * =====================================================
+   */
+
+  const saleSections =
+    (
+      sections ??
+      []
+    ).map(
+      (
+        section
+      ) => ({
+        id:
+          section.id,
+
+        name:
+          section.name,
+
+        description:
+          section.description,
+
+        salesGoal:
+          Number(
+            section.sales_goal ??
+              0
+          ),
+
+        positions:
+          (
+            section.positions ??
+            []
+          )
+            .filter(
+              (
+                position
+              ) =>
+                position.active
+            )
+            .map(
+              normalizePosition
+            ),
+      })
+    );
+
+  /*
+   * =====================================================
+   * POSIÇÕES GERAIS PARA O FORM
+   * =====================================================
+   */
+
+  const saleGeneralPositions =
+    (
+      generalPositions ??
+      []
+    )
+      .filter(
+        (
+          position
+        ) =>
+          position.active
+      )
+      .map(
+        normalizePosition
+      );
+
+  /*
+   * =====================================================
+   * PRODUTOS PARA O FORM
+   * =====================================================
+   */
+
+  const saleProducts =
+    (
+      products ??
+      []
+    ).map(
+      (
+        product
+      ) => ({
+        id:
+          product.id,
+
+        name:
+          product.name,
+
+        defaultPrice:
+          product.default_price ===
+          null
+            ? null
+            : Number(
+                product.default_price
+              ),
+
+        commissionPercentage:
+          product
+            .commission_percentage ===
+          null
+            ? null
+            : Number(
+                product
+                  .commission_percentage
+              ),
+      })
+    );
+
+  /*
+   * =====================================================
+   * FORMAS DE PAGAMENTO
+   * =====================================================
+   */
+
+  const {
+    data:
+      paymentMethods,
+    error:
+      paymentMethodsError,
   } =
     await supabase
       .from(
@@ -240,13 +623,14 @@ export default async function NewEditionSalePage({
   }
 
   /*
-   * =========================
+   * =====================================================
    * VENDEDORES
-   * =========================
+   * =====================================================
    */
 
   const {
-    data: sellerSettings,
+    data:
+      sellerSettings,
     error:
       sellerSettingsError,
   } =
@@ -290,9 +674,13 @@ export default async function NewEditionSalePage({
 
   let sellers: {
     id: string;
-    full_name: string | null;
-    email: string | null;
-    commissionPercentage: number;
+
+    name:
+      | string
+      | null;
+
+    commissionPercentage:
+      number;
   }[] = [];
 
   if (
@@ -307,12 +695,11 @@ export default async function NewEditionSalePage({
     } =
       await supabase
         .from(
-          "profiles"
+          "user_profiles"
         )
         .select(`
           id,
-          full_name,
-          email,
+          name,
           role
         `)
         .in(
@@ -324,7 +711,7 @@ export default async function NewEditionSalePage({
           true
         )
         .order(
-          "full_name"
+          "name"
         );
 
     if (
@@ -360,11 +747,8 @@ export default async function NewEditionSalePage({
             id:
               profile.id,
 
-            full_name:
-              profile.full_name,
-
-            email:
-              profile.email,
+            name:
+              profile.name,
 
             commissionPercentage:
               Number(
@@ -377,11 +761,11 @@ export default async function NewEditionSalePage({
       );
 
     /*
-     * VENDEDOR COMUM
-     *
-     * Só pode lançar venda
-     * em nome dele mesmo.
+     * Vendedor comum
+     * só pode vender
+     * em seu próprio nome.
      */
+
     if (
       access.profile.role ===
       "seller"
@@ -398,9 +782,9 @@ export default async function NewEditionSalePage({
   }
 
   /*
-   * =========================
-   * DADOS AUXILIARES
-   * =========================
+   * =====================================================
+   * AUXILIARES
+   * =====================================================
    */
 
   const company =
@@ -417,7 +801,6 @@ export default async function NewEditionSalePage({
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-6xl">
-        {/* VOLTAR */}
 
         <Link
           href={`/edicoes/${edition.id}`}
@@ -427,8 +810,6 @@ export default async function NewEditionSalePage({
 
           Voltar para edição
         </Link>
-
-        {/* CABEÇALHO */}
 
         <div className="mt-7 flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-[#15704f]">
@@ -441,7 +822,9 @@ export default async function NewEditionSalePage({
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              {edition.name}
+              {
+                edition.name
+              }
 
               {edition.edition_number
                 ? ` • Edição nº ${edition.edition_number}`
@@ -454,23 +837,32 @@ export default async function NewEditionSalePage({
           </div>
         </div>
 
-        {/* FORMULÁRIO */}
-
         <SaleForm
           editionId={
             edition.id
           }
+
           clients={
             clients ??
             []
           }
+
           sellers={
             sellers
           }
-          sections={
-            sections ??
-            []
+
+          products={
+            saleProducts
           }
+
+          sections={
+            saleSections
+          }
+
+          generalPositions={
+            saleGeneralPositions
+          }
+
           paymentMethods={
             (
               paymentMethods ??
@@ -490,9 +882,11 @@ export default async function NewEditionSalePage({
               })
             )
           }
+
           initialSellerId={
             initialSellerId
           }
+
           sellerLocked={
             access.profile.role ===
             "seller"
@@ -503,6 +897,12 @@ export default async function NewEditionSalePage({
   );
 }
 
+/*
+ * =====================================================
+ * HELPERS
+ * =====================================================
+ */
+
 function getFirst<T>(
   value:
     | T
@@ -510,7 +910,9 @@ function getFirst<T>(
     | null
     | undefined
 ): T | null {
-  if (!value) {
+  if (
+    !value
+  ) {
     return null;
   }
 

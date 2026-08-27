@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
-import { createClient } from "@/app/lib/supabase/client";
+import { createFinancialAccount } from "@/app/(dashboard)/financeiro/configuracoes/actions";
 
 type Company = {
   id: string;
@@ -26,40 +26,48 @@ type Account = {
 export default function FinancialAccountManager({
   initialAccounts,
   companies,
+  isAdmin,
 }: {
   initialAccounts: Account[];
   companies: Company[];
+  isAdmin: boolean;
 }) {
   const router = useRouter();
-  const supabase = createClient();
 
   const [name, setName] = useState("");
   const [type, setType] = useState("bank");
   const [bankName, setBankName] = useState("");
   const [companyId, setCompanyId] = useState("");
   const [balance, setBalance] = useState("0,00");
+  const [error, setError] = useState("");
+  const [isPending, startTransition] = useTransition();
 
-  async function handleSubmit(
+  function handleSubmit(
     event: FormEvent<HTMLFormElement>
   ) {
     event.preventDefault();
+    setError("");
 
-    await supabase
-      .from("financial_accounts")
-      .insert({
+    startTransition(async () => {
+      const result = await createFinancialAccount({
         name,
         type,
-        bank_name: bankName || null,
-        company_id: companyId || null,
-        initial_balance: parseMoney(balance),
-        active: true,
+        bankName: bankName || null,
+        companyId: companyId || null,
+        initialBalance: parseMoney(balance),
       });
 
-    setName("");
-    setBankName("");
-    setBalance("0,00");
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
 
-    router.refresh();
+      setName("");
+      setBankName("");
+      setBalance("0,00");
+
+      router.refresh();
+    });
   }
 
   return (
@@ -96,7 +104,9 @@ export default function FinancialAccountManager({
                 className="input"
               >
                 <option value="">
-                  Grupo Pulso / Compartilhada
+                  {isAdmin
+                    ? "Grupo Pulso / Compartilhada"
+                    : "Selecione a empresa"}
                 </option>
 
                 {companies.map((company) => (
@@ -145,9 +155,18 @@ export default function FinancialAccountManager({
             </Field>
           </div>
 
-          <button className="mt-5 rounded-xl bg-[#15704f] px-5 py-3 text-sm font-semibold text-white">
-            Adicionar conta
+          <button
+            disabled={isPending}
+            className="mt-5 rounded-xl bg-[#15704f] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {isPending ? "Adicionando..." : "Adicionar conta"}
           </button>
+
+          {error && (
+            <div className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+              {error}
+            </div>
+          )}
         </form>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">

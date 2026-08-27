@@ -6,6 +6,10 @@ import {
   Truck,
 } from "lucide-react";
 
+import {
+  requireModulePermission,
+} from "@/app/lib/permissions";
+
 const items = [
   {
     title: "Fornecedores",
@@ -37,7 +41,12 @@ const items = [
   },
 ];
 
-export default function ConfiguracoesFinanceirasPage() {
+export default async function ConfiguracoesFinanceirasPage() {
+  await requireModulePermission(
+    "financial",
+    "edit"
+  );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-6xl">

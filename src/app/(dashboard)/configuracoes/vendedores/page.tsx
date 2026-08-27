@@ -54,11 +54,10 @@ export default async function SellersSettingsPage() {
     error: profilesError,
   } =
     await supabase
-      .from("profiles")
+      .from("user_profiles")
       .select(`
         id,
-        full_name,
-        email,
+        name,
         role,
         active
       `)
@@ -67,7 +66,7 @@ export default async function SellersSettingsPage() {
         true
       )
       .order(
-        "full_name"
+        "name"
       );
 
   if (profilesError) {
@@ -157,11 +156,8 @@ export default async function SellersSettingsPage() {
         id:
           profile.id,
 
-        full_name:
-          profile.full_name,
-
-        email:
-          profile.email,
+        name:
+          profile.name,
 
         role:
           profile.role,

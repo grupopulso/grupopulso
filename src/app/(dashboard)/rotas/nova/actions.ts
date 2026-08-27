@@ -4,8 +4,17 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 export async function createRoute(formData: FormData) {
+  await requireModulePermission(
+    "routes",
+    "create"
+  );
+
   const supabase = await createClient();
 
   const selectedCompanyId =
@@ -39,6 +48,14 @@ export async function createRoute(formData: FormData) {
   if (!companyId) {
     redirect("/rotas/nova?error=empresa");
   }
+
+  /*
+   * Segurança: garante que o usuário
+   * realmente tem acesso à empresa
+   * informada, em vez de confiar apenas
+   * no valor enviado pelo formulário.
+   */
+  await requireCompanyAccess(companyId);
 
   /*
    * Segurança adicional:

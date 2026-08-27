@@ -4,12 +4,42 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 export async function updateRoute(
   routeId: string,
   formData: FormData
 ) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
   const supabase = await createClient();
+
+  const { data: existingRoute } =
+    await supabase
+      .from("delivery_routes")
+      .select("company_id")
+      .eq("id", routeId)
+      .maybeSingle();
+
+  if (!existingRoute) {
+    redirect(
+      `/rotas/${routeId}/editar?error=salvar`
+    );
+  }
+
+  /*
+   * Garante acesso à empresa atual
+   * da rota.
+   */
+  await requireCompanyAccess(
+    existingRoute.company_id
+  );
 
   const name = String(
     formData.get("name") ?? ""
@@ -45,6 +75,13 @@ export async function updateRoute(
       `/rotas/${routeId}/editar?error=empresa`
     );
   }
+
+  /*
+   * Garante acesso também à empresa
+   * de destino, caso o usuário esteja
+   * trocando a empresa da rota.
+   */
+  await requireCompanyAccess(companyId);
 
   if (driverId) {
     const { data: driver } =
@@ -106,7 +143,30 @@ export async function updateRoute(
 export async function deleteRoute(
   routeId: string
 ) {
+  await requireModulePermission(
+    "routes",
+    "delete"
+  );
+
   const supabase = await createClient();
+
+  const { data: existingRoute } =
+    await supabase
+      .from("delivery_routes")
+      .select("company_id")
+      .eq("id", routeId)
+      .maybeSingle();
+
+  if (!existingRoute) {
+    return {
+      success: false,
+      message: "Rota não encontrada.",
+    };
+  }
+
+  await requireCompanyAccess(
+    existingRoute.company_id
+  );
 
   /*
    * delivery_route_clients será

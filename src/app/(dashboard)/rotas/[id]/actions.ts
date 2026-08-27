@@ -4,8 +4,43 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
+
+async function getRouteCompanyId(
+  routeId: string
+) {
+  const supabase = await createClient();
+
+  const { data: route } = await supabase
+    .from("delivery_routes")
+    .select("company_id")
+    .eq("id", routeId)
+    .maybeSingle();
+
+  return route?.company_id ?? null;
+}
 
 export async function deleteRoute(routeId: string) {
+  await requireModulePermission(
+    "routes",
+    "delete"
+  );
+
+  const companyId =
+    await getRouteCompanyId(routeId);
+
+  if (!companyId) {
+    return {
+      success: false,
+      message: "Rota não encontrada.",
+    };
+  }
+
+  await requireCompanyAccess(companyId);
+
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -34,6 +69,23 @@ export async function removeSubscriber(
   routeId: string,
   relationId: string
 ) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
+  const companyId =
+    await getRouteCompanyId(routeId);
+
+  if (!companyId) {
+    return {
+      success: false,
+      message: "Rota não encontrada.",
+    };
+  }
+
+  await requireCompanyAccess(companyId);
+
   const supabase = await createClient();
 
   const { error } = await supabase
@@ -70,6 +122,22 @@ export async function moveSubscriber(
   relationId: string,
   direction: "up" | "down"
 ) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
+  const companyId =
+    await getRouteCompanyId(routeId);
+
+  if (!companyId) {
+    return {
+      success: false,
+    };
+  }
+
+  await requireCompanyAccess(companyId);
+
   const supabase = await createClient();
 
   const { data: relations, error } =
@@ -189,6 +257,23 @@ export async function updateSubscriberNotes(
   relationId: string,
   notes: string
 ) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
+  const companyId =
+    await getRouteCompanyId(routeId);
+
+  if (!companyId) {
+    return {
+      success: false,
+      message: "Rota não encontrada.",
+    };
+  }
+
+  await requireCompanyAccess(companyId);
+
   const supabase = await createClient();
 
   const { error } = await supabase

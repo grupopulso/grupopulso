@@ -4,10 +4,19 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 export async function createDriver(
   formData: FormData
 ) {
+  await requireModulePermission(
+    "routes",
+    "create"
+  );
+
   const supabase = await createClient();
 
   const selectedCompanyId =
@@ -46,6 +55,13 @@ export async function createDriver(
       "/rotas/entregadores/novo?error=empresa"
     );
   }
+
+  /*
+   * Segurança: garante que o usuário
+   * realmente tem acesso à empresa
+   * informada.
+   */
+  await requireCompanyAccess(companyId);
 
   const { error } = await supabase
     .from("delivery_drivers")

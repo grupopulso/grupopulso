@@ -11,6 +11,7 @@ import {
 
 import { createClient } from "@/app/lib/supabase/server";
 import {
+  requireAnyCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -106,6 +107,21 @@ export default async function EditarClientePage({
 
     notFound();
   }
+
+  /*
+   * Escopo de empresa: só edita cliente vinculado a pelo
+   * menos uma empresa à qual o usuário tem acesso
+   * (admin sempre passa).
+   */
+  await requireAnyCompanyAccess(
+    (
+      client.client_companies ??
+      []
+    ).map(
+      (relation) =>
+        relation.company_id
+    )
+  );
 
   const companies =
     companiesResult.data ?? [];

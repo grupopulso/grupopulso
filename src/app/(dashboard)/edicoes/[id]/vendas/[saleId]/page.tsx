@@ -32,8 +32,7 @@ type PageProps = {
 
 type SellerProfile = {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  name: string | null;
 };
 
 type FinancialEntry = {
@@ -205,12 +204,11 @@ export default async function SaleDetailPage({
     } =
       await supabase
         .from(
-          "profiles"
+          "user_profiles"
         )
         .select(`
           id,
-          full_name,
-          email
+          name
         `)
         .eq(
           "id",
@@ -434,12 +432,11 @@ export default async function SaleDetailPage({
     } =
       await supabase
         .from(
-          "profiles"
+          "user_profiles"
         )
         .select(`
           id,
-          full_name,
-          email
+          name
         `)
         .in(
           "id",
@@ -723,8 +720,7 @@ export default async function SaleDetailPage({
           <SummaryCard
             label="Vendedor"
             value={
-              seller?.full_name ??
-              seller?.email ??
+              seller?.name ??
               "—"
             }
           />
@@ -1278,8 +1274,7 @@ export default async function SaleDetailPage({
                         >
                           <td className="px-6 py-4">
                             <p className="text-sm font-semibold text-slate-900">
-                              {beneficiary?.full_name ??
-                                beneficiary?.email ??
+                              {beneficiary?.name ??
                                 "Usuário"}
                             </p>
                           </td>

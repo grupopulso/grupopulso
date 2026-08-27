@@ -10,6 +10,9 @@ import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 
 import { createDriver } from "./actions";
+import {
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 type PageProps = {
   searchParams: Promise<{
@@ -20,6 +23,11 @@ type PageProps = {
 export default async function NovoEntregadorPage({
   searchParams,
 }: PageProps) {
+  await requireModulePermission(
+    "routes",
+    "create"
+  );
+
   const params = await searchParams;
 
   const supabase = await createClient();

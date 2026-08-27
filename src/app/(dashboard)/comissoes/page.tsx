@@ -20,12 +20,15 @@ import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
+import {
+  canAccessModule,
+} from "@/app/lib/permissions";
+
 import PayCommissionButton from "./pay-commission-button";
 
 type Profile = {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  name: string | null;
 };
 
 type CommissionPayment = {
@@ -101,9 +104,21 @@ export default async function CommissionsPage() {
   const supabase =
     await createClient();
 
+  /*
+   * O papel "seller" não existe mais na constraint de
+   * user_profiles.role (só admin/manager/finance/
+   * operations/viewer) — a checagem antiga nunca
+   * escondia o botão de ninguém. Usamos a mesma
+   * permissão que agora protege a Server Action
+   * (financial.edit) para decidir o que mostrar,
+   * mantendo interface e Server Action consistentes.
+   */
   const canManageCommissions =
-    access.profile.role !==
-    "seller";
+    canAccessModule(
+      access,
+      "financial",
+      "edit"
+    );
 
   /*
    * =====================================================
@@ -206,10 +221,11 @@ export default async function CommissionsPage() {
         status,
         created_at,
 
-        contract:contracts (
+        contract:contracts!inner (
           id,
           title,
           value,
+          company_id,
 
           client:clients (
             id,
@@ -217,6 +233,17 @@ export default async function CommissionsPage() {
           )
         )
       `)
+      /*
+       * contract_commissions não tem company_id próprio —
+       * o join com !inner + este filtro é o que impede
+       * que comissões de contratos da Agência Atthus/
+       * Pottencializa apareçam para quem só tem vínculo
+       * com o O Estafeta.
+       */
+      .eq(
+        "contract.company_id",
+        access.estafetaCompany.id
+      )
       .order(
         "created_at",
         {
@@ -485,12 +512,11 @@ export default async function CommissionsPage() {
     } =
       await supabase
         .from(
-          "profiles"
+          "user_profiles"
         )
         .select(`
           id,
-          full_name,
-          email
+          name
         `)
         .in(
           "id",
@@ -1055,8 +1081,7 @@ export default async function CommissionsPage() {
             ...item,
 
             name:
-              profile?.full_name ??
-              profile?.email ??
+              profile?.name ??
               "Usuário",
 
             available:
@@ -1452,9 +1477,7 @@ export default async function CommissionsPage() {
                         >
                           <td className="px-6 py-4 text-sm font-semibold text-slate-900">
                             {beneficiary
-                              ?.full_name ??
-                              beneficiary
-                                ?.email ??
+                              ?.name ??
                               "Usuário"}
                           </td>
 

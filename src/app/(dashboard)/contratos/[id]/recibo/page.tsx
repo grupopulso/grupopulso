@@ -7,6 +7,7 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -47,6 +48,7 @@ export default async function ContractReceiptPage({
       .from("contracts")
       .select(`
         id,
+        company_id,
         title,
         start_date,
         end_date,
@@ -101,6 +103,15 @@ export default async function ContractReceiptPage({
 
     notFound();
   }
+
+  /*
+   * Escopo de empresa: o recibo expõe dados do contrato e do
+   * cliente, então exige vínculo com a empresa do contrato
+   * (admin sempre passa).
+   */
+  await requireCompanyAccess(
+    contract.company_id
+  );
 
   /*
    * =========================

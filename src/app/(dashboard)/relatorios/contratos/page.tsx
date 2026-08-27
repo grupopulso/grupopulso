@@ -15,6 +15,11 @@ import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
+import {
+  CONTRACT_STATUS_LABELS,
+  CONTRACT_STATUS_STYLES,
+  getContractStatus,
+} from "@/app/lib/contract-status";
 
 type Company = {
   id: string;
@@ -130,25 +135,25 @@ export default async function RelatorioContratosPage() {
   const active =
     contracts.filter(
       (contract) =>
-        contract.status === "active"
+        getContractStatus(contract) === "active"
     );
 
   const expiring =
     contracts.filter(
       (contract) =>
-        contract.status === "expiring"
+        getContractStatus(contract) === "expiring"
     );
 
   const expired =
     contracts.filter(
       (contract) =>
-        contract.status === "expired"
+        getContractStatus(contract) === "expired"
     );
 
   const cancelled =
     contracts.filter(
       (contract) =>
-        contract.status === "cancelled"
+        getContractStatus(contract) === "cancelled"
     );
 
   const recurring =
@@ -156,7 +161,7 @@ export default async function RelatorioContratosPage() {
       (contract) =>
         contract.billing_frequency &&
         contract.billing_frequency !== "one_time" &&
-        contract.status !== "cancelled"
+        getContractStatus(contract) !== "cancelled"
     );
 
   const autoRenew =
@@ -190,7 +195,7 @@ export default async function RelatorioContratosPage() {
             "active",
             "expiring",
           ].includes(
-            contract.status
+            getContractStatus(contract)
           )
       )
       .slice(0, 10);
@@ -432,9 +437,9 @@ export default async function RelatorioContratosPage() {
 
                           <td className="px-5 py-4">
                             <StatusBadge
-                              status={
-                                contract.status
-                              }
+                              status={getContractStatus(
+                                contract
+                              )}
                             />
                           </td>
                         </tr>
@@ -507,9 +512,9 @@ export default async function RelatorioContratosPage() {
                         </span>
 
                         <StatusBadge
-                          status={
-                            contract.status
-                          }
+                          status={getContractStatus(
+                            contract
+                          )}
                         />
                       </div>
                     </Link>
@@ -647,37 +652,13 @@ function Header({
 function StatusBadge({
   status,
 }: {
-  status: string;
+  status: ReturnType<typeof getContractStatus>;
 }) {
-  const styles: Record<string, string> = {
-    active:
-      "bg-emerald-50 text-emerald-700",
-
-    expiring:
-      "bg-amber-50 text-amber-700",
-
-    expired:
-      "bg-red-50 text-red-700",
-
-    cancelled:
-      "bg-slate-100 text-slate-600",
-  };
-
-  const labels: Record<string, string> = {
-    active: "Ativo",
-    expiring: "A vencer",
-    expired: "Vencido",
-    cancelled: "Cancelado",
-  };
-
   return (
     <span
-      className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
-        styles[status] ??
-        "bg-slate-100 text-slate-600"
-      }`}
+      className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${CONTRACT_STATUS_STYLES[status]}`}
     >
-      {labels[status] ?? status}
+      {CONTRACT_STATUS_LABELS[status]}
     </span>
   );
 }

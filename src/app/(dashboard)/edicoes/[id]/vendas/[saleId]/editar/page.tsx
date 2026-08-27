@@ -26,6 +26,28 @@ type PageProps = {
   }>;
 };
 
+type RawPosition = {
+  id: string;
+
+  position_code: string;
+
+  name: string;
+
+  capacity:
+    | number
+    | null;
+
+  manually_blocked:
+    boolean;
+
+  blocked_reason:
+    | string
+    | null;
+
+  active:
+    boolean;
+};
+
 export default async function EditEditionSalePage({
   params,
 }: PageProps) {
@@ -111,13 +133,13 @@ export default async function EditEditionSalePage({
 
         items:edition_sale_items (
           id,
+          product_id,
           section_id,
+          ad_position_id,
           description,
-          placement,
-          print_type,
+          size_description,
           quantity,
           unit_price,
-          total_amount,
           notes
         )
       `)
@@ -311,7 +333,49 @@ export default async function EditEditionSalePage({
 
   /*
    * =========================
-   * CADERNOS
+   * PRODUTOS / SERVIÇOS
+   * =========================
+   */
+
+  const {
+    data: products,
+    error: productsError,
+  } =
+    await supabase
+      .from(
+        "products"
+      )
+      .select(`
+        id,
+        name,
+        default_price,
+        commission_percentage,
+        active
+      `)
+      .eq(
+        "company_id",
+        edition.company_id
+      )
+      .eq(
+        "active",
+        true
+      )
+      .order(
+        "name"
+      );
+
+  if (
+    productsError
+  ) {
+    console.error(
+      "Erro ao carregar produtos:",
+      productsError
+    );
+  }
+
+  /*
+   * =========================
+   * CADERNOS + POSIÇÕES
    * =========================
    */
 
@@ -326,7 +390,18 @@ export default async function EditEditionSalePage({
       .select(`
         id,
         name,
-        description
+        description,
+        sales_goal,
+
+        positions:edition_ad_positions (
+          id,
+          position_code,
+          name,
+          capacity,
+          manually_blocked,
+          blocked_reason,
+          active
+        )
       `)
       .eq(
         "edition_id",
@@ -348,6 +423,279 @@ export default async function EditEditionSalePage({
       sectionsError
     );
   }
+
+  /*
+   * =========================
+   * POSIÇÕES GERAIS
+   * =========================
+   */
+
+  const {
+    data:
+      generalPositions,
+    error:
+      generalPositionsError,
+  } =
+    await supabase
+      .from(
+        "edition_ad_positions"
+      )
+      .select(`
+        id,
+        position_code,
+        name,
+        capacity,
+        manually_blocked,
+        blocked_reason,
+        active
+      `)
+      .eq(
+        "edition_id",
+        edition.id
+      )
+      .is(
+        "section_id",
+        null
+      )
+      .eq(
+        "active",
+        true
+      );
+
+  if (
+    generalPositionsError
+  ) {
+    console.error(
+      "Erro ao carregar posições gerais:",
+      generalPositionsError
+    );
+  }
+
+  /*
+   * =========================
+   * POSIÇÕES JÁ UTILIZADAS
+   * =========================
+   *
+   * Conta os anúncios confirmados da edição, mas ignora
+   * os itens desta mesma venda — senão a venda em edição
+   * apareceria "consumindo" a própria vaga.
+   */
+
+  const {
+    data:
+      confirmedSaleItems,
+    error:
+      confirmedSaleItemsError,
+  } =
+    await supabase
+      .from(
+        "edition_sale_items"
+      )
+      .select(`
+        id,
+        ad_position_id,
+        sale_id,
+
+        sale:edition_sales!inner (
+          id,
+          edition_id,
+          status
+        )
+      `)
+      .eq(
+        "sale.edition_id",
+        edition.id
+      )
+      .eq(
+        "sale.status",
+        "confirmed"
+      )
+      .neq(
+        "sale_id",
+        sale.id
+      )
+      .not(
+        "ad_position_id",
+        "is",
+        null
+      );
+
+  if (
+    confirmedSaleItemsError
+  ) {
+    console.error(
+      "Erro ao verificar posições utilizadas:",
+      confirmedSaleItemsError
+    );
+  }
+
+  const soldByPosition =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const item of
+      confirmedSaleItems ??
+      []
+  ) {
+    if (
+      !item.ad_position_id
+    ) {
+      continue;
+    }
+
+    soldByPosition.set(
+      item.ad_position_id,
+      (
+        soldByPosition.get(
+          item.ad_position_id
+        ) ??
+        0
+      ) +
+        1
+    );
+  }
+
+  function normalizePosition(
+    position:
+      RawPosition
+  ) {
+    const soldCount =
+      soldByPosition.get(
+        position.id
+      ) ??
+      0;
+
+    const capacity =
+      position.capacity ===
+      null
+        ? null
+        : Number(
+            position.capacity
+          );
+
+    return {
+      id:
+        position.id,
+
+      positionCode:
+        position.position_code,
+
+      name:
+        position.name,
+
+      capacity,
+
+      soldCount,
+
+      manuallyBlocked:
+        Boolean(
+          position
+            .manually_blocked
+        ),
+
+      blockedReason:
+        position
+          .blocked_reason,
+
+      exhausted:
+        capacity !==
+          null &&
+        soldCount >=
+          capacity,
+    };
+  }
+
+  const saleSections =
+    (
+      sections ??
+      []
+    ).map(
+      (
+        section
+      ) => ({
+        id:
+          section.id,
+
+        name:
+          section.name,
+
+        description:
+          section.description,
+
+        salesGoal:
+          Number(
+            section.sales_goal ??
+              0
+          ),
+
+        positions:
+          (
+            section.positions ??
+            []
+          )
+            .filter(
+              (
+                position
+              ) =>
+                position.active
+            )
+            .map(
+              normalizePosition
+            ),
+      })
+    );
+
+  const saleGeneralPositions =
+    (
+      generalPositions ??
+      []
+    )
+      .filter(
+        (
+          position
+        ) =>
+          position.active
+      )
+      .map(
+        normalizePosition
+      );
+
+  const saleProducts =
+    (
+      products ??
+      []
+    ).map(
+      (
+        product
+      ) => ({
+        id:
+          product.id,
+
+        name:
+          product.name,
+
+        defaultPrice:
+          product.default_price ===
+          null
+            ? null
+            : Number(
+                product.default_price
+              ),
+
+        commissionPercentage:
+          product
+            .commission_percentage ===
+          null
+            ? null
+            : Number(
+                product
+                  .commission_percentage
+              ),
+      })
+    );
 
   /*
    * =========================
@@ -443,8 +791,7 @@ export default async function EditEditionSalePage({
 
   let sellers: {
     id: string;
-    full_name: string | null;
-    email: string | null;
+    name: string | null;
     commissionPercentage: number;
   }[] = [];
 
@@ -460,12 +807,11 @@ export default async function EditEditionSalePage({
     } =
       await supabase
         .from(
-          "profiles"
+          "user_profiles"
         )
         .select(`
           id,
-          full_name,
-          email
+          name
         `)
         .in(
           "id",
@@ -476,7 +822,7 @@ export default async function EditEditionSalePage({
           true
         )
         .order(
-          "full_name"
+          "name"
         );
 
     if (
@@ -512,11 +858,8 @@ export default async function EditEditionSalePage({
             id:
               profile.id,
 
-            full_name:
-              profile.full_name,
-
-            email:
-              profile.email,
+            name:
+              profile.name,
 
             commissionPercentage:
               Number(
@@ -640,19 +983,24 @@ export default async function EditEditionSalePage({
                   id:
                     item.id,
 
+                  productId:
+                    item.product_id ??
+                    "",
+
                   sectionId:
                     item.section_id ??
                     "",
 
-                  description:
-                    item.description,
-
-                  placement:
-                    item.placement ??
+                  adPositionId:
+                    item.ad_position_id ??
                     "",
 
-                  printType:
-                    item.print_type ??
+                  description:
+                    item.description ??
+                    "",
+
+                  sizeDescription:
+                    item.size_description ??
                     "",
 
                   quantity:
@@ -678,9 +1026,14 @@ export default async function EditEditionSalePage({
           sellers={
             sellers
           }
+          products={
+            saleProducts
+          }
           sections={
-            sections ??
-            []
+            saleSections
+          }
+          generalPositions={
+            saleGeneralPositions
           }
           paymentMethods={
             paymentMethods ??

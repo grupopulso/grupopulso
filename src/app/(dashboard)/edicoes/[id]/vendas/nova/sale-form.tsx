@@ -10,6 +10,7 @@ import {
   BadgePercent,
   CreditCard,
   FilePlus2,
+  Lock,
   Plus,
   Save,
   Trash2,
@@ -30,26 +31,34 @@ type Client = {
 
 type Seller = {
   id: string;
+  name: string | null;
+  commissionPercentage: number;
+};
 
-  full_name:
-    | string
-    | null;
+type Product = {
+  id: string;
+  name: string;
+  defaultPrice: number | null;
+  commissionPercentage: number | null;
+};
 
-  email:
-    | string
-    | null;
-
-  commissionPercentage:
-    number;
+type Position = {
+  id: string;
+  positionCode: string;
+  name: string;
+  capacity: number | null;
+  soldCount: number;
+  manuallyBlocked: boolean;
+  blockedReason: string | null;
+  exhausted: boolean;
 };
 
 type Section = {
   id: string;
   name: string;
-
-  description:
-    | string
-    | null;
+  description: string | null;
+  salesGoal: number;
+  positions: Position[];
 };
 
 type PaymentMethod = {
@@ -58,23 +67,18 @@ type PaymentMethod = {
   code: string;
 };
 
-type PrintType =
-  | "color"
-  | "black_white"
-  | "other"
-  | "";
-
 type SaleItem = {
   localId: string;
 
+  productId: string;
+
   sectionId: string;
+
+  adPositionId: string;
 
   description: string;
 
-  placement: string;
-
-  printType:
-    PrintType;
+  sizeDescription: string;
 
   quantity: number;
 
@@ -90,10 +94,13 @@ type Props = {
 
   sellers: Seller[];
 
+  products: Product[];
+
   sections: Section[];
 
-  paymentMethods:
-    PaymentMethod[];
+  generalPositions: Position[];
+
+  paymentMethods: PaymentMethod[];
 
   initialSellerId?: string;
 
@@ -105,16 +112,19 @@ function createEmptyItem(): SaleItem {
     localId:
       crypto.randomUUID(),
 
+    productId:
+      "",
+
     sectionId:
+      "",
+
+    adPositionId:
       "",
 
     description:
       "",
 
-    placement:
-      "",
-
-    printType:
+    sizeDescription:
       "",
 
     quantity:
@@ -132,7 +142,9 @@ export function SaleForm({
   editionId,
   clients,
   sellers,
+  products,
   sections,
+  generalPositions,
   paymentMethods,
   initialSellerId = "",
   sellerLocked = false,
@@ -209,27 +221,29 @@ export function SaleForm({
     useTransition();
 
   /*
-   * =========================
+   * =====================================================
    * VENDEDOR
-   * =========================
+   * =====================================================
    */
 
   const selectedSeller =
     sellers.find(
-      (seller) =>
+      (
+        seller
+      ) =>
         seller.id ===
         sellerUserId
     );
 
-  const commissionPercentage =
+  const sellerCommissionPercentage =
     selectedSeller
       ?.commissionPercentage ??
     0;
 
   /*
-   * =========================
+   * =====================================================
    * TOTAIS
-   * =========================
+   * =====================================================
    */
 
   const subtotal =
@@ -253,27 +267,86 @@ export function SaleForm({
       ]
     );
 
+  /*
+   * Comissão agora é calculada
+   * anúncio por anúncio.
+   *
+   * Produto com comissão definida:
+   * usa comissão do produto.
+   *
+   * Produto com null:
+   * usa comissão padrão do vendedor.
+   *
+   * Produto com 0:
+   * não gera comissão.
+   */
+
   const commissionAmount =
     useMemo(
       () =>
         roundMoney(
-          subtotal *
+          items.reduce(
             (
-              commissionPercentage /
-              100
-            )
+              total,
+              item
+            ) => {
+              const product =
+                products.find(
+                  (
+                    product
+                  ) =>
+                    product.id ===
+                    item.productId
+                );
+
+              const percentage =
+                getItemCommissionPercentage(
+                  product,
+                  sellerCommissionPercentage
+                );
+
+              return (
+                total +
+                getItemTotal(
+                  item
+                ) *
+                  (
+                    percentage /
+                    100
+                  )
+              );
+            },
+            0
+          )
         ),
       [
-        subtotal,
-        commissionPercentage,
+        items,
+        products,
+        sellerCommissionPercentage,
       ]
     );
 
   /*
-   * =========================
-   * PARCELAS
-   * =========================
+   * Percentual efetivo da venda.
+   *
+   * Exemplo:
+   * venda = R$ 5.000
+   * comissão = R$ 600
+   *
+   * taxa efetiva = 12%
    */
+
+  const effectiveCommissionPercentage =
+    subtotal >
+    0
+      ? roundPercentage(
+          (
+            commissionAmount /
+            subtotal
+          ) *
+            100
+        )
+      : 0;
 
   const installmentPreview =
     useMemo(
@@ -289,9 +362,9 @@ export function SaleForm({
     );
 
   /*
-   * =========================
+   * =====================================================
    * ITENS
-   * =========================
+   * =====================================================
    */
 
   function updateItem(
@@ -302,13 +375,18 @@ export function SaleForm({
       string | number
   ) {
     setItems(
-      (current) =>
+      (
+        current
+      ) =>
         current.map(
-          (item) =>
+          (
+            item
+          ) =>
             item.localId ===
             localId
               ? {
                   ...item,
+
                   [field]:
                     value,
                 }
@@ -317,10 +395,121 @@ export function SaleForm({
     );
   }
 
+  /*
+   * =====================================================
+   * PRODUTO
+   * =====================================================
+   */
+
+  function changeProduct(
+    localId: string,
+    productId: string
+  ) {
+    const product =
+      products.find(
+        (
+          product
+        ) =>
+          product.id ===
+          productId
+      );
+
+    setItems(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            item
+          ) => {
+            if (
+              item.localId !==
+              localId
+            ) {
+              return item;
+            }
+
+            /*
+             * Ao selecionar o produto,
+             * podemos preencher automaticamente
+             * o nome e o valor padrão.
+             *
+             * Não sobrescrevemos caso o usuário
+             * já tenha preenchido manualmente.
+             */
+
+            return {
+              ...item,
+
+              productId,
+
+              description:
+                item.description.trim()
+                  ? item.description
+                  : product?.name ??
+                    "",
+
+              unitPrice:
+                item.unitPrice.trim()
+                  ? item.unitPrice
+                  : product?.defaultPrice !==
+                      null &&
+                    product?.defaultPrice !==
+                      undefined
+                  ? formatInputMoney(
+                      product.defaultPrice
+                    )
+                  : "",
+            };
+          }
+        )
+    );
+
+    setMessage(
+      null
+    );
+  }
+
+  function changeSection(
+    localId: string,
+    sectionId: string
+  ) {
+    setItems(
+      (
+        current
+      ) =>
+        current.map(
+          (
+            item
+          ) =>
+            item.localId ===
+            localId
+              ? {
+                  ...item,
+
+                  sectionId,
+
+                  /*
+                   * A posição anterior
+                   * pode pertencer a
+                   * outro contexto.
+                   */
+
+                  adPositionId:
+                    "",
+                }
+              : item
+        )
+    );
+  }
+
   function addItem() {
     setItems(
-      (current) => [
+      (
+        current
+      ) => [
         ...current,
+
         createEmptyItem(),
       ]
     );
@@ -349,9 +538,13 @@ export function SaleForm({
     }
 
     setItems(
-      (current) =>
+      (
+        current
+      ) =>
         current.filter(
-          (item) =>
+          (
+            item
+          ) =>
             item.localId !==
             localId
         )
@@ -359,9 +552,9 @@ export function SaleForm({
   }
 
   /*
-   * =========================
+   * =====================================================
    * SALVAR
-   * =========================
+   * =====================================================
    */
 
   function handleSubmit(
@@ -374,7 +567,9 @@ export function SaleForm({
       null
     );
 
-    if (!clientId) {
+    if (
+      !clientId
+    ) {
       setMessage({
         type:
           "error",
@@ -418,7 +613,8 @@ export function SaleForm({
       !Number.isInteger(
         installments
       ) ||
-      installments < 1
+      installments <
+        1
     ) {
       setMessage({
         type:
@@ -456,6 +652,47 @@ export function SaleForm({
           index
         ];
 
+      /*
+       * PRODUTO AGORA É OBRIGATÓRIO.
+       */
+
+      if (
+        !item.productId
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `Selecione o produto ou serviço do anúncio ${index + 1}.`,
+        });
+
+        return;
+      }
+
+      const product =
+        products.find(
+          (
+            product
+          ) =>
+            product.id ===
+            item.productId
+        );
+
+      if (
+        !product
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `O produto ou serviço do anúncio ${index + 1} não é válido.`,
+        });
+
+        return;
+      }
+
       if (
         !item.description
           .trim()
@@ -466,6 +703,40 @@ export function SaleForm({
 
           text:
             `Informe a descrição do anúncio ${index + 1}.`,
+        });
+
+        return;
+      }
+
+      /*
+       * CADERNO NÃO É
+       * OBRIGATÓRIO.
+       */
+
+      if (
+        !item.adPositionId
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `Selecione a posição do anúncio ${index + 1}.`,
+        });
+
+        return;
+      }
+
+      if (
+        !item.sizeDescription
+          .trim()
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `Informe o tamanho do anúncio ${index + 1}.`,
         });
 
         return;
@@ -508,10 +779,78 @@ export function SaleForm({
 
         return;
       }
+
+      const selectedSection =
+        item.sectionId
+          ? sections.find(
+              (
+                section
+              ) =>
+                section.id ===
+                item.sectionId
+            )
+          : null;
+
+      const availablePositions =
+        selectedSection
+          ?.positions ??
+        generalPositions;
+
+      const position =
+        availablePositions.find(
+          (
+            position
+          ) =>
+            position.id ===
+            item.adPositionId
+        );
+
+      if (
+        !position
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `A posição do anúncio ${index + 1} não é válida.`,
+        });
+
+        return;
+      }
+
+      if (
+        position.manuallyBlocked
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `A posição "${position.name}" está bloqueada.`,
+        });
+
+        return;
+      }
+
+      if (
+        position.exhausted
+      ) {
+        setMessage({
+          type:
+            "error",
+
+          text:
+            `A posição "${position.name}" está esgotada.`,
+        });
+
+        return;
+      }
     }
 
     if (
-      subtotal <= 0
+      subtotal <=
+      0
     ) {
       setMessage({
         type:
@@ -549,20 +888,21 @@ export function SaleForm({
                 (
                   item
                 ) => ({
+                  productId:
+                    item.productId,
+
                   sectionId:
                     item.sectionId ||
                     null,
 
+                  adPositionId:
+                    item.adPositionId,
+
                   description:
                     item.description.trim(),
 
-                  placement:
-                    item.placement.trim() ||
-                    null,
-
-                  printType:
-                    item.printType ||
-                    null,
+                  sizeDescription:
+                    item.sizeDescription.trim(),
 
                   quantity:
                     item.quantity,
@@ -610,7 +950,9 @@ export function SaleForm({
       }
       className="mt-8"
     >
-      {/* DADOS DA VENDA */}
+      {/* =================================================
+          DADOS
+         ================================================= */}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">
@@ -622,9 +964,6 @@ export function SaleForm({
         </p>
 
         <div className="mt-5 grid gap-5 md:grid-cols-2">
-
-          {/* CLIENTE */}
-
           <div>
             <label className="text-sm font-medium text-slate-700">
               Cliente
@@ -669,8 +1008,6 @@ export function SaleForm({
             </select>
           </div>
 
-          {/* VENDEDOR */}
-
           <div>
             <label className="text-sm font-medium text-slate-700">
               Vendedor
@@ -709,8 +1046,7 @@ export function SaleForm({
                       seller.id
                     }
                   >
-                    {seller.full_name ??
-                      seller.email ??
+                    {seller.name ??
                       "Vendedor"}
                   </option>
                 )
@@ -719,9 +1055,10 @@ export function SaleForm({
 
             {selectedSeller && (
               <p className="mt-1 text-xs text-slate-400">
-                Comissão configurada:{" "}
+                Comissão padrão do vendedor:{" "}
                 {formatPercentage(
-                  selectedSeller.commissionPercentage
+                  selectedSeller
+                    .commissionPercentage
                 )}
               </p>
             )}
@@ -729,7 +1066,9 @@ export function SaleForm({
         </div>
       </section>
 
-      {/* ANÚNCIOS */}
+      {/* =================================================
+          ANÚNCIOS
+         ================================================= */}
 
       <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="flex flex-col justify-between gap-4 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center">
@@ -743,7 +1082,7 @@ export function SaleForm({
             </div>
 
             <p className="mt-1 text-sm text-slate-500">
-              Um mesmo cliente pode adquirir vários anúncios nesta venda.
+              Cada anúncio pode possuir uma regra de comissão diferente conforme o produto ou serviço.
             </p>
           </div>
 
@@ -769,6 +1108,55 @@ export function SaleForm({
               const itemTotal =
                 getItemTotal(
                   item
+                );
+
+              const selectedProduct =
+                products.find(
+                  (
+                    product
+                  ) =>
+                    product.id ===
+                    item.productId
+                );
+
+              const itemCommissionPercentage =
+                getItemCommissionPercentage(
+                  selectedProduct,
+                  sellerCommissionPercentage
+                );
+
+              const itemCommissionAmount =
+                roundMoney(
+                  itemTotal *
+                    (
+                      itemCommissionPercentage /
+                      100
+                    )
+                );
+
+              const selectedSection =
+                item.sectionId
+                  ? sections.find(
+                      (
+                        section
+                      ) =>
+                        section.id ===
+                        item.sectionId
+                    )
+                  : null;
+
+              const positions =
+                selectedSection
+                  ?.positions ??
+                generalPositions;
+
+              const selectedPosition =
+                positions.find(
+                  (
+                    position
+                  ) =>
+                    position.id ===
+                    item.adPositionId
                 );
 
               return (
@@ -814,7 +1202,77 @@ export function SaleForm({
                   <div className="p-5">
                     <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
 
-                      <div className="xl:col-span-2">
+                      {/* PRODUTO */}
+
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">
+                          Produto ou serviço
+                        </label>
+
+                        <select
+                          value={
+                            item.productId
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            changeProduct(
+                              item.localId,
+                              event.target
+                                .value
+                            )
+                          }
+                          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+                        >
+                          <option value="">
+                            Selecione
+                          </option>
+
+                          {products.map(
+                            (
+                              product
+                            ) => (
+                              <option
+                                key={
+                                  product.id
+                                }
+                                value={
+                                  product.id
+                                }
+                              >
+                                {
+                                  product.name
+                                }
+                              </option>
+                            )
+                          )}
+                        </select>
+
+                        {selectedProduct && (
+                          <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2">
+                            <p className="text-xs text-slate-500">
+                              Comissão:{" "}
+                              <span className="font-semibold text-slate-700">
+                                {formatPercentage(
+                                  itemCommissionPercentage
+                                )}
+                              </span>
+
+                              {selectedProduct.commissionPercentage ===
+                              null
+                                ? " — padrão do vendedor"
+                                : selectedProduct.commissionPercentage ===
+                                  0
+                                ? " — sem comissão"
+                                : " — definida no produto"}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* DESCRIÇÃO */}
+
+                      <div className="md:col-span-1 xl:col-span-2">
                         <label className="text-sm font-medium text-slate-700">
                           Descrição do anúncio
                         </label>
@@ -839,9 +1297,14 @@ export function SaleForm({
                         />
                       </div>
 
+                      {/* CADERNO */}
+
                       <div>
                         <label className="text-sm font-medium text-slate-700">
                           Caderno
+                          <span className="ml-1 font-normal text-slate-400">
+                            (opcional)
+                          </span>
                         </label>
 
                         <select
@@ -851,9 +1314,8 @@ export function SaleForm({
                           onChange={(
                             event
                           ) =>
-                            updateItem(
+                            changeSection(
                               item.localId,
-                              "sectionId",
                               event.target
                                 .value
                             )
@@ -861,7 +1323,7 @@ export function SaleForm({
                           className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
                         >
                           <option value="">
-                            Sem caderno específico
+                            Sem caderno — geral da edição
                           </option>
 
                           {sections.map(
@@ -883,48 +1345,41 @@ export function SaleForm({
                             )
                           )}
                         </select>
+
+                        {selectedSection ? (
+                          selectedSection.salesGoal >
+                            0 && (
+                            <p className="mt-1 text-xs text-slate-400">
+                              Meta do caderno:{" "}
+                              {formatCurrency(
+                                selectedSection.salesGoal
+                              )}
+                            </p>
+                          )
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-400">
+                            O valor contará somente na meta total da edição.
+                          </p>
+                        )}
                       </div>
+
+                      {/* POSIÇÃO */}
 
                       <div>
                         <label className="text-sm font-medium text-slate-700">
-                          Localização / posição
-                        </label>
-
-                        <input
-                          type="text"
-                          value={
-                            item.placement
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            updateItem(
-                              item.localId,
-                              "placement",
-                              event.target
-                                .value
-                            )
-                          }
-                          placeholder="Ex.: Página 5, contracapa..."
-                          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="text-sm font-medium text-slate-700">
-                          Tipo de impressão
+                          Posição
                         </label>
 
                         <select
                           value={
-                            item.printType
+                            item.adPositionId
                           }
                           onChange={(
                             event
                           ) =>
                             updateItem(
                               item.localId,
-                              "printType",
+                              "adPositionId",
                               event.target
                                 .value
                             )
@@ -932,22 +1387,128 @@ export function SaleForm({
                           className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
                         >
                           <option value="">
-                            Não informado
+                            Selecione a posição
                           </option>
 
-                          <option value="color">
-                            Interno colorido
-                          </option>
+                          {positions.map(
+                            (
+                              position
+                            ) => {
+                              const unavailable =
+                                position.manuallyBlocked ||
+                                position.exhausted;
 
-                          <option value="black_white">
-                            Interno preto e branco
-                          </option>
+                              let suffix =
+                                "";
 
-                          <option value="other">
-                            Outro
-                          </option>
+                              if (
+                                position.manuallyBlocked
+                              ) {
+                                suffix =
+                                  " — bloqueada";
+                              } else if (
+                                position.exhausted
+                              ) {
+                                suffix =
+                                  " — esgotada";
+                              } else if (
+                                position.capacity !==
+                                null
+                              ) {
+                                suffix =
+                                  ` — ${position.soldCount}/${position.capacity} utilizado`;
+                              }
+
+                              return (
+                                <option
+                                  key={
+                                    position.id
+                                  }
+                                  value={
+                                    position.id
+                                  }
+                                  disabled={
+                                    unavailable
+                                  }
+                                >
+                                  {position.name}
+                                  {suffix}
+                                </option>
+                              );
+                            }
+                          )}
                         </select>
+
+                        {positions.length ===
+                          0 && (
+                          <p className="mt-1 text-xs font-medium text-amber-600">
+                            Nenhuma posição disponível neste contexto.
+                          </p>
+                        )}
+
+                        {selectedPosition && (
+                          <div className="mt-2">
+                            {selectedPosition.manuallyBlocked ? (
+                              <p className="flex items-center gap-1 text-xs font-medium text-red-600">
+                                <Lock className="h-3 w-3" />
+
+                                Posição bloqueada
+                              </p>
+                            ) : selectedPosition.capacity !==
+                              null ? (
+                              <p className="text-xs text-slate-400">
+                                Disponibilidade:{" "}
+                                {Math.max(
+                                  0,
+                                  selectedPosition.capacity -
+                                    selectedPosition.soldCount
+                                )}{" "}
+                                de{" "}
+                                {
+                                  selectedPosition.capacity
+                                }
+                              </p>
+                            ) : (
+                              <p className="text-xs text-emerald-600">
+                                Capacidade ilimitada
+                              </p>
+                            )}
+                          </div>
+                        )}
                       </div>
+
+                      {/* TAMANHO */}
+
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">
+                          Tamanho
+                        </label>
+
+                        <input
+                          type="text"
+                          value={
+                            item.sizeDescription
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            updateItem(
+                              item.localId,
+                              "sizeDescription",
+                              event.target
+                                .value
+                            )
+                          }
+                          placeholder="Ex.: 26 x 32 cm, página inteira..."
+                          className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+                        />
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          Digite livremente o tamanho ou formato.
+                        </p>
+                      </div>
+
+                      {/* QUANTIDADE */}
 
                       <div>
                         <label className="text-sm font-medium text-slate-700">
@@ -982,6 +1543,8 @@ export function SaleForm({
                         />
                       </div>
 
+                      {/* VALOR UNITÁRIO */}
+
                       <div>
                         <label className="text-sm font-medium text-slate-700">
                           Valor unitário
@@ -1014,6 +1577,8 @@ export function SaleForm({
                         </div>
                       </div>
 
+                      {/* TOTAL */}
+
                       <div>
                         <label className="text-sm font-medium text-slate-700">
                           Total do anúncio
@@ -1027,6 +1592,30 @@ export function SaleForm({
                           </span>
                         </div>
                       </div>
+
+                      {/* COMISSÃO DO ITEM */}
+
+                      <div>
+                        <label className="text-sm font-medium text-slate-700">
+                          Comissão prevista
+                        </label>
+
+                        <div className="mt-2 flex h-11 items-center justify-between rounded-xl bg-emerald-50 px-3">
+                          <span className="text-sm font-semibold text-emerald-800">
+                            {formatCurrency(
+                              itemCommissionAmount
+                            )}
+                          </span>
+
+                          <span className="text-xs font-medium text-emerald-700">
+                            {formatPercentage(
+                              itemCommissionPercentage
+                            )}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* OBSERVAÇÕES */}
 
                       <div className="md:col-span-2 xl:col-span-3">
                         <label className="text-sm font-medium text-slate-700">
@@ -1075,7 +1664,9 @@ export function SaleForm({
         </div>
       </section>
 
-      {/* PAGAMENTO */}
+      {/* =================================================
+          PAGAMENTO
+         ================================================= */}
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="flex items-center gap-2">
@@ -1091,7 +1682,6 @@ export function SaleForm({
         </p>
 
         <div className="mt-5 grid gap-5 md:grid-cols-3">
-
           <div>
             <label className="text-sm font-medium text-slate-700">
               Forma de pagamento
@@ -1230,7 +1820,9 @@ export function SaleForm({
         )}
       </section>
 
-      {/* OBSERVAÇÕES */}
+      {/* =================================================
+          OBSERVAÇÕES
+         ================================================= */}
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         <h2 className="font-semibold text-slate-900">
@@ -1257,7 +1849,9 @@ export function SaleForm({
         />
       </section>
 
-      {/* RESUMO */}
+      {/* =================================================
+          RESUMO
+         ================================================= */}
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
         <div className="grid gap-4 md:grid-cols-3">
@@ -1276,14 +1870,9 @@ export function SaleForm({
           />
 
           <Summary
-            label={`Comissão ${
-              commissionPercentage >
-              0
-                ? `(${formatPercentage(
-                    commissionPercentage
-                  )})`
-                : ""
-            }`}
+            label={`Comissão prevista (${formatPercentage(
+              effectiveCommissionPercentage
+            )} efetiva)`}
             value={formatCurrency(
               commissionAmount
             )}
@@ -1309,14 +1898,15 @@ export function SaleForm({
 
           <div className="flex flex-col-reverse justify-between gap-3 sm:flex-row sm:items-center">
             <p className="text-xs leading-5 text-slate-400">
-              A comissão será registrada como pendente e só será liberada conforme o recebimento real da venda.
+              A comissão é calculada conforme a regra de cada produto e será liberada proporcionalmente aos recebimentos.
             </p>
 
             <button
               type="submit"
               disabled={
                 isPending ||
-                subtotal <= 0
+                subtotal <=
+                  0
               }
               className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-6 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1333,13 +1923,21 @@ export function SaleForm({
   );
 }
 
+/*
+ * =====================================================
+ * RESUMO
+ * =====================================================
+ */
+
 function Summary({
   label,
   value,
   icon = false,
 }: {
   label: string;
+
   value: string;
+
   icon?: boolean;
 }) {
   return (
@@ -1350,19 +1948,69 @@ function Summary({
         )}
 
         <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-          {label}
+          {
+            label
+          }
         </p>
       </div>
 
       <p className="mt-2 text-xl font-semibold text-slate-900">
-        {value}
+        {
+          value
+        }
       </p>
     </div>
   );
 }
 
+/*
+ * =====================================================
+ * COMISSÃO DO ITEM
+ * =====================================================
+ */
+
+function getItemCommissionPercentage(
+  product:
+    Product |
+    undefined,
+  sellerPercentage:
+    number
+) {
+  if (
+    !product
+  ) {
+    return sellerPercentage;
+  }
+
+  /*
+   * IMPORTANTE:
+   *
+   * null = usa padrão do vendedor
+   * 0 = sem comissão
+   * > 0 = comissão do produto
+   */
+
+  if (
+    product.commissionPercentage ===
+    null
+  ) {
+    return sellerPercentage;
+  }
+
+  return Number(
+    product.commissionPercentage
+  );
+}
+
+/*
+ * =====================================================
+ * TOTAL DO ITEM
+ * =====================================================
+ */
+
 function getItemTotal(
-  item: SaleItem
+  item:
+    SaleItem
 ) {
   return roundMoney(
     item.quantity *
@@ -1372,12 +2020,21 @@ function getItemTotal(
   );
 }
 
+/*
+ * =====================================================
+ * PARCELAS
+ * =====================================================
+ */
+
 function buildInstallments(
-  total: number,
-  quantity: number
+  total:
+    number,
+  quantity:
+    number
 ) {
   if (
-    quantity <= 0
+    quantity <=
+    0
   ) {
     return [];
   }
@@ -1389,7 +2046,8 @@ function buildInstallments(
         quantity
       ) *
         100
-    ) / 100;
+    ) /
+    100;
 
   const values =
     Array.from(
@@ -1432,8 +2090,15 @@ function buildInstallments(
   return values;
 }
 
+/*
+ * =====================================================
+ * DINHEIRO
+ * =====================================================
+ */
+
 function parseMoney(
-  value: string
+  value:
+    string
 ) {
   const clean =
     value
@@ -1443,7 +2108,9 @@ function parseMoney(
         ""
       );
 
-  if (!clean) {
+  if (
+    !clean
+  ) {
     return 0;
   }
 
@@ -1463,19 +2130,40 @@ function parseMoney(
             ",",
             "."
           )
-      ) || 0
+      ) ||
+      0
     );
   }
 
   return (
     Number(
       clean
-    ) || 0
+    ) ||
+    0
+  );
+}
+
+function formatInputMoney(
+  value:
+    number
+) {
+  return new Intl.NumberFormat(
+    "pt-BR",
+    {
+      minimumFractionDigits:
+        2,
+
+      maximumFractionDigits:
+        2,
+    }
+  ).format(
+    value
   );
 }
 
 function roundMoney(
-  value: number
+  value:
+    number
 ) {
   return (
     Math.round(
@@ -1484,12 +2172,30 @@ function roundMoney(
         Number.EPSILON
       ) *
         100
-    ) / 100
+    ) /
+    100
+  );
+}
+
+function roundPercentage(
+  value:
+    number
+) {
+  return (
+    Math.round(
+      (
+        value +
+        Number.EPSILON
+      ) *
+        10000
+    ) /
+    10000
   );
 }
 
 function formatCurrency(
-  value: number
+  value:
+    number
 ) {
   return new Intl.NumberFormat(
     "pt-BR",
@@ -1506,7 +2212,8 @@ function formatCurrency(
 }
 
 function formatPercentage(
-  value: number
+  value:
+    number
 ) {
   return (
     new Intl.NumberFormat(
@@ -1517,6 +2224,7 @@ function formatPercentage(
       }
     ).format(
       value
-    ) + "%"
+    ) +
+    "%"
   );
 }

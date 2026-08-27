@@ -18,14 +18,22 @@ import {
 } from "lucide-react";
 
 import DeleteContractButton from "./delete-contract-button";
+import RenewContractButton from "./renew-contract-button";
 
 import {
   createClient,
 } from "@/app/lib/supabase/server";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
+
+import {
+  CONTRACT_STATUS_LABELS,
+  CONTRACT_STATUS_STYLES,
+  getContractStatus,
+} from "@/app/lib/contract-status";
 
 type PageProps = {
   params: Promise<{
@@ -129,6 +137,16 @@ export default async function ContractDetailPage({
   ) {
     notFound();
   }
+
+  /*
+   * Escopo de empresa: além da permissão de módulo, o usuário
+   * só pode ver um contrato específico se tiver vínculo com a
+   * empresa dele (admin sempre passa). Sem isto, trocar o id na
+   * URL exibiria contrato de qualquer empresa.
+   */
+  await requireCompanyAccess(
+    contract.company_id
+  );
 
   /*
    * =========================
@@ -247,8 +265,7 @@ export default async function ContractDetailPage({
 
   let responsibleProfile: {
     id: string;
-    full_name: string | null;
-    email: string | null;
+    name: string | null;
   } | null = null;
 
   if (
@@ -261,12 +278,11 @@ export default async function ContractDetailPage({
     } =
       await supabase
         .from(
-          "profiles"
+          "user_profiles"
         )
         .select(`
           id,
-          full_name,
-          email
+          name
         `)
         .eq(
           "id",
@@ -460,16 +476,7 @@ export default async function ContractDetailPage({
    */
 
   const displayStatus =
-    calculateContractStatus({
-      storedStatus:
-        contract.status,
-
-      startDate:
-        contract.start_date,
-
-      endDate:
-        contract.end_date,
-    });
+    getContractStatus(contract);
 
   /*
    * =========================
@@ -553,8 +560,7 @@ const commissionUserIds =
 
 let commissionProfiles: {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  name: string | null;
 }[] = [];
 
 if (
@@ -569,12 +575,11 @@ if (
   } =
     await supabase
       .from(
-        "profiles"
+        "user_profiles"
       )
       .select(`
         id,
-        full_name,
-        email
+        name
       `)
       .in(
         "id",
@@ -758,6 +763,18 @@ const commissionProfilesById =
 
               Editar contrato
             </Link>
+
+            {displayStatus !==
+              "cancelled" && (
+              <RenewContractButton
+                contractId={
+                  contract.id
+                }
+                contractTitle={
+                  contract.title
+                }
+              />
+            )}
 
             <DeleteContractButton
               contractId={
@@ -1017,8 +1034,7 @@ const commissionProfilesById =
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-sm font-semibold text-slate-900">
-                              {profile?.full_name ??
-                                profile?.email ??
+                              {profile?.name ??
                                 "Usuário"}
                             </p>
 
@@ -1592,55 +1608,13 @@ function TableHeader({
 function StatusBadge({
   status,
 }: {
-  status: string;
+  status: ReturnType<typeof getContractStatus>;
 }) {
-  const styles: Record<
-    string,
-    string
-  > = {
-    active:
-      "bg-emerald-50 text-emerald-700",
-
-    expiring:
-      "bg-amber-50 text-amber-700",
-
-    expired:
-      "bg-red-50 text-red-700",
-
-    cancelled:
-      "bg-slate-100 text-slate-600",
-  };
-
-  const labels: Record<
-    string,
-    string
-  > = {
-    active:
-      "Ativo",
-
-    expiring:
-      "A vencer",
-
-    expired:
-      "Vencido",
-
-    cancelled:
-      "Cancelado",
-  };
-
   return (
     <span
-      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-        styles[
-          status
-        ] ??
-        "bg-slate-100 text-slate-600"
-      }`}
+      className={`rounded-full px-2.5 py-1 text-xs font-medium ${CONTRACT_STATUS_STYLES[status]}`}
     >
-      {labels[
-        status
-      ] ??
-        status}
+      {CONTRACT_STATUS_LABELS[status]}
     </span>
   );
 }
@@ -1788,89 +1762,6 @@ function CommissionPaymentStatusBadge({
         status}
     </span>
   );
-}
-
-function calculateContractStatus({
-  storedStatus,
-  startDate,
-  endDate,
-}: {
-  storedStatus: string;
-
-  startDate: string;
-
-  endDate:
-    | string
-    | null;
-}) {
-  if (
-    storedStatus ===
-    "cancelled"
-  ) {
-    return "cancelled";
-  }
-
-  const today =
-    new Date();
-
-  today.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  const start =
-    new Date(
-      `${startDate}T12:00:00`
-    );
-
-  if (
-    start >
-    today
-  ) {
-    return "active";
-  }
-
-  if (!endDate) {
-    return "active";
-  }
-
-  const end =
-    new Date(
-      `${endDate}T12:00:00`
-    );
-
-  if (
-    end <
-    today
-  ) {
-    return "expired";
-  }
-
-  const millisecondsPerDay =
-    1000 *
-    60 *
-    60 *
-    24;
-
-  const daysUntilEnd =
-    Math.ceil(
-      (
-        end.getTime() -
-        today.getTime()
-      ) /
-        millisecondsPerDay
-    );
-
-  if (
-    daysUntilEnd <=
-    30
-  ) {
-    return "expiring";
-  }
-
-  return "active";
 }
 
 /*

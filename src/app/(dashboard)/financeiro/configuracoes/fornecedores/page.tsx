@@ -2,8 +2,16 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import {
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 export default async function FornecedoresPage() {
+  await requireModulePermission(
+    "financial",
+    "edit"
+  );
+
   const supabase = await createClient();
 
   const { data: suppliers } = await supabase

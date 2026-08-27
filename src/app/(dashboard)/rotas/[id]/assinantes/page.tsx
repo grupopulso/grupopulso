@@ -11,6 +11,7 @@ import { createClient } from "@/app/lib/supabase/server";
 import RouteSubscribersManager from "@/app/components/route-subscribers-manager";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -57,6 +58,10 @@ export default async function AssinantesRotaPage({
   if (!route) {
     notFound();
   }
+
+  await requireCompanyAccess(
+    route.company_id
+  );
 
   const { data: clients, error: clientsError } =
   await supabase

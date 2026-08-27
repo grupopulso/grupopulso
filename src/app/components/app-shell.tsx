@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  Repeat,
   Route,
   Settings,
   Newspaper,
@@ -82,11 +83,19 @@ const navigation: NavigationItem[] = [
     module: "products",
   },
   {
-    label: "Contratos e Assinaturas",
+    label: "Contratos",
     href: "/contratos",
     icon: FileText,
     module: "contracts",
   },
+
+  {
+  label: "Assinaturas",
+  href: "/assinaturas",
+  icon: Repeat,
+  module: "contracts",
+  estafetaOnly: true,
+},
 
   {
   label: "Edições e Publicidade",

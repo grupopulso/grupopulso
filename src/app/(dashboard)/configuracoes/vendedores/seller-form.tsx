@@ -18,8 +18,7 @@ import {
 
 type User = {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  name: string | null;
   role: string;
 };
 
@@ -335,8 +334,7 @@ export default function SellerForm({
                       user.id
                     }
                   >
-                    {user.full_name ??
-                      user.email ??
+                    {user.name ??
                       "Usuário"}
                   </option>
                 )

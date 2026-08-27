@@ -12,24 +12,65 @@ import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
+/*
+ * =====================================================
+ * TIPOS
+ * =====================================================
+ */
+
 type SaleItemInput = {
-  sectionId?: string | null;
+  productId: string;
+
+  /*
+   * CADERNO É OPCIONAL.
+   *
+   * null = anúncio geral da edição.
+   */
+  sectionId?:
+    | string
+    | null;
+
+  adPositionId: string;
 
   description: string;
 
-  placement?: string | null;
-
-  printType?:
-    | "color"
-    | "black_white"
-    | "other"
-    | null;
+  sizeDescription: string;
 
   quantity: number;
 
   unitPrice: number;
 
-  notes?: string | null;
+  notes?:
+    | string
+    | null;
+};
+
+type NormalizedSaleItem = {
+  product_id: string;
+
+  section_id:
+    | string
+    | null;
+
+  ad_position_id: string;
+
+  description: string;
+
+  size_description: string;
+
+  placement: null;
+
+  print_type: null;
+
+  quantity: number;
+
+  unit_price: number;
+
+  total_amount: number;
+
+  notes:
+    | string
+    | null;
 };
 
 type CreateEditionSaleInput = {
@@ -45,9 +86,12 @@ type CreateEditionSaleInput = {
 
   firstDueDate: string;
 
-  notes?: string | null;
+  notes?:
+    | string
+    | null;
 
-  items: SaleItemInput[];
+  items:
+    SaleItemInput[];
 };
 
 type UpdateEditionSaleInput = {
@@ -65,10 +109,27 @@ type UpdateEditionSaleInput = {
 
   firstDueDate: string;
 
-  notes?: string | null;
+  notes?:
+    | string
+    | null;
 
-  items: SaleItemInput[];
+  items:
+    SaleItemInput[];
 };
+
+type ProductCommissionResult =
+  | {
+      success: true;
+
+      commissionAmount: number;
+
+      effectivePercentage: number;
+    }
+  | {
+      success: false;
+
+      message: string;
+    };
 
 /*
  * =====================================================
@@ -77,7 +138,8 @@ type UpdateEditionSaleInput = {
  */
 
 export async function createEditionSale(
-  input: CreateEditionSaleInput
+  input:
+    CreateEditionSaleInput
 ) {
   const access =
     await requireEstafetaAccess();
@@ -96,6 +158,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Edição inválida.",
     };
@@ -106,6 +169,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Selecione um cliente.",
     };
@@ -116,6 +180,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Selecione um vendedor.",
     };
@@ -126,6 +191,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Selecione a forma de pagamento.",
     };
@@ -140,6 +206,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Informe uma quantidade válida de parcelas.",
     };
@@ -150,6 +217,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Informe o primeiro vencimento.",
     };
@@ -160,6 +228,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Adicione pelo menos um anúncio.",
     };
@@ -172,7 +241,8 @@ export async function createEditionSale(
    */
 
   const {
-    data: edition,
+    data:
+      edition,
     error:
       editionError,
   } =
@@ -193,9 +263,7 @@ export async function createEditionSale(
       )
       .eq(
         "company_id",
-        access
-          .estafetaCompany
-          .id
+        access.estafetaCompany.id
       )
       .maybeSingle();
 
@@ -205,6 +273,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Edição não encontrada.",
     };
@@ -216,6 +285,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Só é possível registrar vendas em uma edição aberta.",
     };
@@ -228,7 +298,8 @@ export async function createEditionSale(
    */
 
   const {
-    data: client,
+    data:
+      client,
     error:
       clientError,
   } =
@@ -253,6 +324,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Cliente não encontrado.",
     };
@@ -264,6 +336,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "O cliente selecionado está inativo.",
     };
@@ -308,21 +381,21 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Forma de pagamento inválida ou inativa.",
     };
   }
 
   if (
-    paymentMethod
-      .usage_type !==
+    paymentMethod.usage_type !==
       "income" &&
-    paymentMethod
-      .usage_type !==
+    paymentMethod.usage_type !==
       "both"
   ) {
     return {
       success: false,
+
       message:
         "Esta forma de pagamento não pode ser utilizada em recebimentos.",
     };
@@ -370,6 +443,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "O usuário selecionado não está configurado como vendedor ativo desta empresa.",
     };
@@ -383,6 +457,7 @@ export async function createEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Você só pode registrar vendas em seu próprio nome.",
     };
@@ -402,11 +477,7 @@ export async function createEditionSale(
   if (
     !normalizedResult.success
   ) {
-    return {
-      success: false,
-      message:
-        normalizedResult.message,
-    };
+    return normalizedResult;
   }
 
   const normalizedItems =
@@ -417,44 +488,57 @@ export async function createEditionSale(
 
   /*
    * =====================================================
-   * VALIDAR CADERNOS
+   * VALIDAR CADERNO / POSIÇÃO
    * =====================================================
    */
 
-  const sectionValidation =
-    await validateSections(
+  const validation =
+    await validateSaleItems(
       supabase,
       input.editionId,
       normalizedItems
     );
 
   if (
-    !sectionValidation.success
+    !validation.success
   ) {
-    return sectionValidation;
+    return validation;
   }
 
   /*
    * =====================================================
-   * COMISSÃO
+   * CALCULAR COMISSÃO POR PRODUTO
    * =====================================================
    */
 
-  const commissionPercentage =
+  const sellerDefaultPercentage =
     Number(
       sellerSetting
         .commission_percentage ??
         0
     );
 
-  const commissionAmount =
-    roundMoney(
-      totalAmount *
-        (
-          commissionPercentage /
-          100
-        )
+  const commissionCalculation =
+    await calculateProductCommission(
+      supabase,
+      edition.company_id,
+      normalizedItems,
+      sellerDefaultPercentage
     );
+
+  if (
+    !commissionCalculation.success
+  ) {
+    return commissionCalculation;
+  }
+
+  const commissionPercentage =
+    commissionCalculation
+      .effectivePercentage;
+
+  const commissionAmount =
+    commissionCalculation
+      .commissionAmount;
 
   /*
    * =====================================================
@@ -463,7 +547,8 @@ export async function createEditionSale(
    */
 
   const {
-    data: sale,
+    data:
+      sale,
     error:
       saleError,
   } =
@@ -490,9 +575,16 @@ export async function createEditionSale(
         total_amount:
           totalAmount,
 
+        /*
+         * Taxa efetiva média.
+         */
         commission_percentage:
           commissionPercentage,
 
+        /*
+         * Soma real das comissões
+         * dos itens.
+         */
         commission_amount:
           commissionAmount,
 
@@ -529,6 +621,7 @@ export async function createEditionSale(
 
     return {
       success: false,
+
       message:
         saleError
           ?.message ??
@@ -541,6 +634,49 @@ export async function createEditionSale(
     [];
 
   try {
+    /*
+     * =====================================================
+     * REVALIDAÇÃO DE POSIÇÕES
+     * =====================================================
+     */
+
+    const finalValidation =
+      await validateSaleItems(
+        supabase,
+        input.editionId,
+        normalizedItems
+      );
+
+    if (
+      !finalValidation.success
+    ) {
+      throw new Error(
+        finalValidation.message
+      );
+    }
+
+    /*
+     * =====================================================
+     * REVALIDAR PRODUTOS / COMISSÃO
+     * =====================================================
+     */
+
+    const finalCommissionCalculation =
+      await calculateProductCommission(
+        supabase,
+        edition.company_id,
+        normalizedItems,
+        sellerDefaultPercentage
+      );
+
+    if (
+      !finalCommissionCalculation.success
+    ) {
+      throw new Error(
+        finalCommissionCalculation.message
+      );
+    }
+
     /*
      * =====================================================
      * ITENS
@@ -597,7 +733,13 @@ export async function createEditionSale(
 
           totalAmount,
 
-          commissionPercentage,
+          commissionPercentage:
+            finalCommissionCalculation
+              .effectivePercentage,
+
+          commissionAmount:
+            finalCommissionCalculation
+              .commissionAmount,
         }
       );
 
@@ -611,7 +753,7 @@ export async function createEditionSale(
 
     /*
      * =====================================================
-     * PARCELAS
+     * FINANCEIRO
      * =====================================================
      */
 
@@ -659,10 +801,6 @@ export async function createEditionSale(
       );
     }
 
-    /*
-     * PRIMEIRO LANÇAMENTO
-     */
-
     const {
       error:
         saleFinancialError,
@@ -688,7 +826,9 @@ export async function createEditionSale(
         `Erro ao vincular o financeiro à venda: ${saleFinancialError.message}`
       );
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
       "Erro ao concluir venda:",
       error
@@ -744,7 +884,8 @@ export async function createEditionSale(
  */
 
 export async function updateEditionSale(
-  input: UpdateEditionSaleInput
+  input:
+    UpdateEditionSaleInput
 ) {
   const access =
     await requireEstafetaAccess();
@@ -752,18 +893,13 @@ export async function updateEditionSale(
   const supabase =
     await createClient();
 
-  /*
-   * =====================================================
-   * VALIDAÇÕES
-   * =====================================================
-   */
-
   if (
     !input.saleId ||
     !input.editionId
   ) {
     return {
       success: false,
+
       message:
         "Venda inválida.",
     };
@@ -774,6 +910,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Selecione um cliente.",
     };
@@ -784,6 +921,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Selecione um vendedor.",
     };
@@ -794,6 +932,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Selecione a forma de pagamento.",
     };
@@ -808,6 +947,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Informe uma quantidade válida de parcelas.",
     };
@@ -818,6 +958,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Informe o primeiro vencimento.",
     };
@@ -828,6 +969,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Adicione pelo menos um anúncio.",
     };
@@ -840,8 +982,10 @@ export async function updateEditionSale(
    */
 
   const {
-    data: sale,
-    error: saleError,
+    data:
+      sale,
+    error:
+      saleError,
   } =
     await supabase
       .from(
@@ -864,9 +1008,7 @@ export async function updateEditionSale(
       )
       .eq(
         "company_id",
-        access
-          .estafetaCompany
-          .id
+        access.estafetaCompany.id
       )
       .maybeSingle();
 
@@ -876,6 +1018,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Venda não encontrada.",
     };
@@ -887,6 +1030,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Uma venda cancelada não pode ser editada.",
     };
@@ -899,7 +1043,8 @@ export async function updateEditionSale(
    */
 
   const {
-    data: edition,
+    data:
+      edition,
     error:
       editionError,
   } =
@@ -920,9 +1065,7 @@ export async function updateEditionSale(
       )
       .eq(
         "company_id",
-        access
-          .estafetaCompany
-          .id
+        access.estafetaCompany.id
       )
       .maybeSingle();
 
@@ -932,6 +1075,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Edição não encontrada.",
     };
@@ -943,6 +1087,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "A venda só pode ser editada enquanto a edição estiver aberta.",
     };
@@ -950,7 +1095,7 @@ export async function updateEditionSale(
 
   /*
    * =====================================================
-   * PARCELAS ATUAIS
+   * FINANCEIRO ATUAL
    * =====================================================
    */
 
@@ -978,6 +1123,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível verificar o financeiro da venda.",
     };
@@ -1006,7 +1152,7 @@ export async function updateEditionSale(
 
   /*
    * =====================================================
-   * BLOQUEAR SE JÁ RECEBEU
+   * NÃO EDITAR APÓS RECEBIMENTO
    * =====================================================
    */
 
@@ -1037,6 +1183,7 @@ export async function updateEditionSale(
     ) {
       return {
         success: false,
+
         message:
           "Não foi possível verificar os recebimentos da venda.",
       };
@@ -1062,6 +1209,7 @@ export async function updateEditionSale(
     ) {
       return {
         success: false,
+
         message:
           "Esta venda já possui recebimento registrado. Os dados financeiros não podem mais ser alterados.",
       };
@@ -1075,7 +1223,8 @@ export async function updateEditionSale(
    */
 
   const {
-    data: client,
+    data:
+      client,
     error:
       clientError,
   } =
@@ -1102,6 +1251,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Cliente inválido ou inativo.",
     };
@@ -1145,21 +1295,21 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Forma de pagamento inválida.",
     };
   }
 
   if (
-    paymentMethod
-      .usage_type !==
+    paymentMethod.usage_type !==
       "income" &&
-    paymentMethod
-      .usage_type !==
+    paymentMethod.usage_type !==
       "both"
   ) {
     return {
       success: false,
+
       message:
         "Esta forma de pagamento não pode ser utilizada em recebimentos.",
     };
@@ -1205,6 +1355,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Vendedor inválido ou inativo.",
     };
@@ -1218,6 +1369,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Você só pode registrar vendas em seu próprio nome.",
     };
@@ -1225,7 +1377,7 @@ export async function updateEditionSale(
 
   /*
    * =====================================================
-   * ITENS
+   * NORMALIZAR ITENS
    * =====================================================
    */
 
@@ -1237,11 +1389,7 @@ export async function updateEditionSale(
   if (
     !normalizedResult.success
   ) {
-    return {
-      success: false,
-      message:
-        normalizedResult.message,
-    };
+    return normalizedResult;
   }
 
   const normalizedItems =
@@ -1250,40 +1398,60 @@ export async function updateEditionSale(
   const totalAmount =
     normalizedResult.totalAmount;
 
-  const sectionValidation =
-    await validateSections(
+  /*
+   * =====================================================
+   * VALIDAR POSIÇÕES
+   * =====================================================
+   */
+
+  const validation =
+    await validateSaleItems(
       supabase,
       input.editionId,
-      normalizedItems
+      normalizedItems,
+      sale.id
     );
 
   if (
-    !sectionValidation.success
+    !validation.success
   ) {
-    return sectionValidation;
+    return validation;
   }
 
   /*
    * =====================================================
-   * COMISSÃO
+   * CALCULAR COMISSÃO
    * =====================================================
    */
 
-  const commissionPercentage =
+  const sellerDefaultPercentage =
     Number(
       sellerSetting
         .commission_percentage ??
         0
     );
 
-  const commissionAmount =
-    roundMoney(
-      totalAmount *
-        (
-          commissionPercentage /
-          100
-        )
+  const commissionCalculation =
+    await calculateProductCommission(
+      supabase,
+      edition.company_id,
+      normalizedItems,
+      sellerDefaultPercentage
     );
+
+  if (
+    !commissionCalculation.success
+  ) {
+    return commissionCalculation;
+  }
+
+  const commissionPercentage =
+    commissionCalculation
+      .effectivePercentage;
+
+  const commissionAmount =
+    commissionCalculation
+      .commissionAmount;
 
   /*
    * =====================================================
@@ -1343,6 +1511,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         updateSaleError.message,
     };
@@ -1350,7 +1519,7 @@ export async function updateEditionSale(
 
   /*
    * =====================================================
-   * ITENS ANTIGOS
+   * SUBSTITUIR ITENS
    * =====================================================
    */
 
@@ -1373,6 +1542,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível atualizar os anúncios.",
     };
@@ -1404,6 +1574,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         insertItemsError.message,
     };
@@ -1434,6 +1605,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível recalcular as comissões.",
     };
@@ -1455,6 +1627,8 @@ export async function updateEditionSale(
         totalAmount,
 
         commissionPercentage,
+
+        commissionAmount,
       }
     );
 
@@ -1489,6 +1663,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível atualizar o parcelamento.",
     };
@@ -1516,6 +1691,7 @@ export async function updateEditionSale(
     ) {
       return {
         success: false,
+
         message:
           "Não foi possível substituir os lançamentos financeiros antigos.",
       };
@@ -1573,16 +1749,11 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         financeResult.message,
     };
   }
-
-  /*
-   * =====================================================
-   * PRIMEIRO LANÇAMENTO
-   * =====================================================
-   */
 
   const {
     error:
@@ -1607,6 +1778,7 @@ export async function updateEditionSale(
   ) {
     return {
       success: false,
+
       message:
         firstEntryError.message,
     };
@@ -1648,20 +1820,17 @@ export async function cancelEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Venda inválida.",
     };
   }
 
-  /*
-   * =====================================================
-   * VENDA
-   * =====================================================
-   */
-
   const {
-    data: sale,
-    error: saleError,
+    data:
+      sale,
+    error:
+      saleError,
   } =
     await supabase
       .from(
@@ -1693,6 +1862,7 @@ export async function cancelEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Venda não encontrada.",
     };
@@ -1704,6 +1874,7 @@ export async function cancelEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Esta venda já está cancelada.",
     };
@@ -1716,7 +1887,8 @@ export async function cancelEditionSale(
    */
 
   const {
-    data: installments,
+    data:
+      installments,
     error:
       installmentsError,
   } =
@@ -1738,6 +1910,7 @@ export async function cancelEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível verificar o financeiro da venda.",
     };
@@ -1752,7 +1925,8 @@ export async function cancelEditionSale(
         (
           installment
         ) =>
-          installment.financial_entry_id
+          installment
+            .financial_entry_id
       )
       .filter(
         (
@@ -1765,7 +1939,7 @@ export async function cancelEditionSale(
 
   /*
    * =====================================================
-   * VERIFICAR RECEBIMENTOS
+   * VERIFICAR RECEBIMENTO
    * =====================================================
    */
 
@@ -1798,6 +1972,7 @@ export async function cancelEditionSale(
     ) {
       return {
         success: false,
+
         message:
           "Não foi possível verificar os recebimentos desta venda.",
       };
@@ -1814,7 +1989,8 @@ export async function cancelEditionSale(
           Number(
             entry.amount_paid ??
               0
-          ) > 0
+          ) >
+          0
       );
 
     if (
@@ -1822,6 +1998,7 @@ export async function cancelEditionSale(
     ) {
       return {
         success: false,
+
         message:
           "Esta venda já possui recebimento registrado e não pode ser cancelada diretamente.",
       };
@@ -1864,6 +2041,7 @@ export async function cancelEditionSale(
     ) {
       return {
         success: false,
+
         message:
           "Não foi possível cancelar as contas a receber da venda.",
       };
@@ -1905,6 +2083,7 @@ export async function cancelEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível cancelar as comissões desta venda.",
     };
@@ -1942,39 +2121,263 @@ export async function cancelEditionSale(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível cancelar a venda.",
     };
   }
 
-  /*
-   * =====================================================
-   * REVALIDAÇÃO
-   * =====================================================
-   */
-
-  revalidatePath(
-    "/edicoes"
-  );
-
-  revalidatePath(
-    `/edicoes/${editionId}`
-  );
-
-  revalidatePath(
-    `/edicoes/${editionId}/vendas/${sale.id}`
-  );
-
-  revalidatePath(
-    "/financeiro"
-  );
-
-  revalidatePath(
-    "/financeiro/receber"
+  revalidateSalePaths(
+    editionId,
+    sale.id
   );
 
   return {
     success: true,
+  };
+}
+
+/*
+ * =====================================================
+ * CALCULAR COMISSÃO POR PRODUTO
+ * =====================================================
+ */
+
+async function calculateProductCommission(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  companyId: string,
+  items:
+    NormalizedSaleItem[],
+  sellerDefaultPercentage:
+    number
+): Promise<
+  ProductCommissionResult
+> {
+  const productIds =
+    [
+      ...new Set(
+        items.map(
+          (
+            item
+          ) =>
+            item.product_id
+        )
+      ),
+    ];
+
+  if (
+    !productIds.length
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Selecione um produto ou serviço para os anúncios.",
+    };
+  }
+
+  const {
+    data:
+      products,
+    error:
+      productsError,
+  } =
+    await supabase
+      .from(
+        "products"
+      )
+      .select(`
+        id,
+        company_id,
+        name,
+        commission_percentage,
+        active
+      `)
+      .in(
+        "id",
+        productIds
+      )
+      .eq(
+        "company_id",
+        companyId
+      )
+      .eq(
+        "active",
+        true
+      );
+
+  if (
+    productsError
+  ) {
+    console.error(
+      "Erro ao validar produtos da venda:",
+      productsError
+    );
+
+    return {
+      success: false,
+
+      message:
+        "Não foi possível validar os produtos da venda.",
+    };
+  }
+
+  if (
+    (
+      products ??
+      []
+    ).length !==
+    productIds.length
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Um ou mais produtos selecionados são inválidos, estão inativos ou não pertencem ao O Estafeta.",
+    };
+  }
+
+  const productsById =
+    new Map(
+      (
+        products ??
+        []
+      ).map(
+        (
+          product
+        ) => [
+          product.id,
+          product,
+        ]
+      )
+    );
+
+  let commissionAmount =
+    0;
+
+  let totalAmount =
+    0;
+
+  for (
+    const item of
+      items
+  ) {
+    const product =
+      productsById.get(
+        item.product_id
+      );
+
+    if (
+      !product
+    ) {
+      return {
+        success: false,
+
+        message:
+          "Produto da venda não encontrado.",
+      };
+    }
+
+    /*
+     * ===============================================
+     * REGRA DE PRIORIDADE
+     * ===============================================
+     *
+     * NULL
+     * → comissão padrão do vendedor
+     *
+     * 0
+     * → sem comissão
+     *
+     * outro valor
+     * → comissão específica do produto
+     */
+
+    const percentage =
+      product
+        .commission_percentage ===
+      null
+        ? sellerDefaultPercentage
+        : Number(
+            product
+              .commission_percentage
+          );
+
+    if (
+      !Number.isFinite(
+        percentage
+      ) ||
+      percentage <
+        0 ||
+      percentage >
+        100
+    ) {
+      return {
+        success: false,
+
+        message:
+          `A comissão configurada no produto "${product.name}" é inválida.`,
+      };
+    }
+
+    const itemTotal =
+      Number(
+        item.total_amount
+      );
+
+    totalAmount =
+      roundMoney(
+        totalAmount +
+          itemTotal
+      );
+
+    commissionAmount =
+      roundMoney(
+        commissionAmount +
+          roundMoney(
+            itemTotal *
+              (
+                percentage /
+                100
+              )
+          )
+      );
+  }
+
+  /*
+   * Taxa média efetiva da venda.
+   *
+   * Ex.:
+   * R$ 6.000 de venda
+   * R$ 600 comissão
+   * = 10%
+   */
+
+  const effectivePercentage =
+    totalAmount >
+    0
+      ? roundPercentage(
+          (
+            commissionAmount /
+            totalAmount
+          ) *
+            100
+        )
+      : 0;
+
+  return {
+    success: true,
+
+    commissionAmount:
+      roundMoney(
+        commissionAmount
+      ),
+
+    effectivePercentage,
   };
 }
 
@@ -1992,10 +2395,25 @@ async function createSaleCommissions(
   >,
   input: {
     saleId: string;
+
     companyId: string;
+
     sellerUserId: string;
+
     totalAmount: number;
-    commissionPercentage: number;
+
+    /*
+     * Taxa média efetiva.
+     */
+    commissionPercentage:
+      number;
+
+    /*
+     * Valor real calculado
+     * item por item.
+     */
+    commissionAmount:
+      number;
   }
 ): Promise<
   | {
@@ -2003,24 +2421,18 @@ async function createSaleCommissions(
     }
   | {
       success: false;
+
       message: string;
     }
 > {
-  const commissionAmount =
-    roundMoney(
-      input.totalAmount *
-        (
-          input.commissionPercentage /
-          100
-        )
-    );
-
   /*
-   * COMISSÃO DIRETA
+   * =====================================================
+   * COMISSÃO DIRETA DO VENDEDOR
+   * =====================================================
    */
 
   if (
-    input.commissionPercentage >
+    input.commissionAmount >
     0
   ) {
     const {
@@ -2043,16 +2455,26 @@ async function createSaleCommissions(
           commission_type:
             "seller",
 
+          /*
+           * Taxa efetiva média.
+           */
           percentage:
             input.commissionPercentage,
 
           base_amount:
             input.totalAmount,
 
+          /*
+           * Valor real calculado
+           * pelos produtos.
+           */
           amount:
-            commissionAmount,
+            input.commissionAmount,
 
           amount_released:
+            0,
+
+          amount_paid:
             0,
 
           status:
@@ -2067,6 +2489,7 @@ async function createSaleCommissions(
     ) {
       return {
         success: false,
+
         message:
           `Não foi possível gerar a comissão do vendedor: ${error.message}`,
       };
@@ -2074,7 +2497,12 @@ async function createSaleCommissions(
   }
 
   /*
+   * =====================================================
    * OVERRIDES
+   * =====================================================
+   *
+   * Permanecem com a regra própria
+   * configurada em seller_override_rules.
    */
 
   const {
@@ -2110,6 +2538,7 @@ async function createSaleCommissions(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível calcular as comissões adicionais.",
     };
@@ -2143,7 +2572,8 @@ async function createSaleCommissions(
               input.saleId,
 
             beneficiary_user_id:
-              rule.beneficiary_user_id,
+              rule
+                .beneficiary_user_id,
 
             source_seller_user_id:
               input.sellerUserId,
@@ -2166,6 +2596,9 @@ async function createSaleCommissions(
               ),
 
             amount_released:
+              0,
+
+            amount_paid:
               0,
 
             status:
@@ -2196,6 +2629,7 @@ async function createSaleCommissions(
     ) {
       return {
         success: false,
+
         message:
           `Não foi possível gerar as comissões adicionais: ${error.message}`,
       };
@@ -2247,11 +2681,13 @@ async function createSaleFinancialEntries(
 ): Promise<
   | {
       success: true;
+
       firstFinancialEntryId:
         string | null;
     }
   | {
       success: false;
+
       message: string;
     }
 > {
@@ -2280,7 +2716,8 @@ async function createSaleFinancialEntries(
     index++
   ) {
     const installmentNumber =
-      index + 1;
+      index +
+      1;
 
     const dueDate =
       addMonthsClamped(
@@ -2325,6 +2762,10 @@ async function createSaleFinancialEntries(
           contract_id:
             null,
 
+          /*
+           * Uma venda de edição
+           * pode ter vários produtos.
+           */
           product_id:
             null,
 
@@ -2452,6 +2893,7 @@ async function createSaleFinancialEntries(
     ) {
       return {
         success: false,
+
         message:
           `Erro ao vincular a parcela ${installmentNumber}: ${installmentError.message}`,
       };
@@ -2467,31 +2909,38 @@ async function createSaleFinancialEntries(
 
 /*
  * =====================================================
- * VALIDAR CADERNOS
+ * VALIDAR CADERNO + POSIÇÃO
  * =====================================================
  */
 
-async function validateSections(
+async function validateSaleItems(
   supabase: Awaited<
     ReturnType<
       typeof createClient
     >
   >,
-  editionId: string,
-  items: {
-    section_id:
-      | string
-      | null;
-  }[]
+  editionId:
+    string,
+  items:
+    NormalizedSaleItem[],
+  excludeSaleId?:
+    string
 ): Promise<
   | {
       success: true;
     }
   | {
       success: false;
+
       message: string;
     }
 > {
+  /*
+   * =====================================================
+   * CADERNOS
+   * =====================================================
+   */
+
   const sectionIds =
     [
       ...new Set(
@@ -2514,59 +2963,436 @@ async function validateSections(
     ];
 
   if (
-    !sectionIds.length
+    sectionIds.length >
+    0
   ) {
-    return {
-      success: true,
-    };
+    const {
+      data:
+        sections,
+      error:
+        sectionsError,
+    } =
+      await supabase
+        .from(
+          "edition_sections"
+        )
+        .select(`
+          id,
+          name,
+          active
+        `)
+        .eq(
+          "edition_id",
+          editionId
+        )
+        .eq(
+          "active",
+          true
+        )
+        .in(
+          "id",
+          sectionIds
+        );
+
+    if (
+      sectionsError
+    ) {
+      console.error(
+        "Erro ao validar cadernos:",
+        sectionsError
+      );
+
+      return {
+        success: false,
+
+        message:
+          "Não foi possível validar os cadernos selecionados.",
+      };
+    }
+
+    if (
+      (
+        sections ??
+        []
+      ).length !==
+      sectionIds.length
+    ) {
+      return {
+        success: false,
+
+        message:
+          "Um ou mais cadernos selecionados são inválidos ou estão inativos.",
+      };
+    }
   }
 
+  /*
+   * =====================================================
+   * POSIÇÕES
+   * =====================================================
+   */
+
+  const positionIds =
+    [
+      ...new Set(
+        items.map(
+          (
+            item
+          ) =>
+            item.ad_position_id
+        )
+      ),
+    ];
+
   const {
-    data: sections,
-    error,
+    data:
+      positions,
+    error:
+      positionsError,
   } =
     await supabase
       .from(
-        "edition_sections"
+        "edition_ad_positions"
       )
       .select(`
-        id
+        id,
+        edition_id,
+        section_id,
+        name,
+        capacity,
+        manually_blocked,
+        blocked_reason,
+        active
       `)
       .eq(
         "edition_id",
         editionId
       )
-      .eq(
-        "active",
-        true
-      )
       .in(
         "id",
-        sectionIds
+        positionIds
       );
 
   if (
-    error
+    positionsError
   ) {
+    console.error(
+      "Erro ao validar posições:",
+      positionsError
+    );
+
     return {
       success: false,
+
       message:
-        "Não foi possível validar os cadernos selecionados.",
+        "Não foi possível validar as posições comerciais.",
     };
   }
 
   if (
     (
-      sections ??
+      positions ??
       []
     ).length !==
-    sectionIds.length
+    positionIds.length
   ) {
     return {
       success: false,
+
       message:
-        "Um ou mais cadernos selecionados não pertencem a esta edição.",
+        "Uma ou mais posições selecionadas não pertencem a esta edição.",
     };
+  }
+
+  const positionById =
+    new Map(
+      (
+        positions ??
+        []
+      ).map(
+        (
+          position
+        ) => [
+          position.id,
+          position,
+        ]
+      )
+    );
+
+  /*
+   * =====================================================
+   * RELAÇÃO CADERNO ↔ POSIÇÃO
+   * =====================================================
+   */
+
+  for (
+    let index = 0;
+    index <
+    items.length;
+    index++
+  ) {
+    const item =
+      items[
+        index
+      ];
+
+    const position =
+      positionById.get(
+        item.ad_position_id
+      );
+
+    if (
+      !position
+    ) {
+      return {
+        success: false,
+
+        message:
+          `A posição do anúncio ${index + 1} não foi encontrada.`,
+      };
+    }
+
+    if (
+      item.section_id
+    ) {
+      if (
+        position.section_id !==
+        item.section_id
+      ) {
+        return {
+          success: false,
+
+          message:
+            `A posição "${position.name}" não pertence ao caderno selecionado no anúncio ${index + 1}.`,
+        };
+      }
+    }
+
+    if (
+      !item.section_id &&
+      position.section_id !==
+        null
+    ) {
+      return {
+        success: false,
+
+        message:
+          `A posição "${position.name}" pertence a um caderno. Para utilizá-la, selecione o caderno correspondente.`,
+      };
+    }
+
+    if (
+      !position.active
+    ) {
+      return {
+        success: false,
+
+        message:
+          `A posição "${position.name}" está inativa.`,
+      };
+    }
+
+    if (
+      position.manually_blocked
+    ) {
+      return {
+        success: false,
+
+        message:
+          position.blocked_reason
+            ? `A posição "${position.name}" está bloqueada: ${position.blocked_reason}`
+            : `A posição "${position.name}" está bloqueada pelo administrador.`,
+      };
+    }
+  }
+
+  /*
+   * =====================================================
+   * USO ATUAL
+   * =====================================================
+   */
+
+  let usedItemsQuery =
+    supabase
+      .from(
+        "edition_sale_items"
+      )
+      .select(`
+        id,
+        ad_position_id,
+        sale_id,
+
+        sale:edition_sales!inner (
+          id,
+          edition_id,
+          status
+        )
+      `)
+      .eq(
+        "sale.edition_id",
+        editionId
+      )
+      .eq(
+        "sale.status",
+        "confirmed"
+      )
+      .in(
+        "ad_position_id",
+        positionIds
+      );
+
+  if (
+    excludeSaleId
+  ) {
+    usedItemsQuery =
+      usedItemsQuery.neq(
+        "sale_id",
+        excludeSaleId
+      );
+  }
+
+  const {
+    data:
+      usedItems,
+    error:
+      usageError,
+  } =
+    await usedItemsQuery;
+
+  if (
+    usageError
+  ) {
+    console.error(
+      "Erro ao verificar utilização das posições:",
+      usageError
+    );
+
+    return {
+      success: false,
+
+      message:
+        "Não foi possível verificar a disponibilidade das posições.",
+    };
+  }
+
+  const existingUsage =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const item of
+      usedItems ??
+      []
+  ) {
+    if (
+      !item.ad_position_id
+    ) {
+      continue;
+    }
+
+    existingUsage.set(
+      item.ad_position_id,
+      (
+        existingUsage.get(
+          item.ad_position_id
+        ) ??
+        0
+      ) +
+        1
+    );
+  }
+
+  const incomingUsage =
+    new Map<
+      string,
+      number
+    >();
+
+  for (
+    const item of
+      items
+  ) {
+    incomingUsage.set(
+      item.ad_position_id,
+      (
+        incomingUsage.get(
+          item.ad_position_id
+        ) ??
+        0
+      ) +
+        1
+    );
+  }
+
+  /*
+   * =====================================================
+   * CAPACIDADE
+   * =====================================================
+   */
+
+  for (
+    const positionId of
+      positionIds
+  ) {
+    const position =
+      positionById.get(
+        positionId
+      );
+
+    if (
+      !position
+    ) {
+      continue;
+    }
+
+    if (
+      position.capacity ===
+      null
+    ) {
+      continue;
+    }
+
+    const capacity =
+      Number(
+        position.capacity
+      );
+
+    const alreadyUsed =
+      existingUsage.get(
+        positionId
+      ) ??
+      0;
+
+    const requested =
+      incomingUsage.get(
+        positionId
+      ) ??
+      0;
+
+    if (
+      alreadyUsed +
+        requested >
+      capacity
+    ) {
+      const available =
+        Math.max(
+          capacity -
+            alreadyUsed,
+          0
+        );
+
+      return {
+        success: false,
+
+        message:
+          available >
+          0
+            ? `A posição "${position.name}" possui somente ${available} vaga(s) disponível(is).`
+            : `A posição "${position.name}" já está esgotada.`,
+      };
+    }
   }
 
   return {
@@ -2581,49 +3407,23 @@ async function validateSections(
  */
 
 function normalizeSaleItems(
-  items: SaleItemInput[]
+  items:
+    SaleItemInput[]
 ):
   | {
       success: true;
 
-      items: {
-        section_id:
-          | string
-          | null;
-
-        description:
-          string;
-
-        placement:
-          | string
-          | null;
-
-        print_type:
-          | "color"
-          | "black_white"
-          | "other"
-          | null;
-
-        quantity:
-          number;
-
-        unit_price:
-          number;
-
-        total_amount:
-          number;
-
-        notes:
-          | string
-          | null;
-      }[];
+      items:
+        NormalizedSaleItem[];
 
       totalAmount:
         number;
     }
   | {
       success: false;
-      message: string;
+
+      message:
+        string;
     } {
   try {
     const normalized =
@@ -2632,8 +3432,26 @@ function normalizeSaleItems(
           item,
           index
         ) => {
+          const productId =
+            item.productId
+              ?.trim();
+
+          const sectionId =
+            item.sectionId
+              ?.trim() ||
+            null;
+
+          const adPositionId =
+            item.adPositionId
+              ?.trim();
+
           const description =
-            item.description.trim();
+            item.description
+              .trim();
+
+          const sizeDescription =
+            item.sizeDescription
+              .trim();
 
           const quantity =
             Number(
@@ -2645,6 +3463,18 @@ function normalizeSaleItems(
               item.unitPrice
             );
 
+          /*
+           * PRODUTO OBRIGATÓRIO.
+           */
+
+          if (
+            !productId
+          ) {
+            throw new Error(
+              `Selecione o produto ou serviço do anúncio ${index + 1}.`
+            );
+          }
+
           if (
             !description
           ) {
@@ -2654,10 +3484,27 @@ function normalizeSaleItems(
           }
 
           if (
+            !adPositionId
+          ) {
+            throw new Error(
+              `Selecione a posição do anúncio ${index + 1}.`
+            );
+          }
+
+          if (
+            !sizeDescription
+          ) {
+            throw new Error(
+              `Informe o tamanho do anúncio ${index + 1}.`
+            );
+          }
+
+          if (
             !Number.isInteger(
               quantity
             ) ||
-            quantity <= 0
+            quantity <=
+              0
           ) {
             throw new Error(
               `Quantidade inválida no anúncio ${index + 1}.`
@@ -2668,7 +3515,8 @@ function normalizeSaleItems(
             !Number.isFinite(
               unitPrice
             ) ||
-            unitPrice <= 0
+            unitPrice <=
+              0
           ) {
             throw new Error(
               `Valor inválido no anúncio ${index + 1}.`
@@ -2676,19 +3524,24 @@ function normalizeSaleItems(
           }
 
           return {
+            product_id:
+              productId,
+
             section_id:
-              item.sectionId ||
-              null,
+              sectionId,
+
+            ad_position_id:
+              adPositionId,
 
             description,
 
+            size_description:
+              sizeDescription,
+
             placement:
-              item.placement
-                ?.trim() ||
               null,
 
             print_type:
-              item.printType ||
               null,
 
             quantity,
@@ -2729,6 +3582,7 @@ function normalizeSaleItems(
     ) {
       return {
         success: false,
+
         message:
           "O total da venda deve ser maior que zero.",
       };
@@ -2736,11 +3590,15 @@ function normalizeSaleItems(
 
     return {
       success: true,
+
       items:
         normalized,
+
       totalAmount,
     };
-  } catch (error) {
+  } catch (
+    error
+  ) {
     return {
       success: false,
 
@@ -2765,7 +3623,8 @@ async function rollbackSale(
       typeof createClient
     >
   >,
-  saleId: string
+  saleId:
+    string
 ) {
   const {
     error,
@@ -2790,7 +3649,6 @@ async function rollbackSale(
   }
 }
 
-
 /*
  * =====================================================
  * REVALIDAÇÃO
@@ -2798,8 +3656,10 @@ async function rollbackSale(
  */
 
 function revalidateSalePaths(
-  editionId: string,
-  saleId: string
+  editionId:
+    string,
+  saleId:
+    string
 ) {
   revalidatePath(
     "/edicoes"
@@ -2807,6 +3667,10 @@ function revalidateSalePaths(
 
   revalidatePath(
     `/edicoes/${editionId}`
+  );
+
+  revalidatePath(
+    `/edicoes/${editionId}/vendas/nova`
   );
 
   revalidatePath(
@@ -2820,6 +3684,10 @@ function revalidateSalePaths(
   revalidatePath(
     "/financeiro/receber"
   );
+
+  revalidatePath(
+    "/comissoes"
+  );
 }
 
 /*
@@ -2829,8 +3697,10 @@ function revalidateSalePaths(
  */
 
 function distributeAmount(
-  total: number,
-  installments: number
+  total:
+    number,
+  installments:
+    number
 ) {
   const totalCents =
     Math.round(
@@ -2873,13 +3743,15 @@ function distributeAmount(
 
 /*
  * =====================================================
- * SOMAR MESES PRESERVANDO O DIA
+ * SOMAR MESES
  * =====================================================
  */
 
 function addMonthsClamped(
-  dateValue: string,
-  months: number
+  dateValue:
+    string,
+  months:
+    number
 ) {
   const [
     year,
@@ -2961,7 +3833,8 @@ function addMonthsClamped(
  */
 
 function roundMoney(
-  value: number
+  value:
+    number
 ) {
   return (
     Math.round(
@@ -2974,5 +3847,28 @@ function roundMoney(
         100
     ) /
     100
+  );
+}
+
+/*
+ * Percentual com até
+ * quatro casas para guardar
+ * uma taxa efetiva precisa.
+ */
+function roundPercentage(
+  value:
+    number
+) {
+  return (
+    Math.round(
+      (
+        Number(
+          value
+        ) +
+        Number.EPSILON
+      ) *
+        10000
+    ) /
+    10000
   );
 }

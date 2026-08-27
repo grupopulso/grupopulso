@@ -20,8 +20,7 @@ import {
 
 type User = {
   id: string;
-  full_name: string | null;
-  email: string | null;
+  name: string | null;
 };
 
 type Company = {
@@ -139,8 +138,7 @@ export default function OverrideManagement({
       );
 
     return (
-      user?.full_name ??
-      user?.email ??
+      user?.name ??
       "Usuário"
     );
   }
@@ -513,8 +511,7 @@ export default function OverrideManagement({
                       sourceUserId
                     }
                   >
-                    {user.full_name ??
-                      user.email ??
+                    {user.name ??
                       "Usuário"}
                   </option>
                 )
@@ -566,8 +563,7 @@ export default function OverrideManagement({
                       beneficiaryUserId
                     }
                   >
-                    {user.full_name ??
-                      user.email ??
+                    {user.name ??
                       "Usuário"}
                   </option>
                 )

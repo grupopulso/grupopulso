@@ -279,3 +279,44 @@ export async function requireCompanyAccess(
 
   return access;
 }
+
+/*
+ * Igual a requireCompanyAccess, mas para registros que
+ * se relacionam com VÁRIAS empresas (ex.: cliente é N:N
+ * com empresa via client_companies).
+ *
+ * Admin sempre passa. Os demais precisam ter vínculo com
+ * pelo menos uma das empresas informadas.
+ *
+ * Uma lista vazia significa que o registro não pertence a
+ * nenhuma empresa — nesse caso só admin acessa.
+ */
+export async function requireAnyCompanyAccess(
+  companyIds: string[]
+) {
+  const access =
+    await requireAuthenticatedUser();
+
+  if (
+    access.profile.role ===
+    "admin"
+  ) {
+    return access;
+  }
+
+  const hasAccess =
+    companyIds.some(
+      (companyId) =>
+        access.companyIds.includes(
+          companyId
+        )
+    );
+
+  if (!hasAccess) {
+    redirect(
+      "/sem-permissao"
+    );
+  }
+
+  return access;
+}

@@ -18,6 +18,7 @@ import { getSelectedCompanyId } from "@/app/lib/company-filter";
 
 import RouteClientActions from "@/app/components/route-client-actions";
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -161,6 +162,10 @@ if (!route) {
 
   notFound();
 }
+
+  await requireCompanyAccess(
+    route.company_id
+  );
 
   if (
     selectedCompanyId &&

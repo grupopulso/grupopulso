@@ -9,8 +9,13 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
+
+import {
+  addMonthsClamped,
+} from "@/app/lib/date-utils";
 
 const POTTENCIALIZA_COMPANY_ID =
   "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
@@ -32,14 +37,6 @@ type CreateContractInput = {
     | string
     | null;
 
-  /*
-   * NÃO recebemos mais
-   * responsibleUserId.
-   *
-   * O responsável será sempre
-   * o usuário autenticado.
-   */
-
   title: string;
 
   startDate: string;
@@ -56,6 +53,8 @@ type CreateContractInput = {
   paymentMethodId: string;
 
   installments: number;
+
+  installmentValues?: number[];
 
   firstDueDate: string;
 
@@ -75,7 +74,8 @@ type CreateContractInput = {
  */
 
 export async function createContract(
-  input: CreateContractInput
+  input:
+    CreateContractInput
 ) {
   await requireModulePermission(
     "contracts",
@@ -89,16 +89,6 @@ export async function createContract(
    * =====================================================
    * USUÁRIO AUTENTICADO
    * =====================================================
-   *
-   * IMPORTANTE:
-   *
-   * O responsável pelo contrato
-   * NÃO vem do frontend.
-   *
-   * Mesmo que alguém tente alterar
-   * a requisição manualmente,
-   * o servidor utilizará sempre
-   * o usuário autenticado.
    */
 
   const {
@@ -117,6 +107,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Usuário não autenticado.",
     };
@@ -127,7 +118,7 @@ export async function createContract(
 
   /*
    * =====================================================
-   * VALIDAÇÕES
+   * VALIDAÇÕES BÁSICAS
    * =====================================================
    */
 
@@ -136,6 +127,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Selecione um cliente.",
     };
@@ -146,16 +138,27 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Selecione uma empresa.",
     };
   }
+
+  /*
+   * Escopo de empresa: o company_id vem do formulário, então
+   * confirma que o usuário realmente tem vínculo com essa
+   * empresa antes de criar o contrato (admin sempre passa).
+   */
+  await requireCompanyAccess(
+    input.companyId
+  );
 
   if (
     !input.title.trim()
   ) {
     return {
       success: false,
+
       error:
         "Informe o título do contrato.",
     };
@@ -166,6 +169,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Informe a data de início.",
     };
@@ -176,6 +180,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Informe o primeiro vencimento.",
     };
@@ -186,6 +191,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Selecione a forma de pagamento.",
     };
@@ -200,6 +206,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Informe uma quantidade válida de parcelas.",
     };
@@ -214,9 +221,114 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Informe um valor válido.",
     };
+  }
+
+  /*
+   * =====================================================
+   * VALIDAR PARCELAS
+   * =====================================================
+   */
+
+  let validatedInstallmentValues:
+    number[];
+
+  if (
+    input.installmentValues &&
+    input.installmentValues.length >
+      0
+  ) {
+    if (
+      input.installmentValues.length !==
+      input.installments
+    ) {
+      return {
+        success: false,
+
+        error:
+          "A quantidade de valores não corresponde à quantidade de parcelas.",
+      };
+    }
+
+    validatedInstallmentValues =
+      input.installmentValues.map(
+        (
+          amount
+        ) =>
+          roundMoney(
+            Number(
+              amount
+            )
+          )
+      );
+
+    const invalidInstallment =
+      validatedInstallmentValues.some(
+        (
+          amount
+        ) =>
+          !Number.isFinite(
+            amount
+          ) ||
+          amount <=
+            0
+      );
+
+    if (
+      invalidInstallment
+    ) {
+      return {
+        success: false,
+
+        error:
+          "Todas as parcelas precisam possuir um valor maior que zero.",
+      };
+    }
+
+    const installmentsTotal =
+      roundMoney(
+        validatedInstallmentValues.reduce(
+          (
+            total,
+            amount
+          ) =>
+            total +
+            amount,
+          0
+        )
+      );
+
+    if (
+      Math.abs(
+        installmentsTotal -
+          roundMoney(
+            input.value
+          )
+      ) >=
+      0.01
+    ) {
+      return {
+        success: false,
+
+        error:
+          "A soma das parcelas precisa ser igual ao valor do contrato.",
+      };
+    }
+  } else {
+    /*
+     * Compatibilidade com chamadas
+     * que ainda não enviem os valores
+     * individuais das parcelas.
+     */
+
+    validatedInstallmentValues =
+      distributeAmount(
+        input.value,
+        input.installments
+      );
   }
 
   /*
@@ -226,8 +338,10 @@ export async function createContract(
    */
 
   const {
-    data: company,
-    error: companyError,
+    data:
+      company,
+    error:
+      companyError,
   } =
     await supabase
       .from(
@@ -251,6 +365,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Empresa inválida ou inativa.",
     };
@@ -263,8 +378,10 @@ export async function createContract(
    */
 
   const {
-    data: client,
-    error: clientError,
+    data:
+      client,
+    error:
+      clientError,
   } =
     await supabase
       .from(
@@ -289,6 +406,7 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
         "Cliente inválido ou inativo.",
     };
@@ -296,14 +414,8 @@ export async function createContract(
 
   /*
    * =====================================================
-   * RESPONSÁVEL / COMISSÃO
+   * CONFIGURAÇÃO PADRÃO DE COMISSÃO
    * =====================================================
-   *
-   * O responsável é o usuário
-   * autenticado.
-   *
-   * O percentual vem da
-   * seller_settings da empresa.
    */
 
   const {
@@ -317,9 +429,6 @@ export async function createContract(
         "seller_settings"
       )
       .select(`
-        user_id,
-        company_id,
-        active,
         commission_percentage
       `)
       .eq(
@@ -336,30 +445,151 @@ export async function createContract(
       )
       .maybeSingle();
 
-  /*
-   * Para criar contrato com comissão,
-   * o usuário precisa estar configurado
-   * como vendedor/responsável naquela
-   * empresa.
-   */
-
   if (
     responsibleSettingError ||
     !responsibleSetting
   ) {
     return {
       success: false,
+
       error:
         "Seu usuário não está configurado para receber comissão nesta empresa.",
     };
   }
 
-  const commissionPercentage =
+  const sellerDefaultPercentage =
     Number(
       responsibleSetting
         .commission_percentage ??
         0
     );
+
+  if (
+    !Number.isFinite(
+      sellerDefaultPercentage
+    ) ||
+    sellerDefaultPercentage <
+      0 ||
+    sellerDefaultPercentage >
+      100
+  ) {
+    return {
+      success: false,
+
+      error:
+        "O percentual padrão de comissão do usuário é inválido.",
+    };
+  }
+
+  /*
+   * =====================================================
+   * PRODUTO / COMISSÃO
+   * =====================================================
+   *
+   * REGRA:
+   *
+   * Sem produto
+   * → comissão padrão do vendedor.
+   *
+   * Produto com NULL
+   * → comissão padrão do vendedor.
+   *
+   * Produto com 0
+   * → não gera comissão principal.
+   *
+   * Produto com percentual
+   * → usa percentual do produto.
+   */
+
+  let validatedProductId:
+    string | null =
+    null;
+
+  let productName:
+    string | null =
+    null;
+
+  let commissionPercentage =
+    sellerDefaultPercentage;
+
+  if (
+    input.productId
+  ) {
+    const {
+      data:
+        product,
+      error:
+        productError,
+    } =
+      await supabase
+        .from(
+          "products"
+        )
+        .select(`
+          id,
+          company_id,
+          name,
+          commission_percentage,
+          active
+        `)
+        .eq(
+          "id",
+          input.productId
+        )
+        .eq(
+          "company_id",
+          input.companyId
+        )
+        .maybeSingle();
+
+    if (
+      productError ||
+      !product ||
+      !product.active
+    ) {
+      return {
+        success: false,
+
+        error:
+          "Produto ou serviço inválido.",
+      };
+    }
+
+    validatedProductId =
+      product.id;
+
+    productName =
+      product.name;
+
+    if (
+      product
+        .commission_percentage !==
+      null
+    ) {
+      commissionPercentage =
+        Number(
+          product
+            .commission_percentage
+        );
+    }
+  }
+
+  if (
+    !Number.isFinite(
+      commissionPercentage
+    ) ||
+    commissionPercentage <
+      0 ||
+    commissionPercentage >
+      100
+  ) {
+    return {
+      success: false,
+
+      error:
+        "Percentual de comissão inválido.",
+    };
+  }
 
   const commissionAmount =
     roundMoney(
@@ -397,16 +627,18 @@ export async function createContract(
       0
     ) {
       const {
-        data: validTvs,
-        error: tvError,
+        data:
+          validTvs,
+        error:
+          tvError,
       } =
         await supabase
           .from(
             "pottencializa_tvs"
           )
-          .select(
-            "id"
-          )
+          .select(`
+            id
+          `)
           .eq(
             "company_id",
             POTTENCIALIZA_COMPANY_ID
@@ -430,6 +662,7 @@ export async function createContract(
 
         return {
           success: false,
+
           error:
             "Não foi possível validar as TVs selecionadas.",
         };
@@ -452,6 +685,7 @@ export async function createContract(
       ) {
         return {
           success: false,
+
           error:
             "Uma ou mais TVs selecionadas são inválidas ou estão inativas.",
         };
@@ -478,7 +712,6 @@ export async function createContract(
       .select(`
         id,
         name,
-        code,
         active
       `)
       .eq(
@@ -497,8 +730,9 @@ export async function createContract(
   ) {
     return {
       success: false,
+
       error:
-        "Forma de pagamento inválida ou inativa.",
+        "Forma de pagamento inválida.",
     };
   }
 
@@ -506,11 +740,22 @@ export async function createContract(
    * =====================================================
    * CRIAR CONTRATO
    * =====================================================
+   *
+   * IMPORTANTE:
+   *
+   * O contrato NÃO recebe nenhuma
+   * informação sobre edição.
+   *
+   * O vínculo com jornal/caderno/
+   * posição será feito posteriormente,
+   * dentro da edição.
    */
 
   const {
-    data: contract,
-    error: contractError,
+    data:
+      contract,
+    error:
+      contractError,
   } =
     await supabase
       .from(
@@ -524,12 +769,7 @@ export async function createContract(
           input.companyId,
 
         product_id:
-          input.productId ||
-          null,
-
-        /*
-         * Sempre o usuário autenticado.
-         */
+          validatedProductId,
 
         responsible_user_id:
           responsibleUserId,
@@ -571,20 +811,7 @@ export async function createContract(
           null,
       })
       .select(`
-        id,
-        client_id,
-        company_id,
-        product_id,
-        responsible_user_id,
-        title,
-        start_date,
-        end_date,
-        value,
-        billing_frequency,
-        status,
-        payment_method_id,
-        installments,
-        first_due_date
+        id
       `)
       .single();
 
@@ -609,36 +836,45 @@ export async function createContract(
 
   /*
    * =====================================================
-   * COMISSÕES DO CONTRATO
+   * COMISSÕES
    * =====================================================
-   *
-   * Pode gerar:
-   *
-   * 1. comissão principal do usuário;
-   * 2. overrides configurados sobre ele.
    */
 
-  const contractCommissionRows: {
-    contract_id: string;
-    beneficiary_user_id: string;
-    source_user_id: string;
-    percentage: number;
-    base_amount: number;
-    amount: number;
-    amount_released: number;
-    amount_paid: number;
+  const commissionRows: {
+    contract_id:
+      string;
+
+    beneficiary_user_id:
+      string;
+
+    source_user_id:
+      string;
+
+    percentage:
+      number;
+
+    base_amount:
+      number;
+
+    amount:
+      number;
+
+    amount_released:
+      number;
+
+    amount_paid:
+      number;
+
     status:
-      | "pending"
-      | "generated"
-      | "paid"
-      | "cancelled";
-    paid_at: string | null;
-  }[] = [];
+      string;
+
+    paid_at:
+      string | null;
+  }[] =
+    [];
 
   /*
-   * =====================================================
    * COMISSÃO PRINCIPAL
-   * =====================================================
    */
 
   if (
@@ -647,7 +883,7 @@ export async function createContract(
     commissionAmount >
       0
   ) {
-    contractCommissionRows.push({
+    commissionRows.push({
       contract_id:
         contract.id,
 
@@ -682,12 +918,13 @@ export async function createContract(
 
   /*
    * =====================================================
-   * REGRAS DE OVERRIDE
+   * OVERRIDES
    * =====================================================
    */
 
   const {
-    data: overrideRules,
+    data:
+      overrideRules,
     error:
       overrideRulesError,
   } =
@@ -696,11 +933,8 @@ export async function createContract(
         "seller_override_rules"
       )
       .select(`
-        id,
         beneficiary_user_id,
-        source_user_id,
-        percentage,
-        active
+        percentage
       `)
       .eq(
         "company_id",
@@ -719,7 +953,7 @@ export async function createContract(
     overrideRulesError
   ) {
     console.error(
-      "Erro ao buscar regras adicionais de comissão:",
+      "Erro ao carregar overrides:",
       overrideRulesError
     );
 
@@ -732,22 +966,16 @@ export async function createContract(
       success: false,
 
       error:
-        `Não foi possível consultar as regras adicionais de comissão: ${overrideRulesError.message}`,
+        "Não foi possível consultar as regras adicionais de comissão.",
     };
   }
-
-  /*
-   * =====================================================
-   * GERAR OVERRIDES
-   * =====================================================
-   */
 
   for (
     const rule of
       overrideRules ??
       []
   ) {
-    const overridePercentage =
+    const percentage =
       Number(
         rule.percentage ??
           0
@@ -755,60 +983,50 @@ export async function createContract(
 
     if (
       !Number.isFinite(
-        overridePercentage
+        percentage
       ) ||
-      overridePercentage <=
-        0
+      percentage <=
+        0 ||
+      rule
+        .beneficiary_user_id ===
+        responsibleUserId
     ) {
       continue;
     }
 
-    /*
-     * Não permite comissão adicional
-     * para a própria origem.
-     */
-
-    if (
-      rule.beneficiary_user_id ===
-      responsibleUserId
-    ) {
-      continue;
-    }
-
-    const overrideAmount =
+    const amount =
       roundMoney(
         input.value *
           (
-            overridePercentage /
+            percentage /
             100
           )
       );
 
     if (
-      overrideAmount <=
+      amount <=
       0
     ) {
       continue;
     }
 
-    contractCommissionRows.push({
+    commissionRows.push({
       contract_id:
         contract.id,
 
       beneficiary_user_id:
-        rule.beneficiary_user_id,
+        rule
+          .beneficiary_user_id,
 
       source_user_id:
         responsibleUserId,
 
-      percentage:
-        overridePercentage,
+      percentage,
 
       base_amount:
         input.value,
 
-      amount:
-        overrideAmount,
+      amount,
 
       amount_released:
         0,
@@ -826,12 +1044,12 @@ export async function createContract(
 
   /*
    * =====================================================
-   * GRAVAR TODAS AS COMISSÕES
+   * GRAVAR COMISSÕES
    * =====================================================
    */
 
   if (
-    contractCommissionRows.length >
+    commissionRows.length >
     0
   ) {
     const {
@@ -843,22 +1061,16 @@ export async function createContract(
           "contract_commissions"
         )
         .insert(
-          contractCommissionRows
+          commissionRows
         );
 
     if (
       commissionError
     ) {
       console.error(
-        "Erro ao gerar comissões do contrato:",
+        "Erro ao gerar comissões:",
         commissionError
       );
-
-      /*
-       * Ao remover o contrato,
-       * contract_commissions também
-       * será removida por CASCADE.
-       */
 
       await rollbackContract(
         supabase,
@@ -869,7 +1081,7 @@ export async function createContract(
         success: false,
 
         error:
-          `Não foi possível gerar as comissões do contrato: ${commissionError.message}`,
+          commissionError.message,
       };
     }
   }
@@ -925,22 +1137,16 @@ export async function createContract(
         success: false,
 
         error:
-          `Não foi possível vincular as TVs ao contrato: ${tvLinkError.message}`,
+          tvLinkError.message,
       };
     }
   }
 
   /*
    * =====================================================
-   * GERAR PARCELAS
+   * FINANCEIRO / PARCELAS
    * =====================================================
    */
-
-  const installmentValues =
-    distributeAmount(
-      input.value,
-      input.installments
-    );
 
   const today =
     new Date()
@@ -952,13 +1158,15 @@ export async function createContract(
 
   try {
     for (
-      let index = 0;
+      let index =
+        0;
       index <
       input.installments;
       index++
     ) {
       const installmentNumber =
-        index + 1;
+        index +
+        1;
 
       const dueDate =
         addMonthsClamped(
@@ -967,7 +1175,7 @@ export async function createContract(
         );
 
       const amount =
-        installmentValues[
+        validatedInstallmentValues[
           index
         ];
 
@@ -978,9 +1186,7 @@ export async function createContract(
           : "pending";
 
       /*
-       * =====================================
        * FINANCEIRO
-       * =====================================
        */
 
       const {
@@ -1010,8 +1216,7 @@ export async function createContract(
               contract.id,
 
             product_id:
-              input.productId ||
-              null,
+              validatedProductId,
 
             category_id:
               null,
@@ -1076,7 +1281,21 @@ export async function createContract(
               null,
 
             notes:
-              `Parcela ${installmentNumber}/${input.installments} do contrato ${contract.id}. Forma de pagamento: ${paymentMethod.name}.`,
+              [
+                `Parcela ${installmentNumber}/${input.installments} do contrato ${contract.id}.`,
+
+                `Forma de pagamento: ${paymentMethod.name}.`,
+
+                productName
+                  ? `Produto/serviço: ${productName}.`
+                  : null,
+              ]
+                .filter(
+                  Boolean
+                )
+                .join(
+                  " "
+                ),
           })
           .select(`
             id
@@ -1095,9 +1314,7 @@ export async function createContract(
       }
 
       /*
-       * =====================================
        * PARCELA DO CONTRATO
-       * =====================================
        */
 
       const {
@@ -1132,14 +1349,17 @@ export async function createContract(
         );
       }
     }
-  } catch (error) {
+  } catch (
+    error
+  ) {
     console.error(
-      "Erro ao gerar parcelas do contrato:",
+      "Erro ao gerar parcelas:",
       error
     );
 
     /*
-     * Limpa lançamentos financeiros.
+     * Limpa financeiro criado
+     * antes do rollback.
      */
 
     const {
@@ -1165,16 +1385,6 @@ export async function createContract(
       );
     }
 
-    /*
-     * Ao apagar o contrato:
-     *
-     * - parcelas são removidas;
-     * - contract_commissions são removidas;
-     * - contract_tvs são removidas;
-     *
-     * conforme as FKs configuradas.
-     */
-
     await rollbackContract(
       supabase,
       contract.id
@@ -1199,6 +1409,10 @@ export async function createContract(
 
   revalidatePath(
     "/contratos"
+  );
+
+  revalidatePath(
+    `/contratos/${contract.id}`
   );
 
   revalidatePath(
@@ -1237,10 +1451,97 @@ async function rollbackContract(
       typeof createClient
     >
   >,
-  contractId: string
+  contractId:
+    string
 ) {
+  /*
+   * TVs
+   */
+
   const {
-    error,
+    error:
+      tvError,
+  } =
+    await supabase
+      .from(
+        "contract_tvs"
+      )
+      .delete()
+      .eq(
+        "contract_id",
+        contractId
+      );
+
+  if (
+    tvError
+  ) {
+    console.error(
+      "Erro ao limpar TVs no rollback:",
+      tvError
+    );
+  }
+
+  /*
+   * COMISSÕES
+   */
+
+  const {
+    error:
+      commissionError,
+  } =
+    await supabase
+      .from(
+        "contract_commissions"
+      )
+      .delete()
+      .eq(
+        "contract_id",
+        contractId
+      );
+
+  if (
+    commissionError
+  ) {
+    console.error(
+      "Erro ao limpar comissões no rollback:",
+      commissionError
+    );
+  }
+
+  /*
+   * PARCELAS
+   */
+
+  const {
+    error:
+      installmentError,
+  } =
+    await supabase
+      .from(
+        "contract_installments"
+      )
+      .delete()
+      .eq(
+        "contract_id",
+        contractId
+      );
+
+  if (
+    installmentError
+  ) {
+    console.error(
+      "Erro ao limpar parcelas no rollback:",
+      installmentError
+    );
+  }
+
+  /*
+   * CONTRATO
+   */
+
+  const {
+    error:
+      contractError,
   } =
     await supabase
       .from(
@@ -1253,154 +1554,26 @@ async function rollbackContract(
       );
 
   if (
-    error
+    contractError
   ) {
     console.error(
       "Erro ao remover contrato no rollback:",
-      error
+      contractError
     );
   }
 }
 
 /*
  * =====================================================
- * DATAS
- * =====================================================
- */
-
-function parseDateOnly(
-  value: string
-) {
-  const [
-    year,
-    month,
-    day,
-  ] =
-    value
-      .split("-")
-      .map(
-        Number
-      );
-
-  return {
-    year,
-    month,
-    day,
-  };
-}
-
-function formatDateOnly(
-  year: number,
-  month: number,
-  day: number
-) {
-  return [
-    String(
-      year
-    ).padStart(
-      4,
-      "0"
-    ),
-
-    String(
-      month
-    ).padStart(
-      2,
-      "0"
-    ),
-
-    String(
-      day
-    ).padStart(
-      2,
-      "0"
-    ),
-  ].join(
-    "-"
-  );
-}
-
-function getDaysInMonth(
-  year: number,
-  month: number
-) {
-  return new Date(
-    year,
-    month,
-    0
-  ).getDate();
-}
-
-function addMonthsClamped(
-  date: string,
-  monthsToAdd: number
-) {
-  const {
-    year,
-    month,
-    day,
-  } =
-    parseDateOnly(
-      date
-    );
-
-  const baseMonthIndex =
-    month -
-    1;
-
-  const targetMonthIndex =
-    baseMonthIndex +
-    monthsToAdd;
-
-  const targetYear =
-    year +
-    Math.floor(
-      targetMonthIndex /
-        12
-    );
-
-  const normalizedMonthIndex =
-    (
-      (
-        targetMonthIndex %
-        12
-      ) +
-      12
-    ) %
-    12;
-
-  const targetMonth =
-    normalizedMonthIndex +
-    1;
-
-  const lastDay =
-    getDaysInMonth(
-      targetYear,
-      targetMonth
-    );
-
-  const targetDay =
-    Math.min(
-      day,
-      lastDay
-    );
-
-  return formatDateOnly(
-    targetYear,
-    targetMonth,
-    targetDay
-  );
-}
-
-/*
- * =====================================================
- * DISTRIBUIR PARCELAS
+ * DISTRIBUIR VALOR DAS PARCELAS
  * =====================================================
  */
 
 function distributeAmount(
-  total: number,
-  installments: number
+  total:
+    number,
+  installments:
+    number
 ) {
   const totalInCents =
     Math.round(
@@ -1446,12 +1619,13 @@ function distributeAmount(
 
 /*
  * =====================================================
- * DINHEIRO
+ * ARREDONDAMENTO
  * =====================================================
  */
 
 function roundMoney(
-  value: number
+  value:
+    number
 ) {
   return (
     Math.round(

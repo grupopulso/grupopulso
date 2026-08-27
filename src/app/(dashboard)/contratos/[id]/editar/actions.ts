@@ -9,6 +9,7 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -315,6 +316,25 @@ export async function updateContract(
       error:
         "Contrato não encontrado.",
     };
+  }
+
+  /*
+   * Escopo de empresa: o usuário precisa ter acesso à empresa
+   * atual do contrato (impede editar contrato de outra empresa
+   * trocando o id) e, se estiver movendo o contrato para outra
+   * empresa, também à empresa de destino.
+   */
+  await requireCompanyAccess(
+    currentContract.company_id
+  );
+
+  if (
+    input.companyId !==
+    currentContract.company_id
+  ) {
+    await requireCompanyAccess(
+      input.companyId
+    );
   }
 
   /*

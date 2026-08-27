@@ -4,12 +4,38 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
+import {
+  requireCompanyAccess,
+  requireModulePermission,
+} from "@/app/lib/permissions";
 
 export async function updateDriver(
   driverId: string,
   formData: FormData
 ) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
   const supabase = await createClient();
+
+  const { data: existingDriver } =
+    await supabase
+      .from("delivery_drivers")
+      .select("company_id")
+      .eq("id", driverId)
+      .maybeSingle();
+
+  if (!existingDriver) {
+    redirect(
+      `/rotas/entregadores/${driverId}?error=salvar`
+    );
+  }
+
+  await requireCompanyAccess(
+    existingDriver.company_id
+  );
 
   const name = String(
     formData.get("name") ?? ""
@@ -45,6 +71,13 @@ export async function updateDriver(
       `/rotas/entregadores/${driverId}?error=empresa`
     );
   }
+
+  /*
+   * Garante acesso também à empresa
+   * de destino, caso o usuário esteja
+   * trocando a empresa do entregador.
+   */
+  await requireCompanyAccess(companyId);
 
   const { error } = await supabase
     .from("delivery_drivers")
@@ -85,7 +118,30 @@ export async function updateDriver(
 export async function deleteDriver(
   driverId: string
 ) {
+  await requireModulePermission(
+    "routes",
+    "delete"
+  );
+
   const supabase = await createClient();
+
+  const { data: existingDriver } =
+    await supabase
+      .from("delivery_drivers")
+      .select("company_id")
+      .eq("id", driverId)
+      .maybeSingle();
+
+  if (!existingDriver) {
+    return {
+      success: false,
+      message: "Entregador não encontrado.",
+    };
+  }
+
+  await requireCompanyAccess(
+    existingDriver.company_id
+  );
 
   /*
    * As rotas não serão excluídas.

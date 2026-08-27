@@ -17,6 +17,13 @@ import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
+import {
+  calculateEntryOpenAmount,
+  calculateEntryTotal,
+  FINANCIAL_ENTRY_STATUS_LABELS,
+  FINANCIAL_ENTRY_STATUS_STYLES,
+  getFinancialEntryStatus,
+} from "@/app/lib/financial-entry-status";
 
 type Company = {
   id: string;
@@ -34,12 +41,26 @@ type Supplier = {
   name: string;
 };
 
-export default async function FinanceiroPage() {
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+type PageProps = {
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+  }>;
+};
+
+export default async function FinanceiroPage({
+  searchParams,
+}: PageProps) {
  const access =
   await requireModulePermission(
     "financial",
     "view"
   );
+
+  const params =
+    await searchParams;
 
   const supabase = await createClient();
 
@@ -68,6 +89,22 @@ export default async function FinanceiroPage() {
 
   const monthEndString =
     formatDateForDatabase(monthEnd);
+
+  const periodStartString =
+    params.from &&
+    DATE_ONLY_PATTERN.test(
+      params.from
+    )
+      ? params.from
+      : monthStartString;
+
+  const periodEndString =
+    params.to &&
+    DATE_ONLY_PATTERN.test(
+      params.to
+    )
+      ? params.to
+      : monthEndString;
 
   // =========================================
   // CONSULTA COM FILTRO GLOBAL DE EMPRESA
@@ -169,46 +206,11 @@ export default async function FinanceiroPage() {
   // =========================================
 
   const entries =
-    entriesData?.map((entry) => {
-      const total =
-        calculateTotal(entry);
-
-      let calculatedStatus =
-        entry.status;
-
-      if (
-        entry.status !== "cancelled"
-      ) {
-        if (
-          Number(entry.amount_paid) >=
-            total &&
-          total > 0
-        ) {
-          calculatedStatus =
-            "paid";
-        } else if (
-          Number(entry.amount_paid) >
-          0
-        ) {
-          calculatedStatus =
-            "partial";
-        } else if (
-          entry.due_date <
-          todayString
-        ) {
-          calculatedStatus =
-            "overdue";
-        } else {
-          calculatedStatus =
-            "pending";
-        }
-      }
-
-      return {
-        ...entry,
-        calculatedStatus,
-      };
-    }) ?? [];
+    entriesData?.map((entry) => ({
+      ...entry,
+      calculatedStatus:
+        getFinancialEntryStatus(entry),
+    })) ?? [];
 
   // =========================================
   // MOVIMENTAÇÃO DO MÊS
@@ -218,9 +220,9 @@ export default async function FinanceiroPage() {
     entries.filter(
       (entry) =>
         entry.due_date >=
-          monthStartString &&
+          periodStartString &&
         entry.due_date <=
-          monthEndString &&
+          periodEndString &&
         entry.calculatedStatus !==
           "cancelled"
     );
@@ -235,7 +237,7 @@ export default async function FinanceiroPage() {
       .reduce(
         (total, entry) =>
           total +
-          calculateTotal(
+          calculateEntryTotal(
             entry
           ),
         0
@@ -251,7 +253,7 @@ export default async function FinanceiroPage() {
       .reduce(
         (total, entry) =>
           total +
-          calculateTotal(
+          calculateEntryTotal(
             entry
           ),
         0
@@ -318,7 +320,7 @@ export default async function FinanceiroPage() {
       .reduce(
         (total, entry) =>
           total +
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
         0
@@ -345,7 +347,7 @@ export default async function FinanceiroPage() {
       .reduce(
         (total, entry) =>
           total +
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
         0
@@ -367,7 +369,7 @@ export default async function FinanceiroPage() {
       .reduce(
         (total, entry) =>
           total +
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
         0
@@ -385,7 +387,7 @@ export default async function FinanceiroPage() {
       .reduce(
         (total, entry) =>
           total +
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
         0
@@ -454,12 +456,55 @@ export default async function FinanceiroPage() {
           </div>
         </div>
 
+        {/* FILTRO DE PERÍODO */}
+
+        <form
+          method="GET"
+          className="mt-5 flex flex-wrap items-end gap-3"
+        >
+          <FilterField label="De">
+            <input
+              name="from"
+              type="date"
+              defaultValue={
+                periodStartString
+              }
+              className="input"
+            />
+          </FilterField>
+
+          <FilterField label="Até">
+            <input
+              name="to"
+              type="date"
+              defaultValue={
+                periodEndString
+              }
+              className="input"
+            />
+          </FilterField>
+
+          <button
+            type="submit"
+            className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            Filtrar
+          </button>
+
+          <Link
+            href="/financeiro"
+            className="inline-flex h-11 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            Este mês
+          </Link>
+        </form>
+
         {/* RESULTADO PRINCIPAL */}
 
         <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             icon={TrendingUp}
-            label="Receitas do mês"
+            label="Receitas no período"
             value={formatCurrency(
               monthIncome
             )}
@@ -469,7 +514,7 @@ export default async function FinanceiroPage() {
 
           <MetricCard
             icon={TrendingDown}
-            label="Despesas do mês"
+            label="Despesas no período"
             value={formatCurrency(
               monthExpenses
             )}
@@ -479,7 +524,7 @@ export default async function FinanceiroPage() {
 
           <MetricCard
             icon={CircleDollarSign}
-            label="Resultado do mês"
+            label="Resultado no período"
             value={formatCurrency(
               monthResult
             )}
@@ -616,6 +661,11 @@ export default async function FinanceiroPage() {
           <FinanceShortcut
             href="/financeiro/fluxo"
             label="Fluxo de caixa"
+          />
+
+          <FinanceShortcut
+            href="/financeiro/socios"
+            label="Sócios"
           />
 
           <FinanceShortcut
@@ -770,7 +820,7 @@ export default async function FinanceiroPage() {
                               ? "+"
                               : "-"}{" "}
                             {formatCurrency(
-                              calculateTotal(
+                              calculateEntryTotal(
                                 entry
                               )
                             )}
@@ -861,7 +911,7 @@ export default async function FinanceiroPage() {
                           ? "+"
                           : "-"}{" "}
                         {formatCurrency(
-                          calculateOpenAmount(
+                          calculateEntryOpenAmount(
                             entry
                           )
                         )}
@@ -881,6 +931,24 @@ export default async function FinanceiroPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label>
+      <span className="mb-1.5 block text-xs font-medium text-slate-500">
+        {label}
+      </span>
+
+      {children}
+    </label>
   );
 }
 
@@ -1008,83 +1076,14 @@ function TableHeader({
 function FinancialStatusBadge({
   status,
 }: {
-  status: string;
+  status: ReturnType<typeof getFinancialEntryStatus>;
 }) {
-  const styles: Record<
-    string,
-    string
-  > = {
-    pending:
-      "bg-amber-50 text-amber-700",
-
-    overdue:
-      "bg-red-50 text-red-700",
-
-    partial:
-      "bg-blue-50 text-blue-700",
-
-    paid:
-      "bg-emerald-50 text-emerald-700",
-
-    cancelled:
-      "bg-slate-100 text-slate-500",
-  };
-
-  const labels: Record<
-    string,
-    string
-  > = {
-    pending: "A vencer",
-    overdue: "Vencido",
-    partial: "Parcial",
-    paid: "Pago",
-    cancelled: "Cancelado",
-  };
-
   return (
     <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
-        styles[status] ??
-        styles.pending
-      }`}
+      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${FINANCIAL_ENTRY_STATUS_STYLES[status]}`}
     >
-      {labels[status] ??
-        status}
+      {FINANCIAL_ENTRY_STATUS_LABELS[status]}
     </span>
-  );
-}
-
-function calculateTotal(
-  entry: {
-    amount: number | string;
-    interest: number | string;
-    fine: number | string;
-    discount: number | string;
-  }
-) {
-  return (
-    Number(entry.amount) +
-    Number(entry.interest) +
-    Number(entry.fine) -
-    Number(entry.discount)
-  );
-}
-
-function calculateOpenAmount(
-  entry: {
-    amount: number | string;
-    amount_paid: number | string;
-    interest: number | string;
-    fine: number | string;
-    discount: number | string;
-  }
-) {
-  return Math.max(
-    calculateTotal(entry) -
-      Number(
-        entry.amount_paid
-      ),
-    0
   );
 }
 

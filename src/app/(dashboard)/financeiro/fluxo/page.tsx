@@ -9,6 +9,14 @@ import {
 
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
+import {
+  requireModulePermission,
+} from "@/app/lib/permissions";
+import {
+  calculateEntryOpenAmount,
+  calculateEntryTotal,
+  getFinancialEntryStatus,
+} from "@/app/lib/financial-entry-status";
 
 type SearchParams = Promise<{
   start?: string;
@@ -83,6 +91,12 @@ type Transaction = {
 export default async function FluxoCaixaPage({
   searchParams,
 }: PageProps) {
+  const access =
+    await requireModulePermission(
+      "financial",
+      "view"
+    );
+
   const params =
     await searchParams;
 
@@ -280,11 +294,29 @@ export default async function FluxoCaixaPage({
 
   const filteredAccounts =
     accounts.filter(
-      (account) =>
-        !selectedCompanyId ||
-        !account.company_id ||
-        account.company_id ===
-          selectedCompanyId
+      (account) => {
+        if (selectedCompanyId) {
+          return (
+            !account.company_id ||
+            account.company_id ===
+              selectedCompanyId
+          );
+        }
+
+        if (
+          access.profile.role ===
+          "admin"
+        ) {
+          return true;
+        }
+
+        return (
+          !account.company_id ||
+          access.companyIds.includes(
+            account.company_id
+          )
+        );
+      }
     );
 
   /*
@@ -307,10 +339,19 @@ export default async function FluxoCaixaPage({
           return false;
         }
 
-        if (
-          selectedCompanyId &&
-          entry.company_id !==
+        if (selectedCompanyId) {
+          if (
+            entry.company_id !==
             selectedCompanyId
+          ) {
+            return false;
+          }
+        } else if (
+          access.profile.role !==
+            "admin" &&
+          !access.companyIds.includes(
+            entry.company_id
+          )
         ) {
           return false;
         }
@@ -321,10 +362,25 @@ export default async function FluxoCaixaPage({
 
   const filteredEntries =
     entries.filter(
-      (entry) =>
-        !selectedCompanyId ||
-        entry.company_id ===
-          selectedCompanyId
+      (entry) => {
+        if (selectedCompanyId) {
+          return (
+            entry.company_id ===
+            selectedCompanyId
+          );
+        }
+
+        if (
+          access.profile.role ===
+          "admin"
+        ) {
+          return true;
+        }
+
+        return access.companyIds.includes(
+          entry.company_id
+        );
+      }
     );
 
   // ============================
@@ -431,7 +487,7 @@ export default async function FluxoCaixaPage({
           entry
         ) =>
           total +
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
         0
@@ -454,7 +510,7 @@ export default async function FluxoCaixaPage({
           entry
         ) =>
           total +
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
         0
@@ -1009,7 +1065,7 @@ function createForecastRows(
           "partial",
           "overdue",
         ].includes(
-          calculateStatus(
+          getFinancialEntryStatus(
             entry
           )
         )
@@ -1029,7 +1085,7 @@ function createForecastRows(
           entry.type,
 
         amount:
-          calculateOpenAmount(
+          calculateEntryOpenAmount(
             entry
           ),
 
@@ -1209,74 +1265,6 @@ function FilterField({
       {children}
     </label>
   );
-}
-
-function calculateTotal(
-  entry: Entry
-) {
-  return (
-    Number(entry.amount) +
-    Number(entry.interest) +
-    Number(entry.fine) -
-    Number(entry.discount)
-  );
-}
-
-function calculateOpenAmount(
-  entry: Entry
-) {
-  return Math.max(
-    calculateTotal(entry) -
-      Number(
-        entry.amount_paid
-      ),
-    0
-  );
-}
-
-function calculateStatus(
-  entry: Entry
-) {
-  if (
-    entry.status ===
-    "cancelled"
-  ) {
-    return "cancelled";
-  }
-
-  const total =
-    calculateTotal(entry);
-
-  if (
-    Number(
-      entry.amount_paid
-    ) >= total &&
-    total > 0
-  ) {
-    return "paid";
-  }
-
-  if (
-    Number(
-      entry.amount_paid
-    ) > 0
-  ) {
-    return "partial";
-  }
-
-  const today =
-    new Date()
-      .toISOString()
-      .slice(0, 10);
-
-  if (
-    entry.due_date <
-    today
-  ) {
-    return "overdue";
-  }
-
-  return "pending";
 }
 
 function getFirst<T>(

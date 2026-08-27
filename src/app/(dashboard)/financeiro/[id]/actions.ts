@@ -9,6 +9,7 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
 
@@ -84,8 +85,19 @@ export async function registerFinancialTransaction(
   }
 
   /*
+   * Garante que o usuário só possa registrar uma
+   * movimentação para lançamentos de empresas às quais
+   * ele tem acesso (permissão "financial.edit" sozinha
+   * não bastava — permitia baixar lançamento de qualquer
+   * empresa só sabendo o id).
+   */
+  await requireCompanyAccess(
+    entry.company_id
+  );
+
+  /*
    * =====================================================
-   * VALIDAÇÕES BÁSICAS
+   * VALIDAÇÕES
    * =====================================================
    */
 
@@ -119,7 +131,8 @@ export async function registerFinancialTransaction(
     !Number.isFinite(
       input.amount
     ) ||
-    input.amount <= 0 ||
+    input.amount <=
+      0 ||
     input.amount >
       openAmount
   ) {
@@ -262,15 +275,8 @@ export async function registerFinancialTransaction(
 
   /*
    * =====================================================
-   * OPERAÇÃO FINANCEIRA ATÔMICA
+   * BAIXA FINANCEIRA ATÔMICA
    * =====================================================
-   *
-   * PostgreSQL:
-   *
-   * 1. cria financial_transaction;
-   * 2. atualiza amount_paid;
-   * 3. atualiza status;
-   * 4. altera saldo da conta.
    */
 
   const {
@@ -337,14 +343,8 @@ export async function registerFinancialTransaction(
 
   /*
    * =====================================================
-   * VENDA / RECEBIMENTO
+   * COMISSÕES LIBERADAS PELO RECEBIMENTO
    * =====================================================
-   *
-   * Quando um cliente paga uma
-   * parcela de publicidade:
-   *
-   * aumenta amount_released
-   * das comissões vinculadas.
    */
 
   let saleInfo: {
@@ -353,68 +353,972 @@ export async function registerFinancialTransaction(
   } | null =
     null;
 
+  let contractInfo: {
+    contractId: string;
+  } | null =
+    null;
+
   let saleCommissionWarning:
     string | null =
     null;
+
+  let contractCommissionWarning:
+    string | null =
+    null;
+
+  /*
+   * Só recebimentos liberam
+   * comissão.
+   */
 
   if (
     entry.type ===
     "income"
   ) {
-    const syncResult =
+    /*
+     * VENDA DE EDIÇÃO
+     */
+
+    const saleSyncResult =
       await syncSaleCommissions(
+        supabase,
+        entryId,
+        input.date
+      );
+
+    if (
+      saleSyncResult.saleId &&
+      saleSyncResult.editionId
+    ) {
+      saleInfo = {
+        saleId:
+          saleSyncResult.saleId,
+
+        editionId:
+          saleSyncResult.editionId,
+      };
+    }
+
+    if (
+      !saleSyncResult.success
+    ) {
+      console.error(
+        "Recebimento registrado, mas houve erro ao atualizar comissão da venda:",
+        saleSyncResult.message
+      );
+
+      saleCommissionWarning =
+        saleSyncResult.message ??
+        "Não foi possível atualizar as comissões da venda.";
+    }
+
+    /*
+     * CONTRATO
+     */
+
+    const contractSyncResult =
+      await syncContractCommissions(
+        supabase,
+        entryId,
+        input.date
+      );
+
+    if (
+      contractSyncResult.contractId
+    ) {
+      contractInfo = {
+        contractId:
+          contractSyncResult.contractId,
+      };
+    }
+
+    if (
+      !contractSyncResult.success
+    ) {
+      console.error(
+        "Recebimento registrado, mas houve erro ao atualizar comissão do contrato:",
+        contractSyncResult.message
+      );
+
+      contractCommissionWarning =
+        contractSyncResult.message ??
+        "Não foi possível atualizar as comissões do contrato.";
+    }
+  }
+
+  /*
+   * =====================================================
+   * PAGAMENTO DE UMA COMISSÃO
+   * =====================================================
+   *
+   * Quando a despesa automática
+   * da comissão for efetivamente
+   * paga, atualizamos amount_paid.
+   */
+
+  let commissionPaymentInfo: {
+    commissionId: string;
+
+    originType?:
+      | "sale"
+      | "contract";
+
+    saleId?: string;
+
+    editionId?: string;
+
+    contractId?: string;
+  } | null =
+    null;
+
+  let commissionPaymentWarning:
+    string | null =
+    null;
+
+  if (
+    entry.type ===
+    "expense"
+  ) {
+    const paymentSyncResult =
+      await syncCommissionPayment(
         supabase,
         entryId
       );
 
     if (
-      syncResult.saleId &&
-      syncResult.editionId
+      paymentSyncResult.commissionId
     ) {
-      saleInfo = {
+      commissionPaymentInfo = {
+        commissionId:
+          paymentSyncResult.commissionId,
+
+        originType:
+          paymentSyncResult.originType,
+
         saleId:
-          syncResult.saleId,
+          paymentSyncResult.saleId,
 
         editionId:
-          syncResult.editionId,
+          paymentSyncResult.editionId,
+
+        contractId:
+          paymentSyncResult.contractId,
       };
     }
 
     if (
-      !syncResult.success
+      !paymentSyncResult.success
     ) {
-      /*
-       * A baixa financeira já
-       * aconteceu.
-       *
-       * Portanto NÃO retornamos
-       * success:false.
-       */
-
       console.error(
-        "Recebimento registrado, mas houve erro ao atualizar comissões:",
-        syncResult.message
+        "Pagamento registrado, mas houve erro ao atualizar comissão:",
+        paymentSyncResult.message
       );
 
-      saleCommissionWarning =
-        syncResult.message ??
-        "Não foi possível atualizar as comissões da venda.";
+      commissionPaymentWarning =
+        paymentSyncResult.message ??
+        "Não foi possível atualizar o pagamento da comissão.";
     }
   }
+
   /*
+   * =====================================================
+   * AUDITORIA
+   * =====================================================
+   */
+
+  await createAuditLog({
+    module:
+      "financial",
+
+    action:
+      entry.type ===
+      "income"
+        ? "receipt"
+        : "payment",
+
+    entityType:
+      "financial_entry",
+
+    entityId:
+      entryId,
+
+    description:
+      entry.type ===
+      "income"
+        ? `Recebimento de ${formatCurrency(
+            input.amount
+          )} registrado em ${entry.description}.`
+        : `Pagamento de ${formatCurrency(
+            input.amount
+          )} registrado em ${entry.description}.`,
+
+    oldData: {
+      amount_paid:
+        currentPaid,
+
+      status:
+        entry.status,
+
+      account_balance:
+        Number(
+          account.current_balance
+        ),
+    },
+
+    newData: {
+      amount_paid:
+        Number(
+          result.new_amount_paid
+        ),
+
+      status:
+        result.new_status,
+
+      financial_account_id:
+        account.id,
+
+      financial_account_name:
+        account.name,
+
+      account_balance:
+        Number(
+          result.new_account_balance
+        ),
+
+      payment_method:
+        method.code,
+
+      payment_method_name:
+        method.name,
+
+      transaction_date:
+        input.date,
+
+      amount:
+        input.amount,
+
+      sale_commissions_updated:
+        Boolean(
+          saleInfo
+        ),
+
+      contract_commissions_updated:
+        Boolean(
+          contractInfo
+        ),
+
+      commission_payment_updated:
+        Boolean(
+          commissionPaymentInfo
+        ),
+    },
+  });
+
+  /*
+   * =====================================================
+   * REVALIDAÇÕES
+   * =====================================================
+   */
+
+  revalidatePath(
+    `/financeiro/${entryId}`
+  );
+
+  revalidatePath(
+    "/financeiro"
+  );
+
+  revalidatePath(
+    "/financeiro/receber"
+  );
+
+  revalidatePath(
+    "/financeiro/pagar"
+  );
+
+  revalidatePath(
+    "/financeiro/recebimentos"
+  );
+
+  revalidatePath(
+    "/financeiro/pagamentos"
+  );
+
+  revalidatePath(
+    "/financeiro/configuracoes/contas"
+  );
+
+  revalidatePath(
+    "/comissoes"
+  );
+
+  /*
+   * VENDA
+   */
+
+  if (
+    saleInfo
+  ) {
+    revalidatePath(
+      "/edicoes"
+    );
+
+    revalidatePath(
+      `/edicoes/${saleInfo.editionId}`
+    );
+
+    revalidatePath(
+      `/edicoes/${saleInfo.editionId}/vendas/${saleInfo.saleId}`
+    );
+  }
+
+  /*
+   * CONTRATO
+   */
+
+  if (
+    contractInfo
+  ) {
+    revalidatePath(
+      "/contratos"
+    );
+
+    revalidatePath(
+      `/contratos/${contractInfo.contractId}`
+    );
+  }
+
+  /*
+   * PAGAMENTO DE COMISSÃO
+   */
+
+  if (
+    commissionPaymentInfo
+      ?.saleId &&
+    commissionPaymentInfo
+      ?.editionId
+  ) {
+    revalidatePath(
+      `/edicoes/${commissionPaymentInfo.editionId}`
+    );
+
+    revalidatePath(
+      `/edicoes/${commissionPaymentInfo.editionId}/vendas/${commissionPaymentInfo.saleId}`
+    );
+  }
+
+  if (
+    commissionPaymentInfo
+      ?.contractId
+  ) {
+    revalidatePath(
+      "/contratos"
+    );
+
+    revalidatePath(
+      `/contratos/${commissionPaymentInfo.contractId}`
+    );
+  }
+
+  const warning =
+    saleCommissionWarning ??
+    contractCommissionWarning ??
+    commissionPaymentWarning ??
+    null;
+
+  return {
+    success: true,
+
+    newAmountPaid:
+      Number(
+        result.new_amount_paid
+      ),
+
+    newStatus:
+      result.new_status,
+
+    newAccountBalance:
+      Number(
+        result.new_account_balance
+      ),
+
+    commissionWarning:
+      warning,
+  };
+}
+
+/*
  * =====================================================
- * COMISSÕES DE CONTRATO
+ * SINCRONIZAR COMISSÕES DA VENDA
  * =====================================================
  */
 
-let contractCommissionInfo: {
-  contractId: string;
-} | null =
-  null;
+async function syncSaleCommissions(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  financialEntryId: string,
+  receiptDate: string
+): Promise<{
+  success: boolean;
+  message?: string;
+  saleId?: string;
+  editionId?: string;
+}> {
+  /*
+   * =====================================================
+   * LOCALIZAR PARCELA
+   * =====================================================
+   */
 
-let contractCommissionWarning:
-  string | null =
-  null;
+  const {
+    data: installmentLink,
+    error:
+      installmentLinkError,
+  } =
+    await supabase
+      .from(
+        "edition_sale_installments"
+      )
+      .select(`
+        id,
+        sale_id,
+        financial_entry_id
+      `)
+      .eq(
+        "financial_entry_id",
+        financialEntryId
+      )
+      .maybeSingle();
+
+  if (
+    installmentLinkError
+  ) {
+    return {
+      success: false,
+      message:
+        "Não foi possível identificar se o recebimento pertence a uma venda de publicidade.",
+    };
+  }
+
+  /*
+   * Não é parcela de venda.
+   */
+
+  if (
+    !installmentLink
+  ) {
+    return {
+      success: true,
+    };
+  }
+
+  /*
+   * =====================================================
+   * VENDA
+   * =====================================================
+   */
+
+  const {
+    data: sale,
+    error: saleError,
+  } =
+    await supabase
+      .from(
+        "edition_sales"
+      )
+      .select(`
+        id,
+        edition_id,
+        company_id,
+        total_amount,
+        status
+      `)
+      .eq(
+        "id",
+        installmentLink.sale_id
+      )
+      .maybeSingle();
+
+  if (
+    saleError ||
+    !sale
+  ) {
+    return {
+      success: false,
+      message:
+        "A venda vinculada ao recebimento não foi encontrada.",
+    };
+  }
+
+  const baseResult = {
+    saleId:
+      sale.id,
+
+    editionId:
+      sale.edition_id,
+  };
+
+  if (
+    sale.status ===
+    "cancelled"
+  ) {
+    return {
+      success: true,
+      ...baseResult,
+    };
+  }
+
+  const saleTotal =
+    Number(
+      sale.total_amount
+    );
+
+  if (
+    !Number.isFinite(
+      saleTotal
+    ) ||
+    saleTotal <=
+      0
+  ) {
+    return {
+      success: false,
+
+      message:
+        "A venda possui valor total inválido.",
+
+      ...baseResult,
+    };
+  }
+
+  /*
+   * =====================================================
+   * TODAS AS PARCELAS DA VENDA
+   * =====================================================
+   */
+
+  const {
+    data: installments,
+    error:
+      installmentsError,
+  } =
+    await supabase
+      .from(
+        "edition_sale_installments"
+      )
+      .select(`
+        id,
+        installment_number,
+        amount,
+        financial_entry_id
+      `)
+      .eq(
+        "sale_id",
+        sale.id
+      );
+
+  if (
+    installmentsError
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível consultar as parcelas da venda.",
+
+      ...baseResult,
+    };
+  }
+
+  if (
+    !installments?.length
+  ) {
+    return {
+      success: false,
+
+      message:
+        "A venda não possui parcelas financeiras vinculadas.",
+
+      ...baseResult,
+    };
+  }
+
+  const financialEntryIds =
+    installments
+      .map(
+        (
+          installment
+        ) =>
+          installment
+            .financial_entry_id
+      )
+      .filter(
+        (
+          value
+        ): value is string =>
+          Boolean(
+            value
+          )
+      );
+
+  /*
+   * =====================================================
+   * LANÇAMENTOS
+   * =====================================================
+   */
+
+  const {
+    data: financialEntries,
+    error:
+      financialEntriesError,
+  } =
+    await supabase
+      .from(
+        "financial_entries"
+      )
+      .select(`
+        id,
+        amount,
+        amount_paid,
+        interest,
+        fine,
+        discount,
+        status
+      `)
+      .in(
+        "id",
+        financialEntryIds
+      );
+
+  if (
+    financialEntriesError
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível calcular quanto da venda já foi recebido.",
+
+      ...baseResult,
+    };
+  }
+
+  const entriesById =
+    new Map(
+      (
+        financialEntries ??
+        []
+      ).map(
+        (
+          financialEntry
+        ) => [
+          financialEntry.id,
+          financialEntry,
+        ]
+      )
+    );
+
+  /*
+   * =====================================================
+   * PRINCIPAL RECEBIDO
+   * =====================================================
+   *
+   * Juros e multa não geram comissão.
+   */
+
+  const receivedPrincipal =
+    roundMoney(
+      installments.reduce(
+        (
+          totalReceived,
+          installment
+        ) => {
+          if (
+            !installment
+              .financial_entry_id
+          ) {
+            return totalReceived;
+          }
+
+          const financialEntry =
+            entriesById.get(
+              installment
+                .financial_entry_id
+            );
+
+          if (
+            !financialEntry
+          ) {
+            return totalReceived;
+          }
+
+          const installmentAmount =
+            Number(
+              installment.amount ??
+                0
+            );
+
+          const amountPaid =
+            Number(
+              financialEntry.amount_paid ??
+                0
+            );
+
+          const principalReceived =
+            Math.max(
+              0,
+              Math.min(
+                amountPaid,
+                installmentAmount
+              )
+            );
+
+          return (
+            totalReceived +
+            principalReceived
+          );
+        },
+        0
+      )
+    );
+
+  /*
+   * =====================================================
+   * PROPORÇÃO RECEBIDA
+   * =====================================================
+   */
+
+  const receivedRatio =
+    Math.max(
+      0,
+      Math.min(
+        receivedPrincipal /
+          saleTotal,
+        1
+      )
+    );
+
+  /*
+   * =====================================================
+   * COMISSÕES
+   * =====================================================
+   */
+
+  const {
+    data: commissions,
+    error:
+      commissionsError,
+  } =
+    await supabase
+      .from(
+        "sale_commissions"
+      )
+      .select(`
+        id,
+        beneficiary_user_id,
+        commission_type,
+        percentage,
+        base_amount,
+        amount,
+        amount_released,
+        amount_paid,
+        paid_at,
+        status
+      `)
+      .eq(
+        "sale_id",
+        sale.id
+      );
+
+  if (
+    commissionsError
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível consultar as comissões da venda.",
+
+      ...baseResult,
+    };
+  }
+
+  /*
+   * =====================================================
+   * ATUALIZAR E GERAR PAGAMENTO
+   * =====================================================
+   */
+
+  for (
+    const commission of
+      commissions ??
+      []
+  ) {
+    if (
+      commission.status ===
+      "cancelled"
+    ) {
+      continue;
+    }
+
+    const totalCommission =
+      Number(
+        commission.amount ??
+          0
+      );
+
+    if (
+      !Number.isFinite(
+        totalCommission
+      ) ||
+      totalCommission <
+        0
+    ) {
+      continue;
+    }
+
+    const releasedAmount =
+      receivedRatio >=
+      1
+        ? totalCommission
+        : roundMoney(
+            totalCommission *
+              receivedRatio
+          );
+
+    const alreadyPaid =
+      Math.max(
+        0,
+        Number(
+          commission
+            .amount_paid ??
+            0
+        )
+      );
+
+    let commissionStatus:
+      | "pending"
+      | "generated"
+      | "paid" =
+      "pending";
+
+    if (
+      totalCommission >
+        0 &&
+      alreadyPaid >=
+        totalCommission
+    ) {
+      commissionStatus =
+        "paid";
+    } else if (
+      releasedAmount >
+      0
+    ) {
+      commissionStatus =
+        "generated";
+    }
+
+    /*
+     * Atualiza quanto está liberado.
+     */
+
+    const {
+      error:
+        updateError,
+    } =
+      await supabase
+        .from(
+          "sale_commissions"
+        )
+        .update({
+          amount_released:
+            releasedAmount,
+
+          status:
+            commissionStatus,
+
+          paid_at:
+            commissionStatus ===
+            "paid"
+              ? commission
+                  .paid_at ??
+                new Date()
+                  .toISOString()
+              : null,
+
+          updated_at:
+            new Date()
+              .toISOString(),
+        })
+        .eq(
+          "id",
+          commission.id
+        );
+
+    if (
+      updateError
+    ) {
+      console.error(
+        "Erro ao atualizar comissão da venda:",
+        updateError
+      );
+
+      return {
+        success: false,
+
+        message:
+          "O recebimento foi registrado, mas uma comissão da venda não pôde ser atualizada.",
+
+        ...baseResult,
+      };
+    }
+
+    /*
+     * Cria automaticamente a
+     * conta a pagar do novo valor
+     * liberado.
+     */
+
+    const generationResult =
+      await generateAutomaticSaleCommissionPayment(
+        supabase,
+        {
+          commissionId:
+            commission.id,
+
+          companyId:
+            sale.company_id,
+
+          sourceFinancialEntryId:
+            financialEntryId,
+
+          releasedAmount,
+
+          receiptDate,
+        }
+      );
+
+    if (
+      !generationResult.success
+    ) {
+      return {
+        success: false,
+
+        message:
+          generationResult.message,
+
+        ...baseResult,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    ...baseResult,
+  };
+}
 
 /*
  * =====================================================
@@ -428,7 +1332,8 @@ async function syncContractCommissions(
       typeof createClient
     >
   >,
-  financialEntryId: string
+  financialEntryId: string,
+  receiptDate: string
 ): Promise<{
   success: boolean;
   message?: string;
@@ -441,8 +1346,7 @@ async function syncContractCommissions(
    */
 
   const {
-    data:
-      installmentLink,
+    data: installmentLink,
     error:
       installmentError,
   } =
@@ -466,13 +1370,14 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível identificar se o recebimento pertence a um contrato.",
     };
   }
 
   /*
-   * Não é parcela de contrato.
+   * Lançamento normal.
    */
 
   if (
@@ -500,8 +1405,10 @@ async function syncContractCommissions(
       )
       .select(`
         id,
+        company_id,
         value,
-        status
+        status,
+        title
       `)
       .eq(
         "id",
@@ -515,6 +1422,7 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "Contrato vinculado ao recebimento não encontrado.",
     };
@@ -550,8 +1458,10 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "O contrato possui valor inválido.",
+
       ...baseResult,
     };
   }
@@ -586,8 +1496,10 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível consultar as parcelas do contrato.",
+
       ...baseResult,
     };
   }
@@ -597,8 +1509,10 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "O contrato não possui parcelas financeiras vinculadas.",
+
       ...baseResult,
     };
   }
@@ -626,15 +1540,17 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "As parcelas do contrato não possuem lançamentos financeiros vinculados.",
+
       ...baseResult,
     };
   }
 
   /*
    * =====================================================
-   * LANÇAMENTOS FINANCEIROS
+   * LANÇAMENTOS
    * =====================================================
    */
 
@@ -667,8 +1583,10 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível calcular quanto do contrato já foi recebido.",
+
       ...baseResult,
     };
   }
@@ -692,9 +1610,6 @@ async function syncContractCommissions(
    * =====================================================
    * PRINCIPAL RECEBIDO
    * =====================================================
-   *
-   * Juros e multas não aumentam
-   * a comissão.
    */
 
   const receivedPrincipal =
@@ -787,6 +1702,7 @@ async function syncContractCommissions(
       )
       .select(`
         id,
+        beneficiary_user_id,
         amount,
         amount_released,
         amount_paid,
@@ -803,15 +1719,17 @@ async function syncContractCommissions(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível consultar as comissões do contrato.",
+
       ...baseResult,
     };
   }
 
   /*
    * =====================================================
-   * ATUALIZAR
+   * ATUALIZAR E GERAR PAGAMENTO
    * =====================================================
    */
 
@@ -927,8 +1845,47 @@ async function syncContractCommissions(
 
       return {
         success: false,
+
         message:
           "O recebimento foi registrado, mas a comissão do contrato não pôde ser atualizada.",
+
+        ...baseResult,
+      };
+    }
+
+    /*
+     * Cria conta a pagar
+     * automaticamente.
+     */
+
+    const generationResult =
+      await generateAutomaticContractCommissionPayment(
+        supabase,
+        {
+          commissionId:
+            commission.id,
+
+          companyId:
+            contract.company_id,
+
+          sourceFinancialEntryId:
+            financialEntryId,
+
+          releasedAmount,
+
+          receiptDate,
+        }
+      );
+
+    if (
+      !generationResult.success
+    ) {
+      return {
+        success: false,
+
+        message:
+          generationResult.message,
+
         ...baseResult,
       };
     }
@@ -940,704 +1897,170 @@ async function syncContractCommissions(
   };
 }
 
-if (
-  entry.type ===
-  "income"
-) {
-  const syncResult =
-    await syncContractCommissions(
-      supabase,
-      entryId
-    );
-
-  if (
-    syncResult.contractId
-  ) {
-    contractCommissionInfo = {
-      contractId:
-        syncResult.contractId,
-    };
-  }
-
-  if (
-    !syncResult.success
-  ) {
-    console.error(
-      "Recebimento registrado, mas houve erro ao atualizar comissão do contrato:",
-      syncResult.message
-    );
-
-    contractCommissionWarning =
-      syncResult.message ??
-      "Não foi possível atualizar a comissão do contrato.";
-  }
-}
-
-  /*
-   * =====================================================
-   * PAGAMENTO DE COMISSÃO
-   * =====================================================
-   *
-   * Quando uma despesa vinculada
-   * à comissão é efetivamente paga:
-   *
-   * aumenta amount_paid
-   * da comissão.
-   */
-
- let commissionPaymentInfo: {
-  commissionId: string;
-
-  originType?:
-    | "sale"
-    | "contract";
-
-  saleId?: string;
-
-  editionId?: string;
-
-  contractId?: string;
-} | null =
-  null;
-
-  let commissionPaymentWarning:
-    string | null =
-    null;
-
-  if (
-    entry.type ===
-    "expense"
-  ) {
-    const syncResult =
-      await syncCommissionPayment(
-        supabase,
-        entryId
-      );
-
-    if (
-      syncResult.commissionId
-    ) {
-      commissionPaymentInfo = {
-        commissionId:
-          syncResult.commissionId,
-
-        saleId:
-          syncResult.saleId,
-
-        editionId:
-          syncResult.editionId,
-      };
-    }
-
-    if (
-      !syncResult.success
-    ) {
-      /*
-       * O pagamento financeiro já
-       * aconteceu.
-       *
-       * Não retornamos erro para
-       * evitar uma segunda baixa.
-       */
-
-      console.error(
-        "Pagamento registrado, mas houve erro ao atualizar comissão:",
-        syncResult.message
-      );
-
-      commissionPaymentWarning =
-        syncResult.message ??
-        "Não foi possível atualizar o pagamento da comissão.";
-    }
-  }
-
-  /*
-   * =====================================================
-   * AUDITORIA
-   * =====================================================
-   */
-
-  await createAuditLog({
-    module:
-      "financial",
-
-    action:
-      entry.type ===
-      "income"
-        ? "receipt"
-        : "payment",
-
-    entityType:
-      "financial_entry",
-
-    entityId:
-      entryId,
-
-    description:
-      entry.type ===
-      "income"
-        ? `Recebimento de ${formatCurrency(
-            input.amount
-          )} registrado em ${entry.description}.`
-        : `Pagamento de ${formatCurrency(
-            input.amount
-          )} registrado em ${entry.description}.`,
-
-    oldData: {
-      amount_paid:
-        currentPaid,
-
-      status:
-        entry.status,
-
-      account_balance:
-        Number(
-          account.current_balance
-        ),
-    },
-
-    newData: {
-      amount_paid:
-        Number(
-          result.new_amount_paid
-        ),
-
-      status:
-        result.new_status,
-
-      financial_account_id:
-        account.id,
-
-      financial_account_name:
-        account.name,
-
-      account_balance:
-        Number(
-          result.new_account_balance
-        ),
-
-      payment_method:
-        method.code,
-
-      payment_method_name:
-        method.name,
-
-      transaction_date:
-        input.date,
-
-      amount:
-        input.amount,
-
-      sale_commissions_updated:
-        Boolean(
-          saleInfo
-        ),
-
-      commission_payment_updated:
-        Boolean(
-          commissionPaymentInfo
-        ),
-    },
-  });
-
-  /*
-   * =====================================================
-   * REVALIDAR FINANCEIRO
-   * =====================================================
-   */
-
-if (
-  contractCommissionInfo
-) {
-  revalidatePath(
-    "/contratos"
-  );
-
-  revalidatePath(
-    `/contratos/${contractCommissionInfo.contractId}`
-  );
-}
-  
-  revalidatePath(
-    `/financeiro/${entryId}`
-  );
-
-  revalidatePath(
-    "/financeiro"
-  );
-
-  revalidatePath(
-    "/financeiro/receber"
-  );
-
-  revalidatePath(
-    "/financeiro/pagar"
-  );
-
-  revalidatePath(
-    "/financeiro/recebimentos"
-  );
-
-  revalidatePath(
-    "/financeiro/pagamentos"
-  );
-
-  revalidatePath(
-    "/financeiro/configuracoes/contas"
-  );
-
-  /*
-   * =====================================================
-   * REVALIDAR COMISSÕES
-   * =====================================================
-   */
-
-  revalidatePath(
-    "/comissoes"
-  );
-
-  /*
-   * =====================================================
-   * REVALIDAR VENDA
-   * =====================================================
-   */
-
-  if (
-    saleInfo
-  ) {
-    revalidatePath(
-      "/edicoes"
-    );
-
-    revalidatePath(
-      `/edicoes/${saleInfo.editionId}`
-    );
-
-    revalidatePath(
-      `/edicoes/${saleInfo.editionId}/vendas/${saleInfo.saleId}`
-    );
-  }
-
-  if (
-    commissionPaymentInfo
-      ?.saleId &&
-    commissionPaymentInfo
-      ?.editionId
-  ) {
-    revalidatePath(
-      `/edicoes/${commissionPaymentInfo.editionId}`
-    );
-
-    revalidatePath(
-      `/edicoes/${commissionPaymentInfo.editionId}/vendas/${commissionPaymentInfo.saleId}`
-    );
-
-    if (
-  commissionPaymentInfo
-    ?.contractId
-) {
-  revalidatePath(
-    "/contratos"
-  );
-
-  revalidatePath(
-    `/contratos/${commissionPaymentInfo.contractId}`
-  );
-}
-  }
-
-  const warning =
-  saleCommissionWarning ??
-  contractCommissionWarning ??
-  commissionPaymentWarning ??
-  null;
-
-  return {
-    success: true,
-
-    newAmountPaid:
-      Number(
-        result.new_amount_paid
-      ),
-
-    newStatus:
-      result.new_status,
-
-    newAccountBalance:
-      Number(
-        result.new_account_balance
-      ),
-
-    commissionWarning:
-      warning,
-  };
-}
-
 /*
  * =====================================================
- * SINCRONIZAR COMISSÕES DA VENDA
+ * GERAR PAGAMENTO AUTOMÁTICO
+ * COMISSÃO DE VENDA
  * =====================================================
- *
- * É chamado quando o cliente
- * paga uma conta a receber.
- *
- * Fluxo:
- *
- * financial_entry
- *      ↓
- * edition_sale_installments
- *      ↓
- * edition_sales
- *      ↓
- * total efetivamente recebido
- *      ↓
- * amount_released
  */
 
-async function syncSaleCommissions(
+async function generateAutomaticSaleCommissionPayment(
   supabase: Awaited<
     ReturnType<
       typeof createClient
     >
   >,
-  financialEntryId: string
+  input: {
+    commissionId: string;
+    companyId: string;
+    sourceFinancialEntryId: string;
+    releasedAmount: number;
+    receiptDate: string;
+  }
 ): Promise<{
   success: boolean;
   message?: string;
-  saleId?: string;
-  editionId?: string;
 }> {
   /*
    * =====================================================
-   * LOCALIZAR PARCELA
+   * TOTAL JÁ GERADO
    * =====================================================
    */
 
   const {
-    data: installmentLink,
+    data: generatedPayments,
     error:
-      installmentLinkError,
+      generatedPaymentsError,
   } =
     await supabase
       .from(
-        "edition_sale_installments"
+        "commission_payments"
       )
       .select(`
         id,
-        sale_id,
-        financial_entry_id
-      `)
-      .eq(
-        "financial_entry_id",
-        financialEntryId
-      )
-      .maybeSingle();
-
-  if (
-    installmentLinkError
-  ) {
-    return {
-      success: false,
-      message:
-        "Não foi possível identificar se o recebimento pertence a uma venda de publicidade.",
-    };
-  }
-
-  /*
-   * Lançamento normal.
-   */
-
-  if (
-    !installmentLink
-  ) {
-    return {
-      success: true,
-    };
-  }
-
-  /*
-   * =====================================================
-   * VENDA
-   * =====================================================
-   */
-
-  const {
-    data: sale,
-    error: saleError,
-  } =
-    await supabase
-      .from(
-        "edition_sales"
-      )
-      .select(`
-        id,
-        edition_id,
-        total_amount,
+        financial_entry_id,
+        source_financial_entry_id,
+        amount,
         status
       `)
       .eq(
-        "id",
-        installmentLink.sale_id
+        "commission_id",
+        input.commissionId
       )
-      .maybeSingle();
-
-  if (
-    saleError ||
-    !sale
-  ) {
-    return {
-      success: false,
-      message:
-        "A venda vinculada ao recebimento não foi encontrada.",
-    };
-  }
-
-  const baseResult = {
-    saleId:
-      sale.id,
-
-    editionId:
-      sale.edition_id,
-  };
-
-  if (
-    sale.status ===
-    "cancelled"
-  ) {
-    return {
-      success: true,
-      ...baseResult,
-    };
-  }
-
-  const saleTotal =
-    Number(
-      sale.total_amount
-    );
-
-  if (
-    !Number.isFinite(
-      saleTotal
-    ) ||
-    saleTotal <= 0
-  ) {
-    return {
-      success: false,
-
-      message:
-        "A venda possui valor total inválido.",
-
-      ...baseResult,
-    };
-  }
-
-  /*
-   * =====================================================
-   * PARCELAS DA VENDA
-   * =====================================================
-   */
-
-  const {
-    data: installments,
-    error:
-      installmentsError,
-  } =
-    await supabase
-      .from(
-        "edition_sale_installments"
-      )
-      .select(`
-        id,
-        installment_number,
-        amount,
-        financial_entry_id
-      `)
-      .eq(
-        "sale_id",
-        sale.id
+      .neq(
+        "status",
+        "cancelled"
       );
 
   if (
-    installmentsError
+    generatedPaymentsError
   ) {
     return {
       success: false,
 
       message:
-        "Não foi possível consultar as parcelas da venda.",
-
-      ...baseResult,
+        "Não foi possível calcular quanto da comissão já foi gerado.",
     };
   }
 
-  if (
-    !installments?.length
-  ) {
-    return {
-      success: false,
-
-      message:
-        "A venda não possui parcelas financeiras vinculadas.",
-
-      ...baseResult,
-    };
-  }
-
-  const financialEntryIds =
-    installments.map(
-      (
-        installment
-      ) =>
-        installment
-          .financial_entry_id
-    );
-
-  /*
-   * =====================================================
-   * LANÇAMENTOS DAS PARCELAS
-   * =====================================================
-   */
-
-  const {
-    data:
-      financialEntries,
-    error:
-      financialEntriesError,
-  } =
-    await supabase
-      .from(
-        "financial_entries"
-      )
-      .select(`
-        id,
-        amount,
-        amount_paid,
-        interest,
-        fine,
-        discount,
-        status
-      `)
-      .in(
-        "id",
-        financialEntryIds
-      );
-
-  if (
-    financialEntriesError
-  ) {
-    return {
-      success: false,
-
-      message:
-        "Não foi possível calcular quanto da venda já foi recebido.",
-
-      ...baseResult,
-    };
-  }
-
-  const entriesById =
-    new Map(
-      (
-        financialEntries ??
-        []
-      ).map(
-        (
-          financialEntry
-        ) => [
-          financialEntry.id,
-          financialEntry,
-        ]
-      )
-    );
-
-  /*
-   * =====================================================
-   * PRINCIPAL RECEBIDO
-   * =====================================================
-   *
-   * Comissão não incide sobre:
-   *
-   * - juros;
-   * - multas.
-   *
-   * Cada parcela fica limitada
-   * ao principal original dela.
-   */
-
-  const receivedPrincipal =
+  const alreadyGenerated =
     roundMoney(
-      installments.reduce(
+      (
+        generatedPayments ??
+        []
+      ).reduce(
         (
-          totalReceived,
-          installment
-        ) => {
-          const financialEntry =
-            entriesById.get(
-              installment
-                .financial_entry_id
-            );
+          total,
+          payment
+        ) =>
+          total +
+          Number(
+            payment.amount ??
+              0
+          ),
+        0
+      )
+    );
 
-          if (
-            !financialEntry
-          ) {
-            return totalReceived;
-          }
-
-          const installmentAmount =
-            Number(
-              installment.amount
-            );
-
-          const amountPaid =
-            Number(
-              financialEntry.amount_paid ??
-                0
-            );
-
-          const principalReceived =
-            Math.max(
-              0,
-              Math.min(
-                amountPaid,
-                installmentAmount
-              )
-            );
-
-          return (
-            totalReceived +
-            principalReceived
-          );
-        },
+  const amountToGenerate =
+    roundMoney(
+      Math.max(
+        input.releasedAmount -
+          alreadyGenerated,
         0
       )
     );
 
   /*
-   * =====================================================
-   * PROPORÇÃO RECEBIDA
-   * =====================================================
+   * Nada novo para gerar.
    */
 
-  const receivedRatio =
-    Math.max(
-      0,
-      Math.min(
-        receivedPrincipal /
-          saleTotal,
-        1
-      )
-    );
+  if (
+    amountToGenerate <=
+    0
+  ) {
+    return {
+      success: true,
+    };
+  }
 
   /*
    * =====================================================
-   * COMISSÕES
+   * PROTEÇÃO DO MESMO RECEBIMENTO
    * =====================================================
    */
 
   const {
-    data: commissions,
+    data: existingSourcePayment,
     error:
-      commissionsError,
+      existingSourceError,
+  } =
+    await supabase
+      .from(
+        "commission_payments"
+      )
+      .select(`
+        id
+      `)
+      .eq(
+        "commission_id",
+        input.commissionId
+      )
+      .eq(
+        "source_financial_entry_id",
+        input.sourceFinancialEntryId
+      )
+      .maybeSingle();
+
+  if (
+    existingSourceError
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível verificar a origem da comissão.",
+    };
+  }
+
+  if (
+    existingSourcePayment
+  ) {
+    return {
+      success: true,
+    };
+  }
+
+  /*
+   * =====================================================
+   * COMISSÃO
+   * =====================================================
+   */
+
+  const {
+    data: commission,
+    error:
+      commissionError,
   } =
     await supabase
       .from(
@@ -1645,233 +2068,684 @@ async function syncSaleCommissions(
       )
       .select(`
         id,
+        beneficiary_user_id,
         commission_type,
-        percentage,
-        base_amount,
-        amount,
-        amount_released,
-        amount_paid,
-        paid_at,
-        status
+
+        sale:edition_sales (
+          id,
+          edition_id,
+
+          edition:newspaper_editions (
+            id,
+            name,
+            edition_number
+          )
+        )
       `)
       .eq(
-        "sale_id",
-        sale.id
-      );
+        "id",
+        input.commissionId
+      )
+      .maybeSingle();
 
   if (
-    commissionsError
+    commissionError ||
+    !commission
   ) {
     return {
       success: false,
 
       message:
-        "Não foi possível consultar as comissões da venda.",
+        "Não foi possível localizar a comissão da venda.",
+    };
+  }
 
-      ...baseResult,
+  const sale =
+    getFirst(
+      commission.sale
+    );
+
+  const edition =
+    sale
+      ? getFirst(
+          sale.edition
+        )
+      : null;
+
+  const beneficiaryName =
+    await getBeneficiaryName(
+      supabase,
+      commission.beneficiary_user_id
+    );
+
+  const dueDate =
+    getNextCommissionDueDate(
+      input.receiptDate
+    );
+
+  const description =
+    edition
+      ? `Comissão - ${beneficiaryName} - ${edition.name}`
+      : `Comissão - ${beneficiaryName}`;
+
+  /*
+   * =====================================================
+   * CONTA A PAGAR
+   * =====================================================
+   */
+
+  const {
+    data: financialEntry,
+    error:
+      financialEntryError,
+  } =
+    await supabase
+      .from(
+        "financial_entries"
+      )
+      .insert({
+        company_id:
+          input.companyId,
+
+        type:
+          "expense",
+
+        client_id:
+          null,
+
+        supplier_id:
+          null,
+
+        contract_id:
+          null,
+
+        product_id:
+          null,
+
+        category_id:
+          null,
+
+        cost_center_id:
+          null,
+
+        financial_account_id:
+          null,
+
+        description,
+
+        document_number:
+          null,
+
+        competence_date:
+          input.receiptDate,
+
+        issue_date:
+          today(),
+
+        due_date:
+          dueDate,
+
+        amount:
+          amountToGenerate,
+
+        amount_paid:
+          0,
+
+        interest:
+          0,
+
+        fine:
+          0,
+
+        discount:
+          0,
+
+        status:
+          "pending",
+
+        recurring:
+          false,
+
+        recurrence_frequency:
+          null,
+
+        invoice_issued:
+          false,
+
+        invoice_number:
+          null,
+
+        invoice_issued_at:
+          null,
+
+        charge_sent:
+          false,
+
+        charge_sent_at:
+          null,
+
+        notes:
+          `Comissão gerada automaticamente após recebimento. Origem financeira: ${input.sourceFinancialEntryId}.`,
+      })
+      .select(`
+        id
+      `)
+      .single();
+
+  if (
+    financialEntryError ||
+    !financialEntry
+  ) {
+    console.error(
+      "Erro ao gerar conta a pagar da comissão:",
+      financialEntryError
+    );
+
+    return {
+      success: false,
+
+      message:
+        financialEntryError
+          ?.message ??
+        "Não foi possível gerar a conta a pagar da comissão.",
     };
   }
 
   /*
    * =====================================================
-   * ATUALIZAR COMISSÕES
+   * VÍNCULO
    * =====================================================
    */
 
-  for (
-    const commission of
-      commissions ??
-      []
+  const {
+    error: paymentError,
+  } =
+    await supabase
+      .from(
+        "commission_payments"
+      )
+      .insert({
+        commission_id:
+          input.commissionId,
+
+        financial_entry_id:
+          financialEntry.id,
+
+        source_financial_entry_id:
+          input.sourceFinancialEntryId,
+
+        amount:
+          amountToGenerate,
+
+        amount_applied:
+          0,
+
+        status:
+          "generated",
+      });
+
+  if (
+    paymentError
   ) {
-    if (
-      commission.status ===
-      "cancelled"
-    ) {
-      continue;
-    }
-
-    const totalCommission =
-      Number(
-        commission.amount ??
-          0
-      );
-
-    if (
-      !Number.isFinite(
-        totalCommission
-      ) ||
-      totalCommission <
-        0
-    ) {
-      continue;
-    }
-
     /*
-     * Comissão liberada proporcional
-     * ao principal recebido.
+     * Evita despesa órfã.
      */
 
-    const releasedAmount =
-      receivedRatio >= 1
-        ? totalCommission
-        : roundMoney(
-            totalCommission *
-              receivedRatio
-          );
-
-    /*
-     * Quanto já foi efetivamente
-     * pago ao beneficiário.
-     */
-
-    const alreadyPaid =
-      Math.max(
-        0,
-        Number(
-          commission
-            .amount_paid ??
-            0
-        )
+    await supabase
+      .from(
+        "financial_entries"
+      )
+      .delete()
+      .eq(
+        "id",
+        financialEntry.id
       );
 
     /*
-     * STATUS
-     *
-     * pending:
-     * nada liberado.
-     *
-     * generated:
-     * existe valor liberado.
-     *
-     * paid:
-     * a comissão total foi
-     * efetivamente paga.
+     * UNIQUE:
+     * outra execução pode ter
+     * gerado no mesmo momento.
      */
 
-    let commissionStatus:
-      | "pending"
-      | "generated"
-      | "paid" =
-      "pending";
-
     if (
-      totalCommission >
-        0 &&
-      alreadyPaid >=
-        totalCommission
+      paymentError.code ===
+      "23505"
     ) {
-      commissionStatus =
-        "paid";
-    } else if (
-      releasedAmount >
-      0
-    ) {
-      commissionStatus =
-        "generated";
-    }
-
-    const {
-      error:
-        commissionUpdateError,
-    } =
-      await supabase
-        .from(
-          "sale_commissions"
-        )
-        .update({
-          amount_released:
-            releasedAmount,
-
-          status:
-            commissionStatus,
-
-          paid_at:
-            commissionStatus ===
-            "paid"
-              ? commission
-                  .paid_at ??
-                new Date()
-                  .toISOString()
-              : null,
-
-          updated_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          commission.id
-        );
-
-    if (
-      commissionUpdateError
-    ) {
-      console.error(
-        "Erro ao atualizar comissão:",
-        commissionUpdateError
-      );
-
       return {
-        success: false,
-
-        message:
-          "O recebimento foi registrado, mas uma comissão não pôde ser atualizada.",
-
-        ...baseResult,
+        success: true,
       };
     }
+
+    console.error(
+      "Erro ao vincular comissão automática:",
+      paymentError
+    );
+
+    return {
+      success: false,
+
+      message:
+        paymentError.message,
+    };
   }
 
   return {
     success: true,
-    ...baseResult,
   };
 }
 
 /*
  * =====================================================
- * SINCRONIZAR PAGAMENTO DA COMISSÃO
+ * GERAR PAGAMENTO AUTOMÁTICO
+ * COMISSÃO DE CONTRATO
  * =====================================================
- *
- * É chamado quando uma despesa
- * vinculada à comissão é paga.
- *
- * financial_entry
- *      ↓
- * sale_commissions
- *      ↓
- * calcula valor novo pago
- *      ↓
- * amount_paid
  */
 
-/*
- * =====================================================
- * SINCRONIZAR PAGAMENTO DA COMISSÃO
- * =====================================================
- *
- * É chamado quando uma despesa
- * vinculada à comissão é paga.
- *
- * financial_entry
- *      ↓
- * commission_payments
- *      ↓
- * sale_commissions
- *      ↓
- * amount_paid acumulado
- */
+async function generateAutomaticContractCommissionPayment(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  input: {
+    commissionId: string;
+    companyId: string;
+    sourceFinancialEntryId: string;
+    releasedAmount: number;
+    receiptDate: string;
+  }
+): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  /*
+   * =====================================================
+   * TOTAL JÁ GERADO
+   * =====================================================
+   */
+
+  const {
+    data: generatedPayments,
+    error:
+      generatedPaymentsError,
+  } =
+    await supabase
+      .from(
+        "contract_commission_payments"
+      )
+      .select(`
+        id,
+        amount,
+        status
+      `)
+      .eq(
+        "commission_id",
+        input.commissionId
+      )
+      .neq(
+        "status",
+        "cancelled"
+      );
+
+  if (
+    generatedPaymentsError
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível calcular quanto da comissão do contrato já foi gerado.",
+    };
+  }
+
+  const alreadyGenerated =
+    roundMoney(
+      (
+        generatedPayments ??
+        []
+      ).reduce(
+        (
+          total,
+          payment
+        ) =>
+          total +
+          Number(
+            payment.amount ??
+              0
+          ),
+        0
+      )
+    );
+
+  const amountToGenerate =
+    roundMoney(
+      Math.max(
+        input.releasedAmount -
+          alreadyGenerated,
+        0
+      )
+    );
+
+  if (
+    amountToGenerate <=
+    0
+  ) {
+    return {
+      success: true,
+    };
+  }
+
+  /*
+   * =====================================================
+   * PROTEÇÃO DO MESMO RECEBIMENTO
+   * =====================================================
+   */
+
+  const {
+    data: existingSourcePayment,
+    error:
+      existingSourceError,
+  } =
+    await supabase
+      .from(
+        "contract_commission_payments"
+      )
+      .select(`
+        id
+      `)
+      .eq(
+        "commission_id",
+        input.commissionId
+      )
+      .eq(
+        "source_financial_entry_id",
+        input.sourceFinancialEntryId
+      )
+      .maybeSingle();
+
+  if (
+    existingSourceError
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível verificar a origem da comissão do contrato.",
+    };
+  }
+
+  if (
+    existingSourcePayment
+  ) {
+    return {
+      success: true,
+    };
+  }
+
+  /*
+   * =====================================================
+   * COMISSÃO
+   * =====================================================
+   */
+
+  const {
+    data: commission,
+    error:
+      commissionError,
+  } =
+    await supabase
+      .from(
+        "contract_commissions"
+      )
+      .select(`
+        id,
+        beneficiary_user_id,
+
+        contract:contracts (
+          id,
+          title
+        )
+      `)
+      .eq(
+        "id",
+        input.commissionId
+      )
+      .maybeSingle();
+
+  if (
+    commissionError ||
+    !commission
+  ) {
+    return {
+      success: false,
+
+      message:
+        "Não foi possível localizar a comissão do contrato.",
+    };
+  }
+
+  const contract =
+    getFirst(
+      commission.contract
+    );
+
+  const beneficiaryName =
+    await getBeneficiaryName(
+      supabase,
+      commission.beneficiary_user_id
+    );
+
+  const dueDate =
+    getNextCommissionDueDate(
+      input.receiptDate
+    );
+
+  const description =
+    contract
+      ? `Comissão - ${beneficiaryName} - ${contract.title}`
+      : `Comissão - ${beneficiaryName}`;
+
+  /*
+   * =====================================================
+   * CONTA A PAGAR
+   * =====================================================
+   */
+
+  const {
+    data: financialEntry,
+    error:
+      financialEntryError,
+  } =
+    await supabase
+      .from(
+        "financial_entries"
+      )
+      .insert({
+        company_id:
+          input.companyId,
+
+        type:
+          "expense",
+
+        client_id:
+          null,
+
+        supplier_id:
+          null,
+
+        contract_id:
+          contract?.id ??
+          null,
+
+        product_id:
+          null,
+
+        category_id:
+          null,
+
+        cost_center_id:
+          null,
+
+        financial_account_id:
+          null,
+
+        description,
+
+        document_number:
+          null,
+
+        competence_date:
+          input.receiptDate,
+
+        issue_date:
+          today(),
+
+        due_date:
+          dueDate,
+
+        amount:
+          amountToGenerate,
+
+        amount_paid:
+          0,
+
+        interest:
+          0,
+
+        fine:
+          0,
+
+        discount:
+          0,
+
+        status:
+          "pending",
+
+        recurring:
+          false,
+
+        recurrence_frequency:
+          null,
+
+        invoice_issued:
+          false,
+
+        invoice_number:
+          null,
+
+        invoice_issued_at:
+          null,
+
+        charge_sent:
+          false,
+
+        charge_sent_at:
+          null,
+
+        notes:
+          `Comissão de contrato gerada automaticamente após recebimento. Origem financeira: ${input.sourceFinancialEntryId}.`,
+      })
+      .select(`
+        id
+      `)
+      .single();
+
+  if (
+    financialEntryError ||
+    !financialEntry
+  ) {
+    console.error(
+      "Erro ao gerar conta a pagar da comissão do contrato:",
+      financialEntryError
+    );
+
+    return {
+      success: false,
+
+      message:
+        financialEntryError
+          ?.message ??
+        "Não foi possível gerar a conta a pagar da comissão do contrato.",
+    };
+  }
+
+  /*
+   * =====================================================
+   * VÍNCULO
+   * =====================================================
+   */
+
+  const {
+    error: paymentError,
+  } =
+    await supabase
+      .from(
+        "contract_commission_payments"
+      )
+      .insert({
+        commission_id:
+          input.commissionId,
+
+        financial_entry_id:
+          financialEntry.id,
+
+        source_financial_entry_id:
+          input.sourceFinancialEntryId,
+
+        amount:
+          amountToGenerate,
+
+        amount_applied:
+          0,
+
+        status:
+          "generated",
+      });
+
+  if (
+    paymentError
+  ) {
+    await supabase
+      .from(
+        "financial_entries"
+      )
+      .delete()
+      .eq(
+        "id",
+        financialEntry.id
+      );
+
+    if (
+      paymentError.code ===
+      "23505"
+    ) {
+      return {
+        success: true,
+      };
+    }
+
+    console.error(
+      "Erro ao vincular comissão automática do contrato:",
+      paymentError
+    );
+
+    return {
+      success: false,
+
+      message:
+        paymentError.message,
+    };
+  }
+
+  return {
+    success: true,
+  };
+}
 
 /*
  * =====================================================
  * SINCRONIZAR PAGAMENTO DE COMISSÃO
  * =====================================================
- *
- * Detecta automaticamente se a despesa
- * pertence a:
- *
- * - comissão de venda
- * - comissão de contrato
  */
 
 async function syncCommissionPayment(
@@ -1894,7 +2768,7 @@ async function syncCommissionPayment(
 }> {
   /*
    * =====================================================
-   * PRIMEIRO: TENTA COMISSÃO DE VENDA
+   * COMISSÃO DE VENDA
    * =====================================================
    */
 
@@ -1926,6 +2800,7 @@ async function syncCommissionPayment(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível verificar se o pagamento pertence a uma comissão de venda.",
     };
@@ -1943,13 +2818,12 @@ async function syncCommissionPayment(
 
   /*
    * =====================================================
-   * DEPOIS: TENTA COMISSÃO DE CONTRATO
+   * COMISSÃO DE CONTRATO
    * =====================================================
    */
 
   const {
-    data:
-      contractPayment,
+    data: contractPayment,
     error:
       contractPaymentError,
   } =
@@ -1976,6 +2850,7 @@ async function syncCommissionPayment(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível verificar se o pagamento pertence a uma comissão de contrato.",
     };
@@ -1992,9 +2867,7 @@ async function syncCommissionPayment(
   }
 
   /*
-   * =====================================================
-   * DESPESA NORMAL
-   * =====================================================
+   * Despesa comum.
    */
 
   return {
@@ -2019,12 +2892,15 @@ async function syncSaleCommissionPayment(
     id: string;
     commission_id: string;
     financial_entry_id: string;
+
     amount:
       | number
       | string;
+
     amount_applied:
       | number
       | string;
+
     status: string;
   }
 ): Promise<{
@@ -2033,15 +2909,8 @@ async function syncSaleCommissionPayment(
   commissionId?: string;
   saleId?: string;
   editionId?: string;
-  originType?:
-    | "sale";
+  originType?: "sale";
 }> {
-  /*
-   * =====================================================
-   * COMISSÃO
-   * =====================================================
-   */
-
   const {
     data: commission,
     error:
@@ -2077,6 +2946,7 @@ async function syncSaleCommissionPayment(
   ) {
     return {
       success: false,
+
       message:
         "Comissão de venda vinculada ao pagamento não encontrada.",
     };
@@ -2103,21 +2973,15 @@ async function syncSaleCommissionPayment(
 
   if (
     commission.status ===
-    "cancelled" ||
+      "cancelled" ||
     commissionPayment.status ===
-    "cancelled"
+      "cancelled"
   ) {
     return {
       success: true,
       ...baseResult,
     };
   }
-
-  /*
-   * =====================================================
-   * LANÇAMENTO FINANCEIRO
-   * =====================================================
-   */
 
   const financialEntryResult =
     await getCommissionFinancialEntry(
@@ -2240,23 +3104,11 @@ async function syncSaleCommissionPayment(
       totalCommission
     );
 
-  /*
-   * =====================================================
-   * STATUS DO PAGAMENTO
-   * =====================================================
-   */
-
   const paymentStatus =
     getPaymentStatus(
       paidOnThisPayment,
       paymentAmount
     );
-
-  /*
-   * =====================================================
-   * STATUS DA COMISSÃO
-   * =====================================================
-   */
 
   const commissionFullyPaid =
     totalCommission >
@@ -2276,9 +3128,7 @@ async function syncSaleCommissionPayment(
         : "pending";
 
   /*
-   * =====================================================
-   * ATUALIZAR PAGAMENTO
-   * =====================================================
+   * PAGAMENTO
    */
 
   const {
@@ -2319,9 +3169,7 @@ async function syncSaleCommissionPayment(
   }
 
   /*
-   * =====================================================
-   * ATUALIZAR COMISSÃO
-   * =====================================================
+   * COMISSÃO
    */
 
   const {
@@ -2390,12 +3238,15 @@ async function syncContractCommissionPayment(
     id: string;
     commission_id: string;
     financial_entry_id: string;
+
     amount:
       | number
       | string;
+
     amount_applied:
       | number
       | string;
+
     status: string;
   }
 ): Promise<{
@@ -2403,15 +3254,8 @@ async function syncContractCommissionPayment(
   message?: string;
   commissionId?: string;
   contractId?: string;
-  originType?:
-    | "contract";
+  originType?: "contract";
 }> {
-  /*
-   * =====================================================
-   * COMISSÃO
-   * =====================================================
-   */
-
   const {
     data: commission,
     error:
@@ -2446,6 +3290,7 @@ async function syncContractCommissionPayment(
   ) {
     return {
       success: false,
+
       message:
         "Comissão de contrato vinculada ao pagamento não encontrada.",
     };
@@ -2470,21 +3315,15 @@ async function syncContractCommissionPayment(
 
   if (
     commission.status ===
-    "cancelled" ||
+      "cancelled" ||
     commissionPayment.status ===
-    "cancelled"
+      "cancelled"
   ) {
     return {
       success: true,
       ...baseResult,
     };
   }
-
-  /*
-   * =====================================================
-   * LANÇAMENTO FINANCEIRO
-   * =====================================================
-   */
 
   const financialEntryResult =
     await getCommissionFinancialEntry(
@@ -2528,11 +3367,6 @@ async function syncContractCommissionPayment(
       paymentAmount
     );
 
-  /*
-   * Quanto desta ordem já foi
-   * refletido em amount_paid.
-   */
-
   const previouslyApplied =
     Math.max(
       0,
@@ -2551,12 +3385,6 @@ async function syncContractCommissionPayment(
       ),
       0
     );
-
-  /*
-   * =====================================================
-   * VALORES DA COMISSÃO
-   * =====================================================
-   */
 
   const totalCommission =
     Math.max(
@@ -2593,12 +3421,6 @@ async function syncContractCommissionPayment(
       )
     );
 
-  /*
-   * Não pode pagar comissão ainda
-   * não liberada pelo recebimento
-   * do contrato.
-   */
-
   const availableToApply =
     Math.max(
       roundMoney(
@@ -2624,23 +3446,11 @@ async function syncContractCommissionPayment(
       totalCommission
     );
 
-  /*
-   * =====================================================
-   * STATUS DO PAGAMENTO
-   * =====================================================
-   */
-
   const paymentStatus =
     getPaymentStatus(
       paidOnThisPayment,
       paymentAmount
     );
-
-  /*
-   * =====================================================
-   * STATUS DA COMISSÃO
-   * =====================================================
-   */
 
   const commissionFullyPaid =
     totalCommission >
@@ -2658,12 +3468,6 @@ async function syncContractCommissionPayment(
           0
         ? "generated"
         : "pending";
-
-  /*
-   * =====================================================
-   * ATUALIZAR PAGAMENTO
-   * =====================================================
-   */
 
   const {
     error:
@@ -2692,11 +3496,6 @@ async function syncContractCommissionPayment(
   if (
     updatePaymentError
   ) {
-    console.error(
-      "Erro ao atualizar pagamento da comissão de contrato:",
-      updatePaymentError
-    );
-
     return {
       success: false,
 
@@ -2706,12 +3505,6 @@ async function syncContractCommissionPayment(
       ...baseResult,
     };
   }
-
-  /*
-   * =====================================================
-   * ATUALIZAR COMISSÃO DO CONTRATO
-   * =====================================================
-   */
 
   const {
     error:
@@ -2746,11 +3539,6 @@ async function syncContractCommissionPayment(
   if (
     updateCommissionError
   ) {
-    console.error(
-      "Erro ao atualizar comissão do contrato:",
-      updateCommissionError
-    );
-
     return {
       success: false,
 
@@ -2769,7 +3557,7 @@ async function syncContractCommissionPayment(
 
 /*
  * =====================================================
- * BUSCAR LANÇAMENTO FINANCEIRO
+ * BUSCAR LANÇAMENTO DA COMISSÃO
  * =====================================================
  */
 
@@ -2783,23 +3571,30 @@ async function getCommissionFinancialEntry(
 ): Promise<
   | {
       success: true;
+
       financialEntry: {
         id: string;
+
         amount:
           | number
           | string;
+
         amount_paid:
           | number
           | string;
+
         interest:
           | number
           | string;
+
         fine:
           | number
           | string;
+
         discount:
           | number
           | string;
+
         status: string;
       };
     }
@@ -2809,8 +3604,7 @@ async function getCommissionFinancialEntry(
     }
 > {
   const {
-    data:
-      financialEntry,
+    data: financialEntry,
     error:
       financialError,
   } =
@@ -2839,6 +3633,7 @@ async function getCommissionFinancialEntry(
   ) {
     return {
       success: false,
+
       message:
         "Não foi possível consultar o lançamento financeiro da comissão.",
     };
@@ -2848,6 +3643,42 @@ async function getCommissionFinancialEntry(
     success: true,
     financialEntry,
   };
+}
+
+/*
+ * =====================================================
+ * NOME DO BENEFICIÁRIO
+ * =====================================================
+ */
+
+async function getBeneficiaryName(
+  supabase: Awaited<
+    ReturnType<
+      typeof createClient
+    >
+  >,
+  userId: string
+) {
+  const {
+    data: profile,
+  } =
+    await supabase
+      .from(
+        "user_profiles"
+      )
+      .select(`
+        name
+      `)
+      .eq(
+        "id",
+        userId
+      )
+      .maybeSingle();
+
+  return (
+    profile?.name ??
+    "Beneficiário"
+  );
 }
 
 /*
@@ -2881,6 +3712,102 @@ function getPaymentStatus(
 
   return "generated";
 }
+
+/*
+ * =====================================================
+ * PRÓXIMO DIA 10
+ * =====================================================
+ *
+ * Recebeu 26/08
+ * → vence 10/09
+ *
+ * Recebeu 05/12
+ * → vence 10/01
+ * =====================================================
+ */
+
+function getNextCommissionDueDate(
+  receiptDate: string
+) {
+  const [
+    year,
+    month,
+  ] =
+    receiptDate
+      .split("-")
+      .map(
+        Number
+      );
+
+  /*
+   * month recebido de "08" = 8.
+   *
+   * Date.UTC usa:
+   * janeiro = 0.
+   *
+   * Passar month diretamente
+   * nos leva ao próximo mês.
+   */
+
+  const targetDate =
+    new Date(
+      Date.UTC(
+        year,
+        month,
+        10
+      )
+    );
+
+  const targetYear =
+    targetDate
+      .getUTCFullYear();
+
+  const targetMonth =
+    String(
+      targetDate
+        .getUTCMonth() +
+        1
+    ).padStart(
+      2,
+      "0"
+    );
+
+  return `${targetYear}-${targetMonth}-10`;
+}
+
+/*
+ * =====================================================
+ * DATA DE HOJE
+ * =====================================================
+ */
+
+function today() {
+  const date =
+    new Date();
+
+  const year =
+    date.getFullYear();
+
+  const month =
+    String(
+      date.getMonth() +
+        1
+    ).padStart(
+      2,
+      "0"
+    );
+
+  const day =
+    String(
+      date.getDate()
+    ).padStart(
+      2,
+      "0"
+    );
+
+  return `${year}-${month}-${day}`;
+}
+
 /*
  * =====================================================
  * HELPERS
