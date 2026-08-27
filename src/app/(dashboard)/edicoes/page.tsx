@@ -344,14 +344,25 @@ export default async function EditionsPage() {
             </div>
           </div>
 
-          <Link
-            href="/edicoes/nova"
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41]"
-          >
-            <Plus className="h-4 w-4" />
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/edicoes/vendas"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f]"
+            >
+              <ShoppingCart className="h-4 w-4" />
 
-            Nova edição
-          </Link>
+              Vendas
+            </Link>
+
+            <Link
+              href="/edicoes/nova"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41]"
+            >
+              <Plus className="h-4 w-4" />
+
+              Nova edição
+            </Link>
+          </div>
         </div>
 
         {/* =================================================

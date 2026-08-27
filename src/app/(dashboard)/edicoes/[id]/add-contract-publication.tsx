@@ -2,6 +2,7 @@
 
 import {
   FormEvent,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -140,6 +141,10 @@ type AddProps = {
 
   positions:
     Position[];
+
+  autoOpenContractId?:
+    | string
+    | null;
 };
 
 type EditProps = {
@@ -166,6 +171,7 @@ export function AddContractPublication({
   contracts,
   sections,
   positions,
+  autoOpenContractId,
 }: AddProps) {
   const router =
     useRouter();
@@ -456,6 +462,38 @@ export function AddContractPublication({
       2
     );
   }
+
+  /*
+   * Abre o modal já no contrato certo quando a página
+   * é acessada com ?publicar={contractId} (fluxo vindo
+   * da tela do contrato).
+   */
+  useEffect(
+    () => {
+      if (
+        !autoOpenContractId
+      ) {
+        return;
+      }
+
+      const contract =
+        contracts.find(
+          (item) =>
+            item.id ===
+            autoOpenContractId
+        );
+
+      if (!contract) {
+        return;
+      }
+
+      reset();
+      selectContract(contract);
+      setOpen(true);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [autoOpenContractId]
+  );
 
   /*
    * =====================================================

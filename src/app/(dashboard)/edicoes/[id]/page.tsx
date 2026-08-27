@@ -54,6 +54,10 @@ type PageProps = {
   params: Promise<{
     id: string;
   }>;
+
+  searchParams: Promise<{
+    publicar?: string;
+  }>;
 };
 
 type SellerProfile = {
@@ -168,6 +172,7 @@ type AvailableContract = {
 
 export default async function EditionPage({
   params,
+  searchParams,
 }: PageProps) {
   const access =
     await requireEstafetaAccess();
@@ -176,6 +181,10 @@ export default async function EditionPage({
     id,
   } =
     await params;
+
+  const {
+    publicar: publishContractId,
+  } = await searchParams;
 
   const supabase =
     await createClient();
@@ -1694,6 +1703,9 @@ export default async function EditionPage({
                 positions={
                   positionsForPublication
                 }
+                autoOpenContractId={
+                  publishContractId
+                }
               />
 
               <Link
@@ -2011,6 +2023,9 @@ export default async function EditionPage({
                 }
                 positions={
                   positionsForPublication
+                }
+                autoOpenContractId={
+                  publishContractId
                 }
               />
             )}

@@ -12,6 +12,7 @@ import {
   MapPin,
   Monitor,
   Pencil,
+  Plus,
   Printer,
   ReceiptText,
   UserRound,
@@ -91,6 +92,8 @@ export default async function ContractDetailPage({
         installments,
         first_due_date,
 
+        legacy_subscription_number,
+
         notes,
 
         created_at,
@@ -104,12 +107,14 @@ export default async function ContractDetailPage({
         company:companies (
           id,
           name,
-          color
+          color,
+          slug
         ),
 
         product:products (
           id,
-          name
+          name,
+          type
         ),
 
         payment_method:payment_methods (
@@ -147,6 +152,194 @@ export default async function ContractDetailPage({
   await requireCompanyAccess(
     contract.company_id
   );
+
+  /*
+   * =========================
+   * PUBLICAÇÕES EM EDIÇÕES
+   * =========================
+   *
+   * Só para contratos de anúncio do O Estafeta. Contrato de
+   * assinatura do jornal não "publica em edição".
+   */
+
+  const contractCompany =
+    getFirst(contract.company);
+
+  const contractProduct =
+    getFirst(contract.product);
+
+  const isEstafetaContract =
+    contractCompany?.slug ===
+    "o-estafeta";
+
+  const isSubscriptionContract =
+    contractProduct?.type ===
+      "subscription" ||
+    Boolean(
+      contract.legacy_subscription_number
+    );
+
+  const canPublishInEditions =
+    isEstafetaContract &&
+    !isSubscriptionContract;
+
+  let editionPublications: {
+    id: string;
+    editionId: string;
+    editionName: string;
+    editionNumber: number | null;
+    editionStatus: string;
+    sectionName: string | null;
+    positionName: string | null;
+    sizeDescription: string | null;
+    amount: number;
+    publicationDate: string;
+  }[] = [];
+
+  let openEditionsForPublish: {
+    id: string;
+    name: string;
+    editionNumber: number | null;
+  }[] = [];
+
+  if (canPublishInEditions) {
+    const [
+      publicationsResult,
+      openEditionsResult,
+    ] = await Promise.all([
+      supabase
+        .from(
+          "contract_edition_publications"
+        )
+        .select(`
+          id,
+          edition_id,
+          size_description,
+          amount,
+          active,
+
+          edition:newspaper_editions (
+            id,
+            name,
+            edition_number,
+            status,
+            publication_date
+          ),
+
+          section:edition_sections (
+            id,
+            name
+          ),
+
+          position:edition_ad_positions (
+            id,
+            name
+          )
+        `)
+        .eq(
+          "contract_id",
+          contract.id
+        )
+        .eq("active", true),
+
+      supabase
+        .from("newspaper_editions")
+        .select(`
+          id,
+          name,
+          edition_number,
+          publication_date
+        `)
+        .eq(
+          "company_id",
+          contract.company_id
+        )
+        .eq("status", "open")
+        .order("publication_date", {
+          ascending: true,
+        }),
+    ]);
+
+    if (publicationsResult.error) {
+      console.error(
+        "Erro ao carregar publicações do contrato:",
+        publicationsResult.error
+      );
+    }
+
+    editionPublications = (
+      publicationsResult.data ?? []
+    )
+      .map((publication) => {
+        const publicationEdition =
+          getFirst(publication.edition);
+
+        const publicationSection =
+          getFirst(publication.section);
+
+        const publicationPosition =
+          getFirst(
+            publication.position
+          );
+
+        return {
+          id: publication.id,
+          editionId:
+            publication.edition_id,
+          editionName:
+            publicationEdition?.name ??
+            "Edição",
+          editionNumber:
+            publicationEdition?.edition_number ??
+            null,
+          editionStatus:
+            publicationEdition?.status ??
+            "open",
+          sectionName:
+            publicationSection?.name ??
+            null,
+          positionName:
+            publicationPosition?.name ??
+            null,
+          sizeDescription:
+            publication.size_description,
+          amount: Number(
+            publication.amount ?? 0
+          ),
+          publicationDate:
+            publicationEdition?.publication_date ??
+            "",
+        };
+      })
+      .sort((a, b) =>
+        b.publicationDate.localeCompare(
+          a.publicationDate
+        )
+      );
+
+    const linkedEditionIds = new Set(
+      editionPublications.map(
+        (publication) =>
+          publication.editionId
+      )
+    );
+
+    openEditionsForPublish = (
+      openEditionsResult.data ?? []
+    )
+      .filter(
+        (edition) =>
+          !linkedEditionIds.has(
+            edition.id
+          )
+      )
+      .map((edition) => ({
+        id: edition.id,
+        name: edition.name,
+        editionNumber:
+          edition.edition_number,
+      }));
+  }
 
   /*
    * =========================
@@ -965,6 +1158,141 @@ const commissionProfilesById =
             </div>
           </section>
         </div>
+
+        {/* PUBLICAÇÕES EM EDIÇÕES */}
+
+        {canPublishInEditions && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Monitor className="h-5 w-5 text-[#15704f]" />
+
+                  <h2 className="font-semibold text-slate-900">
+                    Publicações em edições
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Este contrato de anúncio pode ser publicado em uma ou mais edições do jornal.
+                </p>
+              </div>
+
+              {openEditionsForPublish.length >
+              0 ? (
+                <details className="group relative">
+                  <summary className="inline-flex h-11 cursor-pointer list-none items-center gap-2 rounded-xl bg-[#15704f] px-4 text-sm font-semibold text-white transition hover:bg-[#105c41]">
+                    <Plus className="h-4 w-4" />
+                    Publicar numa edição
+                  </summary>
+
+                  <div className="absolute right-0 z-10 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                    {openEditionsForPublish.map(
+                      (edition) => (
+                        <Link
+                          key={edition.id}
+                          href={`/edicoes/${edition.id}?publicar=${contract.id}`}
+                          className="block px-4 py-3 text-sm text-slate-700 transition hover:bg-slate-50"
+                        >
+                          {edition.name}
+
+                          {edition.editionNumber
+                            ? ` • Nº ${edition.editionNumber}`
+                            : ""}
+                        </Link>
+                      )
+                    )}
+                  </div>
+                </details>
+              ) : (
+                <span className="text-xs text-slate-400">
+                  Nenhuma edição aberta disponível
+                </span>
+              )}
+            </div>
+
+            {editionPublications.length >
+            0 ? (
+              <div className="mt-5 overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <TableHeader>
+                        Edição
+                      </TableHeader>
+
+                      <TableHeader>
+                        Caderno / Posição
+                      </TableHeader>
+
+                      <TableHeader>
+                        Tamanho
+                      </TableHeader>
+
+                      <TableHeader>
+                        Valor
+                      </TableHeader>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-slate-100">
+                    {editionPublications.map(
+                      (publication) => (
+                        <tr
+                          key={publication.id}
+                          className="hover:bg-slate-50"
+                        >
+                          <td className="px-5 py-4">
+                            <Link
+                              href={`/edicoes/${publication.editionId}`}
+                              className="text-sm font-semibold text-[#15704f] hover:underline"
+                            >
+                              {publication.editionName}
+                            </Link>
+
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              {publication.editionStatus ===
+                              "open"
+                                ? "Aberta"
+                                : publication.editionStatus ===
+                                    "closed"
+                                  ? "Fechada"
+                                  : "Cancelada"}
+                            </p>
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            {publication.sectionName ??
+                              "Geral"}
+
+                            {publication.positionName
+                              ? ` • ${publication.positionName}`
+                              : ""}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm text-slate-600">
+                            {publication.sizeDescription ||
+                              "—"}
+                          </td>
+
+                          <td className="px-5 py-4 text-sm font-semibold text-slate-900">
+                            {formatCurrency(
+                              publication.amount
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                Este contrato ainda não foi publicado em nenhuma edição.
+              </div>
+            )}
+          </section>
+        )}
 
                    {/* COMISSÃO */}
 

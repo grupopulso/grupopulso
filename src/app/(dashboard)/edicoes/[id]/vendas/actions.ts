@@ -3872,3 +3872,210 @@ function roundPercentage(
     10000
   );
 }
+
+/*
+ * =====================================================
+ * MOVER VENDA PARA OUTRA EDIÇÃO
+ * =====================================================
+ *
+ * Correção de cadastro: a venda foi registrada na edição
+ * errada. O financeiro e as comissões não mudam (não têm
+ * vínculo com a edição). As posições/cadernos dos itens
+ * pertencem à edição antiga, então são limpos — o usuário
+ * precisa reposicionar os anúncios na edição de destino
+ * pela tela de edição da venda.
+ */
+export async function moveEditionSale(
+  saleId: string,
+  targetEditionId: string
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  const supabase =
+    await createClient();
+
+  if (!saleId || !targetEditionId) {
+    return {
+      success: false,
+      message: "Dados inválidos.",
+    };
+  }
+
+  const {
+    data: sale,
+    error: saleError,
+  } = await supabase
+    .from("edition_sales")
+    .select(`
+      id,
+      company_id,
+      edition_id,
+      status
+    `)
+    .eq("id", saleId)
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    )
+    .maybeSingle();
+
+  if (saleError || !sale) {
+    return {
+      success: false,
+      message: "Venda não encontrada.",
+    };
+  }
+
+  if (sale.status === "cancelled") {
+    return {
+      success: false,
+      message:
+        "Uma venda cancelada não pode ser movida.",
+    };
+  }
+
+  if (
+    sale.edition_id === targetEditionId
+  ) {
+    return {
+      success: false,
+      message:
+        "A venda já está nesta edição.",
+    };
+  }
+
+  /*
+   * EDIÇÃO DE ORIGEM (precisa estar aberta)
+   */
+
+  const {
+    data: sourceEdition,
+  } = await supabase
+    .from("newspaper_editions")
+    .select("id, status")
+    .eq("id", sale.edition_id)
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    )
+    .maybeSingle();
+
+  if (
+    !sourceEdition ||
+    sourceEdition.status !== "open"
+  ) {
+    return {
+      success: false,
+      message:
+        "A edição atual da venda não está aberta.",
+    };
+  }
+
+  /*
+   * EDIÇÃO DE DESTINO (precisa estar aberta)
+   */
+
+  const {
+    data: targetEdition,
+  } = await supabase
+    .from("newspaper_editions")
+    .select("id, name, status")
+    .eq("id", targetEditionId)
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    )
+    .maybeSingle();
+
+  if (!targetEdition) {
+    return {
+      success: false,
+      message:
+        "Edição de destino não encontrada.",
+    };
+  }
+
+  if (targetEdition.status !== "open") {
+    return {
+      success: false,
+      message:
+        "A edição de destino não está aberta.",
+    };
+  }
+
+  /*
+   * MOVE
+   */
+
+  const {
+    error: updateSaleError,
+  } = await supabase
+    .from("edition_sales")
+    .update({
+      edition_id: targetEditionId,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("id", sale.id);
+
+  if (updateSaleError) {
+    return {
+      success: false,
+      message: updateSaleError.message,
+    };
+  }
+
+  /*
+   * Limpa caderno/posição dos itens — pertencem
+   * à edição antiga.
+   */
+
+  const {
+    error: clearItemsError,
+  } = await supabase
+    .from("edition_sale_items")
+    .update({
+      section_id: null,
+      ad_position_id: null,
+    })
+    .eq("sale_id", sale.id);
+
+  if (clearItemsError) {
+    /*
+     * Tenta desfazer o move para não deixar a venda
+     * na edição nova com posições da edição antiga.
+     */
+    await supabase
+      .from("edition_sales")
+      .update({
+        edition_id: sale.edition_id,
+      })
+      .eq("id", sale.id);
+
+    return {
+      success: false,
+      message:
+        "Não foi possível reposicionar os anúncios da venda.",
+    };
+  }
+
+  revalidatePath("/edicoes");
+  revalidatePath("/edicoes/vendas");
+  revalidatePath(
+    `/edicoes/${sale.edition_id}`
+  );
+  revalidatePath(
+    `/edicoes/${targetEditionId}`
+  );
+  revalidatePath(
+    `/edicoes/${targetEditionId}/vendas/${sale.id}`
+  );
+
+  return {
+    success: true,
+    targetEditionId,
+    targetEditionName:
+      targetEdition.name,
+  };
+}

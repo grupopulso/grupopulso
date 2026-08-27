@@ -582,6 +582,43 @@ export default async function SaleDetailPage({
 
   /*
    * =========================
+   * OUTRAS EDIÇÕES ABERTAS
+   * =========================
+   *
+   * Para o caso de a venda ter sido cadastrada na
+   * edição errada. Só faz sentido se esta edição
+   * também estiver aberta.
+   */
+
+  let openEditionsForMove: {
+    id: string;
+    name: string;
+  }[] = [];
+
+  if (
+    edition.status === "open" &&
+    sale.status !== "cancelled"
+  ) {
+    const { data: otherEditions } =
+      await supabase
+        .from("newspaper_editions")
+        .select("id, name")
+        .eq(
+          "company_id",
+          access.estafetaCompany.id
+        )
+        .eq("status", "open")
+        .neq("id", edition.id)
+        .order("publication_date", {
+          ascending: true,
+        });
+
+    openEditionsForMove =
+      otherEditions ?? [];
+  }
+
+  /*
+   * =========================
    * COMISSÕES TOTAIS
    * =========================
    */
@@ -702,6 +739,9 @@ export default async function SaleDetailPage({
     editionOpen={
       edition.status ===
       "open"
+    }
+    openEditions={
+      openEditionsForMove
     }
   />
 </div>
