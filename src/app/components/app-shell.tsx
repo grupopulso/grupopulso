@@ -20,6 +20,7 @@ import {
   Settings,
   Newspaper,
   BadgePercent,
+  Target,
   Users,
 } from "lucide-react";
 
@@ -117,6 +118,12 @@ const navigation: NavigationItem[] = [
   icon: BadgePercent,
   module: "financial",
 },
+  {
+    label: "Metas",
+    href: "/metas",
+    icon: Target,
+    module: "financial",
+  },
   {
     label: "Rotas e Entregas",
     href: "/rotas",
