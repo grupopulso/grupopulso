@@ -1170,6 +1170,20 @@ export default function ContractForm({
     );
   }
 
+  function selectAllTvs() {
+    setSelectedTvIds(
+      tvs.map(
+        (tv) => tv.id
+      )
+    );
+  }
+
+  function clearTvs() {
+    setSelectedTvIds(
+      []
+    );
+  }
+
   /*
    * =====================================================
    * VALOR
@@ -2297,14 +2311,40 @@ export default function ContractForm({
         {companyId ===
           POTTENCIALIZA_COMPANY_ID && (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-            <div>
-              <h2 className="font-semibold text-slate-900">
-                TVs / Telões vinculados
-              </h2>
+            <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+              <div>
+                <h2 className="font-semibold text-slate-900">
+                  TVs / Telões vinculados
+                </h2>
 
-              <p className="mt-1 text-sm text-slate-500">
-                Selecione em quais pontos este contrato será exibido.
-              </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Selecione em quais pontos este contrato será exibido.
+                </p>
+              </div>
+
+              {tvs.length > 0 && (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={
+                      selectAllTvs
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Selecionar todas
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={
+                      clearTvs
+                    }
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              )}
             </div>
 
             {tvs.length >

@@ -1772,6 +1772,15 @@ export default async function EditionPage({
   Ver espelho
 </Link>
 
+<Link
+  href={`/edicoes/${edition.id}/relatorio`}
+  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f]"
+>
+  <FileText className="h-4 w-4" />
+
+  Relatório
+</Link>
+
 {edition.status === "closed" && (
   <ReopenEditionButton
     editionId={edition.id}
