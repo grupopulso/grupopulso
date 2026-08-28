@@ -200,15 +200,34 @@ export default async function ClientPage({
    * tiver vínculo com pelo menos uma das empresas do
    * cliente (admin sempre passa).
    */
-  await requireAnyCompanyAccess(
-    (
-      client.client_companies ??
-      []
-    ).map(
-      (relation) =>
-        relation.company_id
-    )
-  );
+  const access =
+    await requireAnyCompanyAccess(
+      (
+        client.client_companies ??
+        []
+      ).map(
+        (relation) =>
+          relation.company_id
+      )
+    );
+
+  const isAdmin =
+    access.profile.role === "admin";
+
+  /*
+   * As sublistas abaixo são por client_id. Se o cliente é
+   * compartilhado entre empresas, um usuário não-admin não
+   * deve ver contratos/lançamentos de empresas às quais
+   * não tem acesso.
+   */
+  const canSeeCompany = (
+    companyId: string | null | undefined
+  ) =>
+    isAdmin ||
+    (Boolean(companyId) &&
+      access.companyIds.includes(
+        companyId as string
+      ));
 
   /*
    * =========================
@@ -229,6 +248,7 @@ export default async function ClientPage({
       value,
       billing_frequency,
       status,
+      company_id,
 
       company:companies (
         id,
@@ -265,9 +285,14 @@ export default async function ClientPage({
     );
   }
 
-  const contracts =
+  const contracts = (
     (contractsData ??
-      []) as Contract[];
+      []) as (Contract & {
+      company_id: string | null;
+    })[]
+  ).filter((contract) =>
+    canSeeCompany(contract.company_id)
+  );
 
   /*
    * =========================
@@ -290,7 +315,8 @@ export default async function ClientPage({
       amount,
       amount_paid,
       status,
-      contract_id
+      contract_id,
+      company_id
     `)
     .eq(
       "client_id",
@@ -316,9 +342,14 @@ export default async function ClientPage({
     );
   }
 
-  const financialEntries =
+  const financialEntries = (
     (financialData ??
-      []) as FinancialEntry[];
+      []) as (FinancialEntry & {
+      company_id: string | null;
+    })[]
+  ).filter((entry) =>
+    canSeeCompany(entry.company_id)
+  );
 
   /*
    * =========================

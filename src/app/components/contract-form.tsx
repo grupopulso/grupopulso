@@ -121,6 +121,13 @@ type BillingFrequency =
 
 type ContractFormProps = {
   initialClientId?: string;
+
+  /*
+   * Empresas às quais o usuário pode vincular um contrato.
+   * null = admin (todas). A Server Action createContract
+   * também valida isso (requireCompanyAccess).
+   */
+  allowedCompanyIds?: string[] | null;
 };
 
 /*
@@ -140,6 +147,7 @@ const POTTENCIALIZA_COMPANY_ID =
 
 export default function ContractForm({
   initialClientId = "",
+  allowedCompanyIds = null,
 }: ContractFormProps) {
   const router =
     useRouter();
@@ -713,8 +721,16 @@ export default function ContractForm({
         );
 
         setCompanies(
-          companiesResult.data ??
+          (
+            companiesResult.data ??
             []
+          ).filter(
+            (company) =>
+              !allowedCompanyIds ||
+              allowedCompanyIds.includes(
+                company.id
+              )
+          )
         );
 
         setProducts(
@@ -793,6 +809,7 @@ export default function ContractForm({
       }
 
       loadData();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
     [
       supabase,

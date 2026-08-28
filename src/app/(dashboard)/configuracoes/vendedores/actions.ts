@@ -176,46 +176,12 @@ export async function saveSellerSettings(
   }
 
   /*
-   * Se estiver sendo ativado como
-   * vendedor, atualiza o perfil.
-   *
-   * Não alteramos admin/manager,
-   * pois um administrador também
-   * pode eventualmente vender.
+   * A comissão do usuário é definida pela existência de uma
+   * linha ativa em seller_settings, não pelo campo role
+   * (a constraint de user_profiles.role hoje é
+   * admin/manager/finance/operations/viewer — não existe
+   * mais "seller").
    */
-  if (
-    input.active &&
-    profile.role === "user"
-  ) {
-    const {
-      error: roleError,
-    } =
-      await supabase
-        .from("user_profiles")
-        .update({
-          role: "seller",
-          updated_at:
-            new Date()
-              .toISOString(),
-        })
-        .eq(
-          "id",
-          input.userId
-        );
-
-    if (roleError) {
-      console.error(
-        "Erro ao atualizar perfil do vendedor:",
-        roleError
-      );
-
-      return {
-        success: false,
-        message:
-          "A configuração foi salva, mas não foi possível atualizar o perfil para vendedor.",
-      };
-    }
-  }
 
   revalidatePath(
     "/configuracoes/vendedores"

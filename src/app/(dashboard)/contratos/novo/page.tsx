@@ -13,10 +13,11 @@ type NovoContratoPageProps = {
 export default async function NovoContratoPage({
   searchParams,
 }: NovoContratoPageProps) {
-  await requireModulePermission(
-    "contracts",
-    "create"
-  );
+  const access =
+    await requireModulePermission(
+      "contracts",
+      "create"
+    );
 
   const params =
     await searchParams;
@@ -25,10 +26,18 @@ export default async function NovoContratoPage({
     params.clientId ??
     "";
 
+  const allowedCompanyIds =
+    access.profile.role === "admin"
+      ? null
+      : access.companyIds;
+
   return (
     <ContractForm
       initialClientId={
         initialClientId
+      }
+      allowedCompanyIds={
+        allowedCompanyIds
       }
     />
   );
