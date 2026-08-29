@@ -30,6 +30,10 @@ import {
   createContract,
 } from "@/app/(dashboard)/contratos/novo/actions";
 
+import {
+  buildDueDates,
+} from "@/app/lib/date-utils";
+
 /*
  * =====================================================
  * TIPOS
@@ -327,8 +331,26 @@ export default function ContractForm({
     );
 
   const [
+    intervalDays,
+    setIntervalDays,
+  ] =
+    useState(
+      30
+    );
+
+  const [
     installmentValues,
     setInstallmentValues,
+  ] =
+    useState<
+      string[]
+    >([
+      "",
+    ]);
+
+  const [
+    installmentDues,
+    setInstallmentDues,
   ] =
     useState<
       string[]
@@ -1277,6 +1299,33 @@ export default function ContractForm({
 
   /*
    * =====================================================
+   * DATAS DAS PARCELAS (recalcula quando muda o 1º
+   * vencimento, o intervalo ou a quantidade)
+   * =====================================================
+   */
+
+  useEffect(
+    () => {
+      setInstallmentDues(
+        buildDueDates(
+          firstDueDate,
+          Math.max(
+            installments,
+            1
+          ),
+          intervalDays
+        )
+      );
+    },
+    [
+      firstDueDate,
+      installments,
+      intervalDays,
+    ]
+  );
+
+  /*
+   * =====================================================
    * COMISSÃO PREVISTA
    * =====================================================
    */
@@ -1595,6 +1644,21 @@ export default function ContractForm({
     );
   }
 
+  function handleInstallmentDueChange(
+    index: number,
+    newDue: string
+  ) {
+    setInstallmentDues(
+      (current) =>
+        current.map(
+          (due, itemIndex) =>
+            itemIndex === index
+              ? newDue
+              : due
+        )
+    );
+  }
+
   /*
    * =====================================================
    * SUBMIT
@@ -1783,6 +1847,20 @@ export default function ContractForm({
       return;
     }
 
+    if (
+      installmentDues.length !==
+        installments ||
+      installmentDues.some(
+        (due) => !due
+      )
+    ) {
+      setError(
+        "Informe a data de vencimento de todas as parcelas."
+      );
+
+      return;
+    }
+
     setLoading(
       true
     );
@@ -1819,6 +1897,8 @@ export default function ContractForm({
 
         installmentValues:
           parsedInstallmentValues,
+
+        installmentDues,
 
         autoRenew,
 
@@ -2634,6 +2714,35 @@ export default function ContractForm({
                 className="input"
               />
             </Field>
+
+            <Field label="Intervalo entre parcelas (dias)">
+              <input
+                type="number"
+                min={
+                  1
+                }
+                max={
+                  365
+                }
+                value={
+                  intervalDays
+                }
+                onChange={(
+                  event
+                ) =>
+                  setIntervalDays(
+                    Math.max(
+                      1,
+                      Number(
+                        event.target.value
+                      ) ||
+                        30
+                    )
+                  )
+                }
+                className="input"
+              />
+            </Field>
           </div>
 
           {Number.isFinite(
@@ -2651,7 +2760,7 @@ export default function ContractForm({
                     </p>
 
                     <p className="mt-1 text-xs text-slate-500">
-                      Os valores são preenchidos automaticamente, mas podem ser ajustados.
+                      Valores e datas são preenchidos automaticamente, mas podem ser ajustados um a um.
                     </p>
                   </div>
 
@@ -2681,46 +2790,59 @@ export default function ContractForm({
                         }
                         className="rounded-xl border border-slate-200 bg-white p-4"
                       >
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                            Parcela{" "}
-                            {
-                              index +
-                              1
-                            }
-                          </p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Parcela{" "}
+                          {
+                            index +
+                            1
+                          }
+                        </p>
 
-                          <span className="text-xs text-slate-400">
-                            {formatDateBr(
-                              addMonthsClamped(
-                                firstDueDate,
-                                index
-                              )
-                            )}
-                          </span>
-                        </div>
-
-                        <div className="relative mt-3">
-                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                            R$
-                          </span>
-
+                        <label className="mt-3 block text-[11px] font-medium text-slate-400">
+                          Vencimento
                           <input
+                            type="date"
                             value={
-                              installmentValue
+                              installmentDues[
+                                index
+                              ] ?? ""
                             }
                             onChange={(
                               event
                             ) =>
-                              handleInstallmentValueChange(
+                              handleInstallmentDueChange(
                                 index,
                                 event.target.value
                               )
                             }
-                            inputMode="decimal"
-                            className="input pl-10"
+                            className="input mt-1"
                           />
-                        </div>
+                        </label>
+
+                        <label className="mt-3 block text-[11px] font-medium text-slate-400">
+                          Valor
+                          <div className="relative mt-1">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+                              R$
+                            </span>
+
+                            <input
+                              value={
+                                installmentValue
+                              }
+                              onChange={(
+                                event
+                              ) =>
+                                handleInstallmentValueChange(
+                                  index,
+                                  event.target.value
+                                )
+                              }
+                              inputMode="decimal"
+                              className="input pl-10"
+                            />
+                          </div>
+                        </label>
                       </div>
                     )
                   )}

@@ -13,6 +13,10 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
+import {
+  isValidDateOnly,
+} from "@/app/lib/date-utils";
+
 const POTTENCIALIZA_COMPANY_ID =
   "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
 
@@ -52,6 +56,12 @@ type UpdateContractInput = {
   installments: number;
 
   firstDueDate: string;
+
+  installmentValues?: number[];
+
+  installmentDues?: string[];
+
+  scheduleTouched?: boolean;
 
   autoRenew: boolean;
 
@@ -487,7 +497,61 @@ export async function updateContract(
       currentContract.first_due_date ??
       ""
     ) !==
-      input.firstDueDate;
+      input.firstDueDate ||
+    input.scheduleTouched === true;
+
+  /*
+   * =========================
+   * VALIDAR CARNÊ RECEBIDO
+   * =========================
+   */
+
+  const useCustomSchedule =
+    Array.isArray(
+      input.installmentDues
+    ) &&
+    input.installmentDues.length ===
+      input.installments &&
+    Array.isArray(
+      input.installmentValues
+    ) &&
+    input.installmentValues.length ===
+      input.installments;
+
+  if (useCustomSchedule) {
+    const invalidDue =
+      input.installmentDues!.some(
+        (due) => !isValidDateOnly(due)
+      );
+
+    const invalidAmount =
+      input.installmentValues!.some(
+        (amount) =>
+          !Number.isFinite(amount) ||
+          amount <= 0
+      );
+
+    const sum =
+      input.installmentValues!.reduce(
+        (total, amount) =>
+          total + amount,
+        0
+      );
+
+    if (
+      invalidDue ||
+      invalidAmount ||
+      Math.abs(
+        sum - Number(input.value)
+      ) >= 0.01
+    ) {
+      return {
+        success: false,
+        error:
+          "As parcelas informadas estão inconsistentes (datas, valores ou soma).",
+      };
+    }
+  }
 
   if (
     hasPayments &&
@@ -739,10 +803,27 @@ export async function updateContract(
     }
 
     const amounts =
-      distributeAmount(
-        input.value,
-        input.installments
-      );
+      useCustomSchedule
+        ? input.installmentValues!
+        : distributeAmount(
+            input.value,
+            input.installments
+          );
+
+    const dueDates =
+      useCustomSchedule
+        ? input.installmentDues!
+        : Array.from(
+            {
+              length:
+                input.installments,
+            },
+            (_, index) =>
+              addMonthsClamped(
+                input.firstDueDate,
+                index
+              )
+          );
 
     const today =
       new Date()
@@ -759,10 +840,7 @@ export async function updateContract(
         index + 1;
 
       const dueDate =
-        addMonthsClamped(
-          input.firstDueDate,
-          index
-        );
+        dueDates[index];
 
       const amount =
         amounts[

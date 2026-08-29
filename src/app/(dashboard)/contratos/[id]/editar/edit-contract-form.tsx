@@ -4,6 +4,7 @@ import {
   FormEvent,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -25,6 +26,11 @@ import {
 import {
   updateContract,
 } from "./actions";
+
+import {
+  buildDueDates,
+  distributeAmount,
+} from "@/app/lib/date-utils";
 
 const POTTENCIALIZA_COMPANY_ID =
   "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
@@ -72,6 +78,11 @@ type Props = {
 
     firstDueDate:
       string;
+
+    installmentSchedule: {
+      dueDate: string;
+      amount: number;
+    }[];
 
     tvIds: string[];
 
@@ -251,12 +262,47 @@ export default function EditContractForm({
     );
 
   const [
+    intervalDays,
+    setIntervalDays,
+  ] =
+    useState(30);
+
+  const [
     firstDueDate,
     setFirstDueDate,
   ] =
     useState(
       contract.firstDueDate
     );
+
+  const [
+    schedule,
+    setSchedule,
+  ] =
+    useState<
+      {
+        dueDate: string;
+        amount: string;
+      }[]
+    >(() =>
+      contract.installmentSchedule
+        .length > 0
+        ? contract.installmentSchedule.map(
+            (row) => ({
+              dueDate: row.dueDate,
+              amount: formatValue(
+                row.amount
+              ),
+            })
+          )
+        : []
+    );
+
+  const scheduleFirstRun =
+    useRef(true);
+
+  const scheduleTouched =
+    useRef(false);
 
   const [
     autoRenew,
@@ -313,6 +359,107 @@ export default function EditContractForm({
     setError,
   ] =
     useState("");
+
+  /*
+   * =========================
+   * CARNÊ (datas + valores)
+   * =========================
+   */
+
+  const numericValueForSchedule =
+    parseMoney(value);
+
+  useEffect(
+    () => {
+      if (scheduleFirstRun.current) {
+        scheduleFirstRun.current = false;
+
+        if (schedule.length > 0) {
+          return;
+        }
+      }
+
+      scheduleTouched.current = true;
+
+      const count = Math.max(
+        installments,
+        1
+      );
+
+      const amounts =
+        Number.isFinite(
+          numericValueForSchedule
+        ) &&
+        numericValueForSchedule > 0
+          ? distributeAmount(
+              numericValueForSchedule,
+              count
+            )
+          : Array.from(
+              { length: count },
+              () => 0
+            );
+
+      const dueDates = buildDueDates(
+        firstDueDate,
+        count,
+        intervalDays
+      );
+
+      setSchedule(
+        Array.from(
+          { length: count },
+          (_, index) => ({
+            dueDate:
+              dueDates[index] ?? "",
+            amount: formatValue(
+              amounts[index] ?? 0
+            ),
+          })
+        )
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      numericValueForSchedule,
+      installments,
+      firstDueDate,
+      intervalDays,
+    ]
+  );
+
+  const scheduleTotal =
+    schedule.reduce(
+      (total, row) =>
+        total + parseMoney(row.amount),
+      0
+    );
+
+  const scheduleBalanced =
+    numericValueForSchedule > 0 &&
+    Math.abs(
+      scheduleTotal -
+        numericValueForSchedule
+    ) < 0.01;
+
+  function updateScheduleRow(
+    index: number,
+    field: "dueDate" | "amount",
+    newValue: string
+  ) {
+    scheduleTouched.current = true;
+
+    setSchedule((current) =>
+      current.map((row, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...row,
+              [field]: newValue,
+            }
+          : row
+      )
+    );
+  }
 
   /*
    * =========================
@@ -652,6 +799,30 @@ export default function EditContractForm({
       return;
     }
 
+    if (
+      schedule.length !==
+        installments ||
+      schedule.some(
+        (row) => !row.dueDate
+      )
+    ) {
+      setError(
+        "Informe a data de vencimento de todas as parcelas."
+      );
+
+      return;
+    }
+
+    if (!scheduleBalanced) {
+      setError(
+        `A soma das parcelas precisa ser ${formatValue(
+          numericValueForSchedule
+        )}.`
+      );
+
+      return;
+    }
+
     setLoading(
       true
     );
@@ -687,6 +858,19 @@ export default function EditContractForm({
         installments,
 
         firstDueDate,
+
+        installmentValues:
+          schedule.map((row) =>
+            parseMoney(row.amount)
+          ),
+
+        installmentDues:
+          schedule.map(
+            (row) => row.dueDate
+          ),
+
+        scheduleTouched:
+          scheduleTouched.current,
 
         autoRenew,
 
@@ -1233,7 +1417,116 @@ export default function EditContractForm({
                 required
               />
             </Field>
+
+            <Field label="Intervalo entre parcelas (dias)">
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={intervalDays}
+                onChange={(event) =>
+                  setIntervalDays(
+                    Math.max(
+                      1,
+                      Number(
+                        event.target.value
+                      ) || 30
+                    )
+                  )
+                }
+                className="input"
+              />
+            </Field>
           </div>
+
+          {numericValueForSchedule > 0 &&
+            schedule.length > 0 && (
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+                <div className="flex flex-col justify-between gap-1 sm:flex-row sm:items-center">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      Parcelas — datas e valores
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Ajuste a data ou o valor de qualquer parcela.
+                    </p>
+                  </div>
+
+                  <p
+                    className={`text-sm font-semibold ${
+                      scheduleBalanced
+                        ? "text-emerald-700"
+                        : "text-red-600"
+                    }`}
+                  >
+                    Soma:{" "}
+                    {formatValue(
+                      scheduleTotal
+                    )}
+                  </p>
+                </div>
+
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {schedule.map(
+                    (row, index) => (
+                      <div
+                        key={index}
+                        className="rounded-xl border border-slate-200 bg-white p-4"
+                      >
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Parcela {index + 1}
+                        </p>
+
+                        <label className="mt-2 block text-[11px] font-medium text-slate-400">
+                          Vencimento
+                          <input
+                            type="date"
+                            value={row.dueDate}
+                            onChange={(event) =>
+                              updateScheduleRow(
+                                index,
+                                "dueDate",
+                                event.target.value
+                              )
+                            }
+                            className="input mt-1"
+                          />
+                        </label>
+
+                        <label className="mt-2 block text-[11px] font-medium text-slate-400">
+                          Valor
+                          <div className="relative mt-1">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
+                              R$
+                            </span>
+
+                            <input
+                              inputMode="decimal"
+                              value={row.amount}
+                              onChange={(event) =>
+                                updateScheduleRow(
+                                  index,
+                                  "amount",
+                                  event.target.value
+                                )
+                              }
+                              className="input mt-0 pl-10"
+                            />
+                          </div>
+                        </label>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                {!scheduleBalanced && (
+                  <p className="mt-3 text-xs font-medium text-red-600">
+                    A soma das parcelas precisa ser {formatValue(numericValueForSchedule)}.
+                  </p>
+                )}
+              </div>
+            )}
 
           <label className="mt-5 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <input

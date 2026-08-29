@@ -73,6 +73,92 @@ export function addDays(
     .slice(0, 10);
 }
 
+/*
+ * Gera as datas de vencimento das parcelas a partir do
+ * primeiro vencimento e de um intervalo fixo em dias
+ * (padrão 30). A parcela 1 fica exatamente no primeiro
+ * vencimento; as demais somam `intervalDays` a cada passo.
+ */
+export function buildDueDates(
+  firstDueDate: string,
+  count: number,
+  intervalDays: number
+): string[] {
+  const safeInterval =
+    Number.isFinite(intervalDays) &&
+    intervalDays >= 1
+      ? Math.floor(intervalDays)
+      : 30;
+
+  const safeCount =
+    Number.isInteger(count) && count > 0
+      ? count
+      : 0;
+
+  return Array.from(
+    { length: safeCount },
+    (_, index) =>
+      index === 0
+        ? firstDueDate
+        : addDays(
+            firstDueDate,
+            safeInterval * index
+          )
+  );
+}
+
+/*
+ * Distribui um valor total em N parcelas em centavos,
+ * jogando os centavos que sobram nas primeiras parcelas.
+ */
+export function distributeAmount(
+  total: number,
+  count: number
+): number[] {
+  if (
+    !Number.isInteger(count) ||
+    count <= 0
+  ) {
+    return [];
+  }
+
+  const totalCents = Math.round(
+    Number(total) * 100
+  );
+
+  const base = Math.floor(
+    totalCents / count
+  );
+
+  const remainder =
+    totalCents - base * count;
+
+  return Array.from(
+    { length: count },
+    (_, index) =>
+      (base +
+        (index < remainder ? 1 : 0)) /
+      100
+  );
+}
+
+/*
+ * Valida uma string de data no formato "YYYY-MM-DD".
+ */
+export function isValidDateOnly(
+  value: unknown
+): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    !Number.isNaN(
+      new Date(
+        `${value}T00:00:00Z`
+      ).getTime()
+    )
+  );
+}
+
 export function diffInDays(
   startDate: string,
   endDate: string

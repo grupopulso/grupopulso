@@ -37,6 +37,7 @@ export default async function EditContractPage({
   const [
     contractResult,
     contractTvsResult,
+    installmentsResult,
   ] =
     await Promise.all([
       supabase
@@ -75,6 +76,24 @@ export default async function EditContractPage({
         .eq(
           "contract_id",
           id
+        ),
+
+      supabase
+        .from(
+          "contract_installments"
+        )
+        .select(`
+          installment_number,
+          due_date,
+          amount
+        `)
+        .eq(
+          "contract_id",
+          id
+        )
+        .order(
+          "installment_number",
+          { ascending: true }
         ),
     ]);
 
@@ -116,6 +135,16 @@ export default async function EditContractPage({
       (item) =>
         item.tv_id
     );
+
+  const initialInstallments = (
+    installmentsResult.data ?? []
+  ).map((installment) => ({
+    dueDate:
+      installment.due_date as string,
+    amount: Number(
+      installment.amount ?? 0
+    ),
+  }));
 
   return (
     <EditContractForm
@@ -170,6 +199,9 @@ export default async function EditContractPage({
 
         tvIds:
           initialTvIds,
+
+        installmentSchedule:
+          initialInstallments,
       }}
     />
   );

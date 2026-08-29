@@ -15,6 +15,7 @@ import {
 
 import {
   addMonthsClamped,
+  isValidDateOnly,
 } from "@/app/lib/date-utils";
 
 const POTTENCIALIZA_COMPANY_ID =
@@ -55,6 +56,13 @@ type CreateContractInput = {
   installments: number;
 
   installmentValues?: number[];
+
+  /*
+   * Datas de vencimento de cada parcela ("YYYY-MM-DD").
+   * Quando ausente, cai no cálculo mensal a partir de
+   * firstDueDate (compatibilidade).
+   */
+  installmentDues?: string[];
 
   firstDueDate: string;
 
@@ -328,6 +336,61 @@ export async function createContract(
       distributeAmount(
         input.value,
         input.installments
+      );
+  }
+
+  /*
+   * =====================================================
+   * VALIDAR DATAS DAS PARCELAS
+   * =====================================================
+   */
+
+  let validatedInstallmentDues:
+    string[];
+
+  if (
+    input.installmentDues &&
+    input.installmentDues.length > 0
+  ) {
+    if (
+      input.installmentDues.length !==
+      input.installments
+    ) {
+      return {
+        success: false,
+
+        error:
+          "A quantidade de datas não corresponde à quantidade de parcelas.",
+      };
+    }
+
+    const invalidDue =
+      input.installmentDues.some(
+        (due) => !isValidDateOnly(due)
+      );
+
+    if (invalidDue) {
+      return {
+        success: false,
+
+        error:
+          "Há uma data de parcela inválida.",
+      };
+    }
+
+    validatedInstallmentDues =
+      input.installmentDues.slice();
+  } else {
+    validatedInstallmentDues =
+      Array.from(
+        {
+          length: input.installments,
+        },
+        (_, index) =>
+          addMonthsClamped(
+            input.firstDueDate,
+            index
+          )
       );
   }
 
@@ -1169,10 +1232,9 @@ export async function createContract(
         1;
 
       const dueDate =
-        addMonthsClamped(
-          input.firstDueDate,
+        validatedInstallmentDues[
           index
-        );
+        ];
 
       const amount =
         validatedInstallmentValues[

@@ -12,6 +12,10 @@ import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
+import {
+  isValidDateOnly,
+} from "@/app/lib/date-utils";
+
 /*
  * =====================================================
  * TIPOS
@@ -73,6 +77,11 @@ type NormalizedSaleItem = {
     | null;
 };
 
+type InstallmentInput = {
+  dueDate: string;
+  amount: number;
+};
+
 type CreateEditionSaleInput = {
   editionId: string;
 
@@ -85,6 +94,14 @@ type CreateEditionSaleInput = {
   installments: number;
 
   firstDueDate: string;
+
+  /*
+   * Carnê com data e valor de cada parcela. Quando
+   * ausente, cai no cálculo mensal automático
+   * (compatibilidade).
+   */
+  installmentSchedule?:
+    InstallmentInput[];
 
   notes?:
     | string
@@ -109,6 +126,9 @@ type UpdateEditionSaleInput = {
 
   firstDueDate: string;
 
+  installmentSchedule?:
+    InstallmentInput[];
+
   notes?:
     | string
     | null;
@@ -130,6 +150,91 @@ type ProductCommissionResult =
 
       message: string;
     };
+
+/*
+ * Valida o carnê recebido do formulário (data + valor por
+ * parcela) contra a quantidade de parcelas e o total da
+ * venda. Retorna o schedule normalizado ou undefined
+ * (nesse caso o financeiro cai no cálculo mensal padrão).
+ */
+function resolveInstallmentSchedule(
+  schedule:
+    | { dueDate: string; amount: number }[]
+    | undefined,
+  installments: number,
+  totalAmount: number
+):
+  | {
+      ok: true;
+      schedule?: {
+        dueDate: string;
+        amount: number;
+      }[];
+    }
+  | { ok: false; message: string } {
+  if (
+    !schedule ||
+    schedule.length === 0
+  ) {
+    return { ok: true };
+  }
+
+  if (
+    schedule.length !== installments
+  ) {
+    return {
+      ok: false,
+      message:
+        "A quantidade de parcelas não corresponde ao carnê informado.",
+    };
+  }
+
+  for (const row of schedule) {
+    if (!isValidDateOnly(row.dueDate)) {
+      return {
+        ok: false,
+        message:
+          "Há uma data de parcela inválida.",
+      };
+    }
+
+    if (
+      !Number.isFinite(row.amount) ||
+      row.amount <= 0
+    ) {
+      return {
+        ok: false,
+        message:
+          "Há um valor de parcela inválido.",
+      };
+    }
+  }
+
+  const sum = schedule.reduce(
+    (total, row) => total + row.amount,
+    0
+  );
+
+  if (
+    Math.abs(sum - totalAmount) >= 0.01
+  ) {
+    return {
+      ok: false,
+      message:
+        "A soma das parcelas precisa ser igual ao total da venda.",
+    };
+  }
+
+  return {
+    ok: true,
+    schedule: schedule.map((row) => ({
+      dueDate: row.dueDate,
+      amount:
+        Math.round(row.amount * 100) /
+        100,
+    })),
+  };
+}
 
 /*
  * =====================================================
@@ -486,6 +591,20 @@ export async function createEditionSale(
   const totalAmount =
     normalizedResult.totalAmount;
 
+  const scheduleResult =
+    resolveInstallmentSchedule(
+      input.installmentSchedule,
+      input.installments,
+      totalAmount
+    );
+
+  if (!scheduleResult.ok) {
+    return {
+      success: false,
+      message: scheduleResult.message,
+    };
+  }
+
   /*
    * =====================================================
    * VALIDAR CADERNO / POSIÇÃO
@@ -789,6 +908,9 @@ export async function createEditionSale(
 
           firstDueDate:
             input.firstDueDate,
+
+          schedule:
+            scheduleResult.schedule,
         },
         financialEntryIds
       );
@@ -1398,6 +1520,20 @@ export async function updateEditionSale(
   const totalAmount =
     normalizedResult.totalAmount;
 
+  const scheduleResult =
+    resolveInstallmentSchedule(
+      input.installmentSchedule,
+      input.installments,
+      totalAmount
+    );
+
+  if (!scheduleResult.ok) {
+    return {
+      success: false,
+      message: scheduleResult.message,
+    };
+  }
+
   /*
    * =====================================================
    * VALIDAR POSIÇÕES
@@ -1740,6 +1876,9 @@ export async function updateEditionSale(
 
         firstDueDate:
           input.firstDueDate,
+
+        schedule:
+          scheduleResult.schedule,
       },
       newFinancialEntryIds
     );
@@ -2675,6 +2814,11 @@ async function createSaleFinancialEntries(
     installments: number;
 
     firstDueDate: string;
+
+    schedule?: {
+      dueDate: string;
+      amount: number;
+    }[];
   },
   createdFinancialIds:
     string[]
@@ -2691,11 +2835,20 @@ async function createSaleFinancialEntries(
       message: string;
     }
 > {
+  const hasSchedule =
+    Array.isArray(input.schedule) &&
+    input.schedule.length ===
+      input.installments;
+
   const installmentValues =
-    distributeAmount(
-      input.totalAmount,
-      input.installments
-    );
+    hasSchedule
+      ? input.schedule!.map(
+          (row) => row.amount
+        )
+      : distributeAmount(
+          input.totalAmount,
+          input.installments
+        );
 
   const today =
     new Date()
@@ -2720,10 +2873,13 @@ async function createSaleFinancialEntries(
       1;
 
     const dueDate =
-      addMonthsClamped(
-        input.firstDueDate,
-        index
-      );
+      hasSchedule
+        ? input.schedule![index]
+            .dueDate
+        : addMonthsClamped(
+            input.firstDueDate,
+            index
+          );
 
     const amount =
       installmentValues[

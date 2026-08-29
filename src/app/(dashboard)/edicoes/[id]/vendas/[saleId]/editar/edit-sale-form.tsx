@@ -1,7 +1,9 @@
 "use client";
 
 import {
+  useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react";
@@ -23,6 +25,11 @@ import {
 import {
   updateEditionSale,
 } from "../../actions";
+
+import {
+  buildDueDates,
+  distributeAmount,
+} from "@/app/lib/date-utils";
 
 type Client = {
   id: string;
@@ -89,6 +96,11 @@ type Props = {
     installments: number;
     firstDueDate: string;
     notes: string;
+
+    installmentSchedule: {
+      dueDate: string;
+      amount: number;
+    }[];
 
     items: {
       id: string;
@@ -175,12 +187,44 @@ export default function EditSaleForm({
     );
 
   const [
+    intervalDays,
+    setIntervalDays,
+  ] =
+    useState(30);
+
+  const [
     firstDueDate,
     setFirstDueDate,
   ] =
     useState(
       sale.firstDueDate
     );
+
+  const [
+    schedule,
+    setSchedule,
+  ] =
+    useState<
+      {
+        dueDate: string;
+        amount: string;
+      }[]
+    >(() =>
+      sale.installmentSchedule.length >
+      0
+        ? sale.installmentSchedule.map(
+            (row) => ({
+              dueDate: row.dueDate,
+              amount: formatInputMoney(
+                row.amount
+              ),
+            })
+          )
+        : []
+    );
+
+  const scheduleFirstRun =
+    useRef(true);
 
   const [
     notes,
@@ -362,18 +406,92 @@ export default function EditSaleForm({
         )
       : 0;
 
-  const installmentPreview =
-    useMemo(
-      () =>
-        buildInstallments(
-          subtotal,
-          installments
-        ),
-      [
-        subtotal,
+  /*
+   * Recalcula o carnê quando o usuário mexe no total,
+   * na quantidade, no 1º vencimento ou no intervalo.
+   * Na 1ª renderização mantém o carnê que veio do banco.
+   */
+  useEffect(
+    () => {
+      if (scheduleFirstRun.current) {
+        scheduleFirstRun.current = false;
+
+        if (schedule.length > 0) {
+          return;
+        }
+      }
+
+      const count = Math.max(
         installments,
-      ]
+        1
+      );
+
+      const amounts =
+        subtotal > 0
+          ? distributeAmount(
+              subtotal,
+              count
+            )
+          : Array.from(
+              { length: count },
+              () => 0
+            );
+
+      const dueDates = buildDueDates(
+        firstDueDate,
+        count,
+        intervalDays
+      );
+
+      setSchedule(
+        Array.from(
+          { length: count },
+          (_, index) => ({
+            dueDate:
+              dueDates[index] ?? "",
+            amount: formatInputMoney(
+              amounts[index] ?? 0
+            ),
+          })
+        )
+      );
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [
+      subtotal,
+      installments,
+      firstDueDate,
+      intervalDays,
+    ]
+  );
+
+  const scheduleTotal = roundMoney(
+    schedule.reduce(
+      (total, row) =>
+        total + parseMoney(row.amount),
+      0
+    )
+  );
+
+  const scheduleBalanced =
+    subtotal > 0 &&
+    Math.abs(
+      scheduleTotal - subtotal
+    ) < 0.01;
+
+  function updateScheduleRow(
+    index: number,
+    field: "dueDate" | "amount",
+    value: string
+  ) {
+    setSchedule((current) =>
+      current.map((row, itemIndex) =>
+        itemIndex === index
+          ? { ...row, [field]: value }
+          : row
+      )
     );
+  }
 
   /*
    * =====================================================
@@ -847,6 +965,32 @@ export default function EditSaleForm({
       return;
     }
 
+    if (
+      schedule.length !==
+        installments ||
+      schedule.some(
+        (row) => !row.dueDate
+      )
+    ) {
+      setMessage({
+        type: "error",
+        text: "Informe a data de vencimento de todas as parcelas.",
+      });
+
+      return;
+    }
+
+    if (!scheduleBalanced) {
+      setMessage({
+        type: "error",
+        text: `A soma das parcelas precisa ser ${formatCurrency(
+          subtotal
+        )}.`,
+      });
+
+      return;
+    }
+
     startTransition(
       async () => {
         const result =
@@ -866,6 +1010,14 @@ export default function EditSaleForm({
             installments,
 
             firstDueDate,
+
+            installmentSchedule:
+              schedule.map((row) => ({
+                dueDate: row.dueDate,
+                amount: parseMoney(
+                  row.amount
+                ),
+              })),
 
             notes:
               notes.trim() ||
@@ -1683,7 +1835,7 @@ export default function EditSaleForm({
           </div>
         )}
 
-        <div className="mt-5 grid gap-5 md:grid-cols-3">
+        <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           <div>
             <label className="text-sm font-medium text-slate-700">
               Forma de pagamento
@@ -1789,44 +1941,110 @@ export default function EditSaleForm({
               className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f] disabled:cursor-not-allowed disabled:bg-slate-50"
             />
           </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-700">
+              Intervalo entre parcelas (dias)
+            </label>
+
+            <input
+              type="number"
+              min={1}
+              max={365}
+              value={intervalDays}
+              disabled={financialLocked}
+              onChange={(event) =>
+                setIntervalDays(
+                  Math.max(
+                    1,
+                    Number(
+                      event.target.value
+                    ) || 30
+                  )
+                )
+              }
+              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#15704f] disabled:cursor-not-allowed disabled:bg-slate-50"
+            />
+          </div>
         </div>
 
-        {subtotal >
-          0 && (
-          <div className="mt-5 rounded-xl bg-slate-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Previsão das parcelas
-            </p>
+        {subtotal > 0 && (
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col justify-between gap-1 sm:flex-row sm:items-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                Parcelas — datas e valores
+              </p>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              {installmentPreview.map(
-                (
-                  value,
-                  index
-                ) => (
-                  <div
-                    key={
-                      index
-                    }
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2"
-                  >
-                    <p className="text-xs text-slate-400">
-                      Parcela{" "}
-                      {
-                        index +
-                        1
-                      }
-                    </p>
-
-                    <p className="mt-1 text-sm font-semibold text-slate-800">
-                      {formatCurrency(
-                        value
-                      )}
-                    </p>
-                  </div>
-                )
-              )}
+              <p
+                className={`text-sm font-semibold ${
+                  scheduleBalanced
+                    ? "text-emerald-700"
+                    : "text-red-600"
+                }`}
+              >
+                Soma:{" "}
+                {formatCurrency(
+                  scheduleTotal
+                )}
+              </p>
             </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {schedule.map((row, index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-slate-200 bg-white p-3"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Parcela {index + 1}
+                  </p>
+
+                  <input
+                    type="date"
+                    value={row.dueDate}
+                    disabled={
+                      financialLocked
+                    }
+                    onChange={(event) =>
+                      updateScheduleRow(
+                        index,
+                        "dueDate",
+                        event.target.value
+                      )
+                    }
+                    className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#15704f] disabled:cursor-not-allowed disabled:bg-slate-50"
+                  />
+
+                  <div className="relative mt-2">
+                    <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                      R$
+                    </span>
+
+                    <input
+                      inputMode="decimal"
+                      value={row.amount}
+                      disabled={
+                        financialLocked
+                      }
+                      onChange={(event) =>
+                        updateScheduleRow(
+                          index,
+                          "amount",
+                          event.target.value
+                        )
+                      }
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2 text-sm text-slate-700 outline-none focus:border-[#15704f] disabled:cursor-not-allowed disabled:bg-slate-50"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {!scheduleBalanced && (
+              <p className="mt-3 text-xs font-medium text-red-600">
+                A soma das parcelas precisa ser {formatCurrency(subtotal)}.
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -2021,76 +2239,6 @@ function getItemTotal(
         item.unitPrice
       )
   );
-}
-
-/*
- * =====================================================
- * PARCELAS
- * =====================================================
- */
-
-function buildInstallments(
-  total:
-    number,
-  quantity:
-    number
-) {
-  if (
-    quantity <=
-    0
-  ) {
-    return [];
-  }
-
-  const base =
-    Math.floor(
-      (
-        total /
-        quantity
-      ) *
-        100
-    ) /
-    100;
-
-  const values =
-    Array.from(
-      {
-        length:
-          quantity,
-      },
-      () =>
-        base
-    );
-
-  const used =
-    roundMoney(
-      base *
-        quantity
-    );
-
-  const difference =
-    roundMoney(
-      total -
-        used
-    );
-
-  if (
-    values.length
-  ) {
-    values[
-      values.length -
-        1
-    ] =
-      roundMoney(
-        values[
-          values.length -
-            1
-        ] +
-          difference
-      );
-  }
-
-  return values;
 }
 
 /*

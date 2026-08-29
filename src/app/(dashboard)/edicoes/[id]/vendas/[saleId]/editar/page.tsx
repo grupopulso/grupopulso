@@ -211,11 +211,18 @@ export default async function EditEditionSalePage({
         "edition_sale_installments"
       )
       .select(`
-        financial_entry_id
+        financial_entry_id,
+        due_date,
+        amount,
+        installment_number
       `)
       .eq(
         "sale_id",
         sale.id
+      )
+      .order(
+        "installment_number",
+        { ascending: true }
       );
 
   if (
@@ -226,6 +233,16 @@ export default async function EditEditionSalePage({
       installmentLinksError
     );
   }
+
+  const installmentSchedule = (
+    installmentLinks ?? []
+  ).map((installment) => ({
+    dueDate:
+      installment.due_date as string,
+    amount: Number(
+      installment.amount ?? 0
+    ),
+  }));
 
   const financialEntryIds =
     (
@@ -967,6 +984,8 @@ export default async function EditEditionSalePage({
             firstDueDate:
               sale.first_due_date ??
               "",
+
+            installmentSchedule,
 
             notes:
               sale.notes ??
