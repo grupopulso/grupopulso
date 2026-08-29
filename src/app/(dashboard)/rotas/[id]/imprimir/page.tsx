@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import PrintRouteButton from "@/app/components/print-route-button";
+import PrintLandscape from "@/app/components/print-landscape";
 import {
   requireCompanyAccess,
   requireModulePermission,
@@ -171,7 +172,17 @@ export default async function ImprimirRotaPage({
 
   return (
     <main className="min-h-screen bg-slate-100 px-6 py-8 print:bg-white print:p-0">
-      <div className="mx-auto max-w-[1100px]">
+      <PrintLandscape />
+
+      <style>
+        {`@media print {
+          .route-print { font-size: 12px; }
+          .route-print td, .route-print th { padding-top: 5px; padding-bottom: 5px; }
+          .route-print tr { break-inside: avoid; }
+        }`}
+      </style>
+
+      <div className="mx-auto max-w-[1100px] print:max-w-none">
         {/* CONTROLES - NÃO IMPRIME */}
 
         <div className="mb-5 flex items-center justify-between print:hidden">
@@ -188,7 +199,7 @@ export default async function ImprimirRotaPage({
 
         {/* FOLHA */}
 
-        <div className="bg-white p-8 shadow-sm print:p-0 print:shadow-none">
+        <div className="route-print bg-white p-8 shadow-sm print:p-0 print:shadow-none">
           {/* CABEÇALHO */}
 
           <header className="border-b-2 border-slate-900 pb-5">

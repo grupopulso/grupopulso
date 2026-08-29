@@ -13,6 +13,7 @@ import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
+import PrintLandscape from "@/app/components/print-landscape";
 
 type Company = {
   id: string;
@@ -150,6 +151,8 @@ export default async function RelatorioRotasPage() {
 
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
+      <PrintLandscape />
+
       <div className="mx-auto max-w-7xl">
         <Link
           href="/rotas"
