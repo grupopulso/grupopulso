@@ -137,6 +137,12 @@ if (selectedCompanyId) {
                   <TableHeader>
                     Status
                   </TableHeader>
+
+                  <TableHeader>
+                    <span className="sr-only">
+                      Ações
+                    </span>
+                  </TableHeader>
                 </tr>
               </thead>
 
@@ -208,6 +214,15 @@ if (selectedCompanyId) {
                           active={product.active}
                         />
                       </td>
+
+                      <td className="px-5 py-4 text-right">
+                        <Link
+                          href={`/produtos/${product.id}/editar`}
+                          className="text-sm font-semibold text-[#15704f] hover:underline"
+                        >
+                          Editar
+                        </Link>
+                      </td>
                     </tr>
                   );
                 })}
@@ -215,7 +230,7 @@ if (selectedCompanyId) {
                 {!products?.length && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-5 py-14 text-center"
                     >
                       <p className="text-sm font-medium text-slate-500">

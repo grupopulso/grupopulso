@@ -20,27 +20,62 @@ import {
   createProductRecord,
 } from "@/app/(dashboard)/produtos/novo/actions";
 
+import {
+  updateProductRecord,
+} from "@/app/(dashboard)/produtos/[id]/editar/actions";
+
 type Company = {
   id: string;
   name: string;
 };
 
+type ExistingProduct = {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  category: string | null;
+  type: string;
+  defaultPrice: number | null;
+  commissionPercentage: number | null;
+  billingFrequency: string;
+  active: boolean;
+};
+
 type Props = {
   companies: Company[];
+  product?: ExistingProduct;
 };
+
+function moneyToInput(
+  value: number | null
+) {
+  if (value === null) {
+    return "";
+  }
+
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 export default function ProductForm({
   companies,
+  product,
 }: Props) {
   const router =
     useRouter();
+
+  const isEdit = Boolean(product);
 
   const [
     companyId,
     setCompanyId,
   ] =
     useState(
-      companies[0]?.id ??
+      product?.companyId ??
+        companies[0]?.id ??
         ""
     );
 
@@ -48,46 +83,74 @@ export default function ProductForm({
     name,
     setName,
   ] =
-    useState("");
+    useState(
+      product?.name ?? ""
+    );
 
   const [
     description,
     setDescription,
   ] =
-    useState("");
+    useState(
+      product?.description ?? ""
+    );
 
   const [
     category,
     setCategory,
   ] =
-    useState("");
+    useState(
+      product?.category ?? ""
+    );
 
   const [
     type,
     setType,
   ] =
     useState(
-      "service"
+      product?.type ?? "service"
     );
 
   const [
     price,
     setPrice,
   ] =
-    useState("");
+    useState(
+      moneyToInput(
+        product?.defaultPrice ?? null
+      )
+    );
 
   const [
     commissionPercentage,
     setCommissionPercentage,
   ] =
-    useState("");
+    useState(
+      product?.commissionPercentage !==
+        undefined &&
+        product?.commissionPercentage !==
+          null
+        ? String(
+            product.commissionPercentage
+          ).replace(".", ",")
+        : ""
+    );
 
   const [
     billingFrequency,
     setBillingFrequency,
   ] =
     useState(
-      "one_time"
+      product?.billingFrequency ??
+        "one_time"
+    );
+
+  const [
+    active,
+    setActive,
+  ] =
+    useState(
+      product?.active ?? true
     );
 
   const [
@@ -204,30 +267,58 @@ export default function ProductForm({
     startTransition(
       async () => {
         const result =
-          await createProductRecord({
-            companyId,
+          isEdit && product
+            ? await updateProductRecord({
+                productId:
+                  product.id,
 
-            name:
-              name.trim(),
+                companyId,
 
-            description:
-              description.trim() ||
-              null,
+                name: name.trim(),
 
-            category:
-              category.trim() ||
-              null,
+                description:
+                  description.trim() ||
+                  null,
 
-            type,
+                category:
+                  category.trim() ||
+                  null,
 
-            defaultPrice:
-              parsedPrice,
+                type,
 
-            commissionPercentage:
-              parsedCommission,
+                defaultPrice:
+                  parsedPrice,
 
-            billingFrequency,
-          });
+                commissionPercentage:
+                  parsedCommission,
+
+                billingFrequency,
+
+                active,
+              })
+            : await createProductRecord({
+                companyId,
+
+                name: name.trim(),
+
+                description:
+                  description.trim() ||
+                  null,
+
+                category:
+                  category.trim() ||
+                  null,
+
+                type,
+
+                defaultPrice:
+                  parsedPrice,
+
+                commissionPercentage:
+                  parsedCommission,
+
+                billingFrequency,
+              });
 
         if (
           !result.success
@@ -276,11 +367,15 @@ export default function ProductForm({
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">
-              Novo produto ou serviço
+              {isEdit
+                ? "Editar produto ou serviço"
+                : "Novo produto ou serviço"}
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Cadastre o que será comercializado por uma das empresas do Grupo Pulso.
+              {isEdit
+                ? "Atualize os dados do produto ou serviço."
+                : "Cadastre o que será comercializado por uma das empresas do Grupo Pulso."}
             </p>
           </div>
 
@@ -561,6 +656,31 @@ export default function ProductForm({
               />
             </Field>
           </div>
+
+          {isEdit && (
+            <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(event) =>
+                  setActive(
+                    event.target.checked
+                  )
+                }
+                className="mt-1 h-4 w-4"
+              />
+
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  Produto ativo
+                </p>
+
+                <p className="mt-1 text-xs text-slate-500">
+                  Produtos inativos não aparecem para seleção em novas vendas e contratos.
+                </p>
+              </div>
+            </label>
+          )}
         </section>
 
         {/* EXPLICAÇÃO DA COMISSÃO */}
