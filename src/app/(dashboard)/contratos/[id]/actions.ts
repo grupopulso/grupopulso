@@ -5,10 +5,6 @@ import {
 } from "next/cache";
 
 import {
-  redirect,
-} from "next/navigation";
-
-import {
   createClient,
 } from "@/app/lib/supabase/server";
 
@@ -18,19 +14,27 @@ import {
 } from "@/app/lib/permissions";
 
 import {
-  createContract,
-} from "../novo/actions";
-
-import {
   addDays,
   addMonthsClamped,
   diffInDays,
 } from "@/app/lib/date-utils";
 
-type CreateContractInput =
-  Parameters<
-    typeof createContract
-  >[0];
+export type RenewalPrefill = {
+  sourceContractId: string;
+  clientId: string;
+  companyId: string;
+  productId: string | null;
+  title: string;
+  value: number;
+  billingFrequency: string;
+  paymentMethodId: string | null;
+  installments: number;
+  autoRenew: boolean;
+  notes: string;
+  startDate: string;
+  endDate: string;
+  firstDueDate: string;
+};
 
 export async function deleteContract(
   contractId: string
@@ -232,29 +236,40 @@ export async function deleteContract(
   };
 }
 
+
 /*
  * =====================================================
  * RENOVAR CONTRATO
  * =====================================================
  *
- * Cria um contrato novo a partir dos dados do atual,
- * com a mesma duração de vigência, começando no dia
- * seguinte ao término do contrato original (ou hoje,
- * se ele não tiver data de término).
+ * O fluxo de renovação agora abre o formulário de contrato
+ * já pré-preenchido (/contratos/[id]/renovar). O usuário
+ * pode ajustar valor, produto, responsável (é sempre quem
+ * está criando), datas e parcelas antes de confirmar.
  *
- * O contrato original NÃO é apagado nem tem o status
- * alterado manualmente — como o status já é calculado
- * dinamicamente pelas datas (@/app/lib/contract-status),
- * ele passa a aparecer como "Vencido" sozinho assim que
- * a vigência antiga expira.
+ * getRenewalPrefill() monta os dados sugeridos e aplica as
+ * travas (permissão, escopo de empresa, contrato cancelado,
+ * contrato já renovado, vigência inconsistente).
  *
- * O vínculo entre os dois contratos é registrado apenas
- * no campo `notes` de cada um (sem coluna nova no banco).
+ * linkRenewalContracts() é chamado após a criação para
+ * registrar no contrato original a referência ao novo
+ * contrato (o novo já nasce com a referência ao antigo
+ * embutida em `notes`).
+ *
+ * O vínculo entre os dois contratos vive apenas no campo
+ * `notes` de cada um (sem coluna nova no banco).
  */
 
-export async function renewContract(
+export async function getRenewalPrefill(
   contractId: string
-) {
+): Promise<
+  | { success: true; prefill: RenewalPrefill }
+  | {
+      success: false;
+      error: string;
+      alreadyRenewedId?: string;
+    }
+> {
   await requireModulePermission(
     "contracts",
     "create"
@@ -266,8 +281,7 @@ export async function renewContract(
   if (!contractId) {
     return {
       success: false,
-      error:
-        "Contrato inválido.",
+      error: "Contrato inválido.",
     };
   }
 
@@ -275,9 +289,7 @@ export async function renewContract(
     data: oldContract,
     error: contractError,
   } = await supabase
-    .from(
-      "contracts"
-    )
+    .from("contracts")
     .select(`
       id,
       client_id,
@@ -295,35 +307,21 @@ export async function renewContract(
       first_due_date,
       notes
     `)
-    .eq(
-      "id",
-      contractId
-    )
+    .eq("id", contractId)
     .maybeSingle();
 
-  if (
-    contractError ||
-    !oldContract
-  ) {
+  if (contractError || !oldContract) {
     return {
       success: false,
-      error:
-        "Contrato não encontrado.",
+      error: "Contrato não encontrado.",
     };
   }
 
-  /*
-   * Escopo de empresa: só renova contrato de empresa à
-   * qual o usuário tem acesso (admin sempre passa).
-   */
   await requireCompanyAccess(
     oldContract.company_id
   );
 
-  if (
-    oldContract.status ===
-    "cancelled"
-  ) {
+  if (oldContract.status === "cancelled") {
     return {
       success: false,
       error:
@@ -331,60 +329,22 @@ export async function renewContract(
     };
   }
 
-  /*
-   * Evita renovar duas vezes o mesmo contrato:
-   * verifica se já existe outro contrato cujas
-   * observações referenciam este.
-   */
+  const { data: existingRenewal } =
+    await supabase
+      .from("contracts")
+      .select("id")
+      .neq("id", contractId)
+      .ilike("notes", `%${contractId}%`)
+      .maybeSingle();
 
-  const {
-    data: existingRenewal,
-  } = await supabase
-    .from(
-      "contracts"
-    )
-    .select(
-      "id"
-    )
-    .neq(
-      "id",
-      contractId
-    )
-    .ilike(
-      "notes",
-      `%${contractId}%`
-    )
-    .maybeSingle();
-
-  if (
-    existingRenewal
-  ) {
+  if (existingRenewal) {
     return {
       success: false,
       error:
         "Este contrato já foi renovado anteriormente.",
+      alreadyRenewedId: existingRenewal.id,
     };
   }
-
-  /*
-   * Nova vigência: baseada no "Fim da vigência"
-   * (end_date) do contrato atual, que é o campo
-   * que representa a vigência comercial real —
-   * confirmado com o usuário em 27/08. A duração
-   * da nova vigência replica a duração da atual
-   * (fim − início).
-   *
-   * Se `end_date` vier inconsistente (fim antes ou
-   * igual ao início — problema já visto em contratos
-   * com digitação errada), a renovação é recusada com
-   * um erro claro em vez de gerar uma data sem sentido.
-   *
-   * Se o contrato não tiver `end_date` (vigência em
-   * aberto), usa a última parcela realmente gerada
-   * como base, com a mesma quantidade de parcelas em
-   * meses — mesma regra usada para gerar as parcelas
-   * originais.
-   */
 
   if (
     oldContract.end_date &&
@@ -393,202 +353,172 @@ export async function renewContract(
   ) {
     return {
       success: false,
-      error:
-        `A vigência deste contrato está inconsistente (fim ${oldContract.end_date} não é depois do início ${oldContract.start_date}). Corrija a data de término em "Editar contrato" antes de renovar.`,
+      error: `A vigência deste contrato está inconsistente (fim ${oldContract.end_date} não é depois do início ${oldContract.start_date}). Corrija a data de término em "Editar contrato" antes de renovar.`,
     };
   }
+
+  /*
+   * Nova vigência: replica a duração da atual a partir do
+   * dia seguinte ao término. Sem data de término, usa a
+   * última parcela gerada (ou o 1º vencimento / início) e
+   * a mesma quantidade de parcelas em meses.
+   */
 
   let newStartDate: string;
   let newEndDate: string;
 
-  if (
-    oldContract.end_date
-  ) {
-    const durationDays =
-      diffInDays(
-        oldContract.start_date,
-        oldContract.end_date
-      );
+  if (oldContract.end_date) {
+    const durationDays = diffInDays(
+      oldContract.start_date,
+      oldContract.end_date
+    );
 
-    newStartDate =
-      addDays(
-        oldContract.end_date,
-        1
-      );
+    newStartDate = addDays(
+      oldContract.end_date,
+      1
+    );
 
-    newEndDate =
-      addDays(
-        newStartDate,
-        durationDays
-      );
+    newEndDate = addDays(
+      newStartDate,
+      durationDays
+    );
   } else {
-    const {
-      data: lastInstallment,
-    } = await supabase
-      .from(
-        "contract_installments"
-      )
-      .select(
-        "due_date"
-      )
-      .eq(
-        "contract_id",
-        contractId
-      )
-      .order(
-        "due_date",
-        {
+    const { data: lastInstallment } =
+      await supabase
+        .from("contract_installments")
+        .select("due_date")
+        .eq("contract_id", contractId)
+        .order("due_date", {
           ascending: false,
-        }
-      )
-      .limit(1)
-      .maybeSingle();
+        })
+        .limit(1)
+        .maybeSingle();
 
     const baseDate =
       lastInstallment?.due_date ??
       oldContract.first_due_date ??
       oldContract.start_date;
 
-    newStartDate =
-      addDays(
-        baseDate,
-        1
-      );
+    newStartDate = addDays(baseDate, 1);
 
-    newEndDate =
-      addMonthsClamped(
-        newStartDate,
-        Math.max(
-          oldContract.installments -
-            1,
-          0
-        )
-      );
+    newEndDate = addMonthsClamped(
+      newStartDate,
+      Math.max(
+        oldContract.installments - 1,
+        0
+      )
+    );
   }
 
-  const newFirstDueDate =
-    newStartDate;
+  const baseNotes = (oldContract.notes ?? "").trim();
 
-  const result =
-    await createContract({
-      clientId:
-        oldContract.client_id,
+  const prefillNotes = [
+    baseNotes,
+    `Renovação do contrato ${oldContract.id}.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
-      companyId:
-        oldContract.company_id,
-
-      productId:
-        oldContract.product_id,
-
-      title:
-        oldContract.title,
-
-      startDate:
-        newStartDate,
-
-      endDate:
-        newEndDate,
-
-      value: Number(
-        oldContract.value
-      ),
-
+  return {
+    success: true,
+    prefill: {
+      sourceContractId: oldContract.id,
+      clientId: oldContract.client_id,
+      companyId: oldContract.company_id,
+      productId: oldContract.product_id,
+      title: oldContract.title,
+      value: Number(oldContract.value),
       billingFrequency:
-        oldContract.billing_frequency as CreateContractInput["billingFrequency"],
-
+        oldContract.billing_frequency,
       paymentMethodId:
         oldContract.payment_method_id,
-
       installments:
         oldContract.installments,
+      autoRenew: oldContract.auto_renew,
+      notes: prefillNotes,
+      startDate: newStartDate,
+      endDate: newEndDate,
+      firstDueDate: newStartDate,
+    },
+  };
+}
 
-      firstDueDate:
-        newFirstDueDate,
+export async function linkRenewalContracts(
+  oldContractId: string,
+  newContractId: string
+) {
+  await requireModulePermission(
+    "contracts",
+    "create"
+  );
 
-      autoRenew:
-        oldContract.auto_renew,
+  const supabase =
+    await createClient();
 
-      notes: [
-        oldContract.notes,
-        `Renovação do contrato ${oldContract.id}.`,
-      ]
-        .filter(
-          Boolean
-        )
-        .join(
-          " "
-        ),
-    });
-
-  if (
-    !result.success ||
-    !result.contractId
-  ) {
-    return result;
+  if (!oldContractId || !newContractId) {
+    return {
+      success: false,
+      error: "Contratos inválidos.",
+    };
   }
-
-  /*
-   * Referencia a renovação no
-   * contrato original, sem apagar
-   * nada do que já existia.
-   */
-
-  const updatedNotes = [
-    oldContract.notes,
-    `Renovado em ${todayString()} pelo contrato ${result.contractId}.`,
-  ]
-    .filter(
-      Boolean
-    )
-    .join(
-      " "
-    );
 
   const {
-    error: updateError,
+    data: oldContract,
+    error: oldError,
   } = await supabase
-    .from(
-      "contracts"
-    )
-    .update({
-      notes:
-        updatedNotes,
-    })
-    .eq(
-      "id",
-      contractId
-    );
+    .from("contracts")
+    .select("id, company_id, notes")
+    .eq("id", oldContractId)
+    .maybeSingle();
 
-  if (
-    updateError
-  ) {
-    console.error(
-      "Erro ao registrar referência de renovação no contrato original:",
-      updateError
-    );
+  if (oldError || !oldContract) {
+    return {
+      success: false,
+      error:
+        "Contrato original não encontrado.",
+    };
   }
 
-  revalidatePath(
-    "/contratos"
+  await requireCompanyAccess(
+    oldContract.company_id
   );
 
-  revalidatePath(
-    `/contratos/${contractId}`
-  );
+  const alreadyLinked = (
+    oldContract.notes ?? ""
+  ).includes(newContractId);
 
-  revalidatePath(
-    `/contratos/${result.contractId}`
-  );
+  if (!alreadyLinked) {
+    const updatedNotes = [
+      (oldContract.notes ?? "").trim(),
+      `Renovado em ${todayString()} pelo contrato ${newContractId}.`,
+    ]
+      .filter(Boolean)
+      .join(" ");
 
-  revalidatePath(
-    "/assinaturas"
-  );
+    const { error: updateError } =
+      await supabase
+        .from("contracts")
+        .update({ notes: updatedNotes })
+        .eq("id", oldContractId);
 
-  revalidatePath(
-    `/clientes/${oldContract.client_id}`
-  );
+    if (updateError) {
+      console.error(
+        "Erro ao registrar referência de renovação no contrato original:",
+        updateError
+      );
+    }
+  }
 
-  return result;
+  revalidatePath("/contratos");
+  revalidatePath(
+    `/contratos/${oldContractId}`
+  );
+  revalidatePath(
+    `/contratos/${newContractId}`
+  );
+  revalidatePath("/assinaturas");
+
+  return { success: true };
 }
 
 /*

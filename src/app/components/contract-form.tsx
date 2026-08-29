@@ -31,6 +31,11 @@ import {
 } from "@/app/(dashboard)/contratos/novo/actions";
 
 import {
+  linkRenewalContracts,
+  type RenewalPrefill,
+} from "@/app/(dashboard)/contratos/[id]/actions";
+
+import {
   buildDueDates,
 } from "@/app/lib/date-utils";
 
@@ -132,6 +137,14 @@ type ContractFormProps = {
    * também valida isso (requireCompanyAccess).
    */
   allowedCompanyIds?: string[] | null;
+
+  /*
+   * Quando presente, o formulário funciona em modo
+   * "renovação": nasce pré-preenchido com os dados do
+   * contrato de origem e, ao salvar, registra o vínculo
+   * entre os dois contratos.
+   */
+  renewal?: RenewalPrefill | null;
 };
 
 /*
@@ -152,9 +165,21 @@ const POTTENCIALIZA_COMPANY_ID =
 export default function ContractForm({
   initialClientId = "",
   allowedCompanyIds = null,
+  renewal = null,
 }: ContractFormProps) {
   const router =
     useRouter();
+
+  const isRenewal =
+    Boolean(renewal);
+
+  const [
+    renewalLocked,
+    setRenewalLocked,
+  ] =
+    useState(
+      Boolean(renewal)
+    );
 
   const [
     supabase,
@@ -258,53 +283,71 @@ export default function ContractForm({
     clientId,
     setClientId,
   ] =
-    useState("");
+    useState(
+      renewal?.clientId ?? ""
+    );
 
   const [
     companyId,
     setCompanyId,
   ] =
-    useState("");
+    useState(
+      renewal?.companyId ?? ""
+    );
 
   const [
     productId,
     setProductId,
   ] =
-    useState("");
+    useState(
+      renewal?.productId ?? ""
+    );
 
   const [
     title,
     setTitle,
   ] =
-    useState("");
+    useState(
+      renewal?.title ?? ""
+    );
 
   const [
     startDate,
     setStartDate,
   ] =
     useState(
-      getToday()
+      renewal?.startDate ||
+        getToday()
     );
 
   const [
     endDate,
     setEndDate,
   ] =
-    useState("");
+    useState(
+      renewal?.endDate ?? ""
+    );
 
   const [
     firstDueDate,
     setFirstDueDate,
   ] =
     useState(
-      getToday()
+      renewal?.firstDueDate ||
+        getToday()
     );
 
   const [
     value,
     setValue,
   ] =
-    useState("");
+    useState(
+      renewal
+        ? formatMoneyInput(
+            renewal.value
+          )
+        : ""
+    );
 
   const [
     billingFrequency,
@@ -313,21 +356,24 @@ export default function ContractForm({
     useState<
       BillingFrequency
     >(
-      "monthly"
+      (renewal?.billingFrequency as BillingFrequency) ??
+        "monthly"
     );
 
   const [
     paymentMethodId,
     setPaymentMethodId,
   ] =
-    useState("");
+    useState(
+      renewal?.paymentMethodId ?? ""
+    );
 
   const [
     installments,
     setInstallments,
   ] =
     useState(
-      1
+      renewal?.installments ?? 1
     );
 
   const [
@@ -363,14 +409,16 @@ export default function ContractForm({
     setAutoRenew,
   ] =
     useState(
-      false
+      renewal?.autoRenew ?? false
     );
 
   const [
     notes,
     setNotes,
   ] =
-    useState("");
+    useState(
+      renewal?.notes ?? ""
+    );
 
   const [
     loading,
@@ -957,6 +1005,7 @@ export default function ContractForm({
   useEffect(
     () => {
       if (
+        products.length > 0 &&
         productId &&
         !availableProducts.some(
           (
@@ -972,6 +1021,7 @@ export default function ContractForm({
       }
     },
     [
+      products,
       availableProducts,
       productId,
     ]
@@ -980,6 +1030,7 @@ export default function ContractForm({
   useEffect(
     () => {
       if (
+        !renewalLocked &&
         availableProducts.length ===
           1 &&
         !productId
@@ -1022,6 +1073,7 @@ export default function ContractForm({
     [
       availableProducts,
       productId,
+      renewalLocked,
     ]
   );
 
@@ -1035,6 +1087,10 @@ export default function ContractForm({
     id:
       string
   ) {
+    setRenewalLocked(
+      false
+    );
+
     setClientId(
       id
     );
@@ -1102,6 +1158,10 @@ export default function ContractForm({
     id:
       string
   ) {
+    setRenewalLocked(
+      false
+    );
+
     setCompanyId(
       id
     );
@@ -1928,6 +1988,31 @@ export default function ContractForm({
       return;
     }
 
+    if (
+      renewal &&
+      result.contractId
+    ) {
+      /*
+       * Registra no contrato de origem a
+       * referência ao novo contrato. Uma
+       * falha aqui não bloqueia o fluxo —
+       * o novo contrato já nasce com a
+       * referência ao antigo em `notes`.
+       */
+      await linkRenewalContracts(
+        renewal.sourceContractId,
+        result.contractId
+      );
+
+      router.push(
+        `/contratos/${result.contractId}`
+      );
+
+      router.refresh();
+
+      return;
+    }
+
     router.push(
       "/contratos"
     );
@@ -1968,11 +2053,15 @@ export default function ContractForm({
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">
-              Novo contrato
+              {isRenewal
+                ? "Renovar contrato"
+                : "Novo contrato"}
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Cadastre primeiro a venda/contrato. As publicações serão vinculadas às edições posteriormente.
+              {isRenewal
+                ? "Confira e ajuste os dados abaixo antes de confirmar. Um novo contrato será criado e vinculado ao contrato de origem."
+                : "Cadastre primeiro a venda/contrato. As publicações serão vinculadas às edições posteriormente."}
             </p>
           </div>
 
@@ -1988,6 +2077,8 @@ export default function ContractForm({
 
             {loading
               ? "Salvando..."
+              : isRenewal
+              ? "Confirmar renovação"
               : "Salvar contrato"}
           </button>
         </div>
@@ -2909,6 +3000,8 @@ export default function ContractForm({
 
             {loading
               ? "Salvando..."
+              : isRenewal
+              ? "Confirmar renovação"
               : "Salvar contrato"}
           </button>
         </div>
