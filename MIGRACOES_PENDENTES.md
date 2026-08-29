@@ -85,7 +85,10 @@ _Aplicado em 2026-08-29._
 
 ---
 
-## [ ] C — Mapa da edição (nº de páginas) + posição "Coluna"
+## [x] C — Mapa da edição (nº de páginas) + posição "Coluna"
+
+_Aplicado em 2026-08-29 (constraint + backfill + coluna page_count)._
+
 
 ### 1. Número de páginas da edição
 
