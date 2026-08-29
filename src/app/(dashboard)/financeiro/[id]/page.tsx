@@ -180,6 +180,37 @@ charge_sent_at,
     )
   );
 
+  const paymentMethodById = new Map(
+    ((paymentMethods ?? []) as PaymentMethod[]).map(
+      (method) => [
+        method.id,
+        method.name,
+      ]
+    )
+  );
+
+  /*
+   * FORMA DE PAGAMENTO PREVISTA
+   *
+   * Consulta isolada e tolerante a erro:
+   * a coluna payment_method_id pode ainda
+   * não existir em bases não migradas.
+   */
+  let expectedPaymentMethodName: string | null = null;
+
+  const { data: entryExtra } = await supabase
+    .from("financial_entries")
+    .select("payment_method_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (entryExtra?.payment_method_id) {
+    expectedPaymentMethodName =
+      paymentMethodById.get(
+        entryExtra.payment_method_id
+      ) ?? null;
+  }
+
   const company = getFirst(entry.company);
   const client = getFirst(entry.client);
   const supplier = getFirst(entry.supplier);
@@ -333,6 +364,12 @@ charge_sent_at,
                   icon={Banknote}
                   label="Conta / Caixa"
                   value={account?.name ?? "—"}
+                />
+
+                <InfoItem
+                  icon={Banknote}
+                  label="Forma de pagamento prevista"
+                  value={expectedPaymentMethodName ?? "—"}
                 />
 
                 <InfoItem

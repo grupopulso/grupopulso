@@ -58,6 +58,13 @@ type FinancialAccount = {
   name: string;
 };
 
+type PaymentMethod = {
+  id: string;
+  name: string;
+  usage_type: "income" | "expense" | "both";
+  active: boolean;
+};
+
 type FinancialEntryFormProps = {
   initialClientId?: string;
 };
@@ -99,6 +106,9 @@ export default function FinancialEntryForm({
   const [financialAccounts, setFinancialAccounts] =
     useState<FinancialAccount[]>([]);
 
+  const [paymentMethods, setPaymentMethods] =
+    useState<PaymentMethod[]>([]);
+
   const [companyId, setCompanyId] =
     useState("");
 
@@ -124,6 +134,9 @@ export default function FinancialEntryForm({
     financialAccountId,
     setFinancialAccountId,
   ] = useState("");
+
+  const [paymentMethodId, setPaymentMethodId] =
+    useState("");
 
   const [description, setDescription] =
     useState("");
@@ -179,6 +192,7 @@ export default function FinancialEntryForm({
         categoriesResult,
         costCentersResult,
         accountsResult,
+        paymentMethodsResult,
       ] = await Promise.all([
         supabase
           .from("clients")
@@ -230,6 +244,12 @@ export default function FinancialEntryForm({
           .select("id, company_id, name")
           .eq("active", true)
           .order("name"),
+
+        supabase
+          .from("financial_payment_methods")
+          .select("id, name, usage_type, active")
+          .eq("active", true)
+          .order("name"),
       ]);
 
       setClients(clientsResult.data ?? []);
@@ -239,6 +259,7 @@ export default function FinancialEntryForm({
       setCategories(categoriesResult.data ?? []);
       setCostCenters(costCentersResult.data ?? []);
       setFinancialAccounts(accountsResult.data ?? []);
+      setPaymentMethods(paymentMethodsResult.data ?? []);
 
       if (companiesResult.data?.length) {
         setCompanyId(companiesResult.data[0].id);
@@ -279,9 +300,28 @@ export default function FinancialEntryForm({
     );
   }, [financialAccounts, companyId]);
 
+  const availablePaymentMethods = useMemo(() => {
+    return paymentMethods.filter(
+      (method) =>
+        method.usage_type === entryType ||
+        method.usage_type === "both"
+    );
+  }, [paymentMethods, entryType]);
+
   useEffect(() => {
     setCategoryId("");
   }, [entryType]);
+
+  useEffect(() => {
+    if (
+      paymentMethodId &&
+      !availablePaymentMethods.some(
+        (method) => method.id === paymentMethodId
+      )
+    ) {
+      setPaymentMethodId("");
+    }
+  }, [availablePaymentMethods, paymentMethodId]);
 
   useEffect(() => {
     if (
@@ -456,6 +496,10 @@ export default function FinancialEntryForm({
 
           financial_account_id:
             financialAccountId || null,
+
+          ...(paymentMethodId
+            ? { payment_method_id: paymentMethodId }
+            : {}),
 
           description:
             description.trim(),
@@ -822,6 +866,33 @@ export default function FinancialEntryForm({
                       value={account.id}
                     >
                       {account.name}
+                    </option>
+                  )
+                )}
+              </select>
+            </Field>
+
+            <Field label="Forma de pagamento (prevista)">
+              <select
+                value={paymentMethodId}
+                onChange={(event) =>
+                  setPaymentMethodId(
+                    event.target.value
+                  )
+                }
+                className="input"
+              >
+                <option value="">
+                  Não definida
+                </option>
+
+                {availablePaymentMethods.map(
+                  (method) => (
+                    <option
+                      key={method.id}
+                      value={method.id}
+                    >
+                      {method.name}
                     </option>
                   )
                 )}

@@ -13,10 +13,15 @@ import {
 } from "@/app/lib/permissions";
 
 export default async function FormasPagamentoPage() {
+  const access =
     await requireModulePermission(
-  "settings",
-  "view"
-);
+      "financial",
+      "view"
+    );
+
+  const isAdmin =
+    access.profile.role === "admin";
+
   const supabase =
     await createClient();
 
@@ -85,9 +90,15 @@ export default async function FormasPagamentoPage() {
           />
         </div>
 
-        <div className="mt-7">
-          <PaymentMethodForm />
-        </div>
+        {isAdmin ? (
+          <div className="mt-7">
+            <PaymentMethodForm />
+          </div>
+        ) : (
+          <p className="mt-7 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-500">
+            Apenas administradores podem cadastrar ou editar formas de pagamento.
+          </p>
+        )}
 
         <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 p-5">
@@ -174,24 +185,30 @@ export default async function FormasPagamentoPage() {
                       </td>
 
                       <td className="px-5 py-4">
-                        <PaymentMethodActions
-                          method={{
-                            id:
-                              method.id,
+                        {isAdmin ? (
+                          <PaymentMethodActions
+                            method={{
+                              id:
+                                method.id,
 
-                            name:
-                              method.name,
+                              name:
+                                method.name,
 
-                            code:
-                              method.code,
+                              code:
+                                method.code,
 
-                            usageType:
-                              method.usage_type,
+                              usageType:
+                                method.usage_type,
 
-                            active:
-                              method.active,
-                          }}
-                        />
+                              active:
+                                method.active,
+                            }}
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-400">
+                            —
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )

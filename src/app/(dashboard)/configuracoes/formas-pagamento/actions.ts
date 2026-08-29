@@ -3,10 +3,13 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { requireAdmin } from "@/app/lib/permissions";
 
 export async function createPaymentMethod(
   formData: FormData
 ) {
+  await requireAdmin();
+
   const supabase =
     await createClient();
 
@@ -119,6 +122,8 @@ export async function updatePaymentMethod(
     active: boolean;
   }
 ) {
+  await requireAdmin();
+
   const supabase =
     await createClient();
 
@@ -213,6 +218,8 @@ export async function updatePaymentMethod(
 export async function deletePaymentMethod(
   methodId: string
 ) {
+  await requireAdmin();
+
   const supabase =
     await createClient();
 

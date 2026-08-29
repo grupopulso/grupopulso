@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   Building2,
+  CreditCard,
   Landmark,
   Tags,
   Truck,
@@ -38,6 +39,13 @@ const items = [
       "Gerencie contas bancárias, caixas e carteiras.",
     href: "/financeiro/configuracoes/contas",
     icon: Landmark,
+  },
+  {
+    title: "Formas de pagamento",
+    description:
+      "Dinheiro, cheque, boleto, PIX. Somente administradores podem cadastrar.",
+    href: "/configuracoes/formas-pagamento",
+    icon: CreditCard,
   },
 ];
 
