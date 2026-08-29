@@ -4,10 +4,14 @@ import {
   useMemo,
 } from "react";
 
+import Link from "next/link";
+
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  ChevronRight,
   CircleDollarSign,
+  Target,
   TrendingDown,
   TrendingUp,
   Users,
@@ -52,6 +56,14 @@ type DashboardMetrics = {
   cancelled: number;
 };
 
+type CompanyGoal = {
+  companyId: string;
+  companyName: string;
+  color: string | null;
+  target: number | null;
+  billed: number;
+};
+
 type DashboardClientProps = {
   user: {
     id: string;
@@ -65,6 +77,8 @@ type DashboardClientProps = {
   consolidatedMetrics: DashboardMetrics;
 
   metricsByCompany: DashboardMetrics[];
+
+  goalsByCompany: CompanyGoal[];
 };
 
 export default function DashboardClient({
@@ -72,6 +86,7 @@ export default function DashboardClient({
   companies,
   consolidatedMetrics,
   metricsByCompany,
+  goalsByCompany,
 }: DashboardClientProps) {
 const {
   selectedCompanyId,
@@ -149,8 +164,9 @@ const {
             description={
               selectedCompany
                 ? selectedCompany.name
-                : "Todas as empresas"
+                : "Ver clientes"
             }
+            href="/clientes"
           />
 
           <MetricCard
@@ -161,6 +177,7 @@ const {
             )}
             description="Entradas realizadas"
             tone="green"
+            href="/financeiro/recebimentos"
           />
 
           <MetricCard
@@ -171,6 +188,7 @@ const {
             )}
             description="Saldo total em aberto"
             tone="blue"
+            href="/financeiro/receber"
           />
 
           <MetricCard
@@ -181,6 +199,7 @@ const {
             )}
             description="Valores em atraso"
             tone="red"
+            href="/financeiro/receber?status=overdue"
           />
         </div>
 
@@ -195,6 +214,7 @@ const {
             )}
             description="Despesas em aberto"
             tone="orange"
+            href="/financeiro/pagar"
           />
 
           <MetricCard
@@ -205,6 +225,7 @@ const {
             )}
             description="Saídas realizadas"
             tone="red"
+            href="/financeiro/pagamentos"
           />
 
           <MetricCard
@@ -220,6 +241,7 @@ const {
                 ? "green"
                 : "red"
             }
+            href="/financeiro/fluxo"
           />
 
           <MetricCard
@@ -230,8 +252,141 @@ const {
             )}
             description="Pagamentos em atraso"
             tone="orange"
+            href="/financeiro/pagar?status=overdue"
           />
         </div>
+
+        {/* METAS DO MÊS */}
+
+        {(() => {
+          const visibleGoals =
+            selectedCompanyId === "all"
+              ? goalsByCompany
+              : goalsByCompany.filter(
+                  (goal) =>
+                    goal.companyId ===
+                    selectedCompanyId
+                );
+
+          if (visibleGoals.length === 0) {
+            return null;
+          }
+
+          return (
+            <section className="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Target className="h-5 w-5 text-[#15704f]" />
+
+                  <h2 className="font-semibold text-slate-900">
+                    Metas do mês
+                  </h2>
+                </div>
+
+                <Link
+                  href="/metas"
+                  className="text-sm font-semibold text-[#15704f] hover:underline"
+                >
+                  Ver metas
+                </Link>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {visibleGoals.map((goal) => {
+                  const progress =
+                    goal.target &&
+                    goal.target > 0
+                      ? goal.billed /
+                        goal.target
+                      : null;
+
+                  const pct =
+                    progress !== null
+                      ? Math.round(
+                          progress * 100
+                        )
+                      : null;
+
+                  return (
+                    <div
+                      key={goal.companyId}
+                      className="rounded-xl border border-slate-200 p-4"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{
+                            backgroundColor:
+                              goal.color ??
+                              "#94a3b8",
+                          }}
+                        />
+
+                        <p className="text-sm font-semibold text-slate-900">
+                          {goal.companyName}
+                        </p>
+                      </div>
+
+                      {goal.target === null ? (
+                        <p className="mt-3 text-xs text-slate-400">
+                          Meta não definida ·
+                          faturado{" "}
+                          {formatCurrency(
+                            goal.billed
+                          )}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="mt-2 text-lg font-semibold text-slate-900">
+                            {formatCurrency(
+                              goal.billed
+                            )}
+
+                            <span className="ml-1 text-xs font-normal text-slate-400">
+                              / {formatCurrency(
+                                goal.target
+                              )}
+                            </span>
+                          </p>
+
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className={`h-full rounded-full ${
+                                progress !==
+                                  null &&
+                                progress >= 1
+                                  ? "bg-emerald-500"
+                                  : progress !==
+                                        null &&
+                                      progress >=
+                                        0.7
+                                    ? "bg-amber-400"
+                                    : "bg-red-400"
+                              }`}
+                              style={{
+                                width: `${Math.min(
+                                  Math.max(
+                                    pct ?? 0,
+                                    0
+                                  ),
+                                  100
+                                )}%`,
+                              }}
+                            />
+                          </div>
+
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            {pct}% atingido
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* VISÃO POR EMPRESA + SITUAÇÃO */}
 
@@ -420,6 +575,7 @@ function MetricCard({
   value,
   description,
   tone = "default",
+  href,
 }: {
   icon: React.ElementType;
   label: string;
@@ -431,6 +587,7 @@ function MetricCard({
     | "blue"
     | "red"
     | "orange";
+  href?: string;
 }) {
   const tones = {
     default:
@@ -449,29 +606,48 @@ function MetricCard({
       "bg-orange-50 text-orange-600",
   };
 
+  const inner = (
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <p className="text-sm text-slate-500">
+          {label}
+        </p>
+
+        <p className="mt-2 text-2xl font-semibold text-slate-900">
+          {value}
+        </p>
+
+        <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
+          {description}
+
+          {href && (
+            <ChevronRight className="h-3 w-3 opacity-0 transition group-hover:opacity-100" />
+          )}
+        </p>
+      </div>
+
+      <div
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+    </div>
+  );
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="group block rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-[#15704f]/40 hover:shadow-sm"
+      >
+        {inner}
+      </Link>
+    );
+  }
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-slate-500">
-            {label}
-          </p>
-
-          <p className="mt-2 text-2xl font-semibold text-slate-900">
-            {value}
-          </p>
-
-          <p className="mt-2 text-xs text-slate-400">
-            {description}
-          </p>
-        </div>
-
-        <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${tones[tone]}`}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
+      {inner}
     </div>
   );
 }

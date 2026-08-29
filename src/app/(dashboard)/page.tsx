@@ -471,6 +471,84 @@ export default async function HomePage() {
    * ==========================
    */
 
+  /*
+   * ==========================
+   * METAS DO MÊS (por empresa)
+   * ==========================
+   */
+
+  const goalYear = now.getFullYear();
+  const goalMonth = now.getMonth() + 1;
+
+  let goalsByCompany: {
+    companyId: string;
+    companyName: string;
+    color: string | null;
+    target: number | null;
+    billed: number;
+  }[] = [];
+
+  if (allowedCompanyIds.length > 0) {
+    const { data: goalRows } =
+      await supabase
+        .from("company_goals")
+        .select(
+          "company_id, target_amount"
+        )
+        .eq("year", goalYear)
+        .eq("month", goalMonth)
+        .in(
+          "company_id",
+          allowedCompanyIds
+        );
+
+    const targetByCompany = new Map<
+      string,
+      number
+    >();
+
+    for (const row of goalRows ?? []) {
+      targetByCompany.set(
+        row.company_id,
+        Number(row.target_amount ?? 0)
+      );
+    }
+
+    goalsByCompany = companies.map(
+      (company) => {
+        const billed = entries
+          .filter(
+            (entry) =>
+              entry.company_id ===
+                company.id &&
+              entry.type === "income" &&
+              entry.status !==
+                "cancelled" &&
+              entry.due_date >=
+                monthStart &&
+              entry.due_date <= monthEnd
+          )
+          .reduce(
+            (total, entry) =>
+              total +
+              Number(entry.amount ?? 0),
+            0
+          );
+
+        return {
+          companyId: company.id,
+          companyName: company.name,
+          color: company.color,
+          target:
+            targetByCompany.get(
+              company.id
+            ) ?? null,
+          billed,
+        };
+      }
+    );
+  }
+
   const metricsByCompany =
     companies.map(
       (company) =>
@@ -541,6 +619,9 @@ export default async function HomePage() {
       }
       metricsByCompany={
         metricsByCompany
+      }
+      goalsByCompany={
+        goalsByCompany
       }
     />
   );
