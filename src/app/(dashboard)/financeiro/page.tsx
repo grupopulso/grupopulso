@@ -868,9 +868,10 @@ export default async function FinanceiroPage({
             <div className="mt-5 divide-y divide-slate-100">
               {upcomingEntries.map(
                 (entry) => (
-                  <div
+                  <Link
                     key={entry.id}
-                    className="py-4 first:pt-0"
+                    href={`/financeiro/${entry.id}`}
+                    className="-mx-2 block rounded-lg px-2 py-4 transition first:pt-0 hover:bg-slate-50"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -917,7 +918,7 @@ export default async function FinanceiroPage({
                         )}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                 )
               )}
 
