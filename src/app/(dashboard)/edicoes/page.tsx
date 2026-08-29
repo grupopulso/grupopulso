@@ -100,6 +100,13 @@ export default async function EditionsPage() {
           name
         ),
 
+        sections:edition_sections (
+          id,
+          name,
+          sales_goal,
+          active
+        ),
+
         sales:edition_sales (
           id,
           client_id,
@@ -576,6 +583,44 @@ export default async function EditionsPage() {
                       100
                     : 0;
 
+                /*
+                 * =========================================
+                 * METAS DOS CADERNOS
+                 * =========================================
+                 */
+
+                const editionSections =
+                  (edition.sections ?? [])
+                    .filter(
+                      (section) =>
+                        section.active !==
+                        false
+                    )
+                    .map((section) => ({
+                      id: section.id,
+                      name: section.name,
+                      goal: Number(
+                        section.sales_goal ??
+                          0
+                      ),
+                    }));
+
+                const sectionsGoalSum =
+                  roundMoney(
+                    editionSections.reduce(
+                      (total, section) =>
+                        total +
+                        section.goal,
+                      0
+                    )
+                  );
+
+                const goalsDiffer =
+                  Math.abs(
+                    sectionsGoalSum -
+                      salesGoal
+                  ) >= 0.01;
+
                 const company =
                   getFirst(
                     edition.company
@@ -745,39 +790,113 @@ export default async function EditionsPage() {
 
                       {/* META */}
 
-                      {salesGoal >
-                        0 && (
+                      {(salesGoal > 0 ||
+                        sectionsGoalSum >
+                          0) && (
                         <div className="mt-5 border-t border-slate-100 pt-4">
-                          <div className="mb-2 flex items-center justify-between gap-4">
-                            <span className="text-xs font-medium text-slate-400">
-                              Meta{" "}
-                              {formatCurrency(
-                                salesGoal
-                              )}
-                            </span>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            {/* META DA EDIÇÃO */}
 
-                            <span className="text-xs font-semibold text-[#15704f]">
-                              {formatPercentage(
-                                progress
+                            <div className="rounded-xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-medium text-slate-400">
+                                Meta da edição
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
+                                {formatCurrency(
+                                  salesGoal
+                                )}
+                              </p>
+
+                              {salesGoal >
+                                0 && (
+                                <>
+                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
+                                    <div
+                                      className="h-full rounded-full bg-[#15704f]"
+                                      style={{
+                                        width: `${Math.min(
+                                          Math.max(
+                                            progress,
+                                            0
+                                          ),
+                                          100
+                                        )}%`,
+                                      }}
+                                    />
+                                  </div>
+
+                                  <p className="mt-1 text-xs font-semibold text-[#15704f]">
+                                    {formatPercentage(
+                                      progress
+                                    )}{" "}
+                                    vendido
+                                  </p>
+                                </>
                               )}
-                            </span>
+                            </div>
+
+                            {/* SOMA DAS METAS DOS CADERNOS */}
+
+                            <div className="rounded-xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-medium text-slate-400">
+                                Soma das metas dos cadernos
+                              </p>
+
+                              <p className="mt-1 text-sm font-semibold text-slate-900">
+                                {formatCurrency(
+                                  sectionsGoalSum
+                                )}
+                              </p>
+
+                              {editionSections.length >
+                              0 ? (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {editionSections.map(
+                                    (
+                                      section
+                                    ) => (
+                                      <span
+                                        key={
+                                          section.id
+                                        }
+                                        className="inline-flex rounded-md bg-white px-2 py-0.5 text-[11px] text-slate-500"
+                                      >
+                                        {
+                                          section.name
+                                        }
+                                        :{" "}
+                                        {formatCurrency(
+                                          section.goal
+                                        )}
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-xs text-slate-400">
+                                  Sem cadernos cadastrados.
+                                </p>
+                              )}
+                            </div>
                           </div>
 
-                          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-[#15704f]"
-                              style={{
-                                width:
-                                  `${Math.min(
-                                    Math.max(
-                                      progress,
-                                      0
-                                    ),
-                                    100
-                                  )}%`,
-                              }}
-                            />
-                          </div>
+                          {salesGoal > 0 &&
+                            sectionsGoalSum >
+                              0 &&
+                            goalsDiffer && (
+                              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                A soma das metas dos cadernos (
+                                {formatCurrency(
+                                  sectionsGoalSum
+                                )}
+                                ) está diferente da meta da edição (
+                                {formatCurrency(
+                                  salesGoal
+                                )}
+                                ).
+                              </p>
+                            )}
                         </div>
                       )}
                     </div>
