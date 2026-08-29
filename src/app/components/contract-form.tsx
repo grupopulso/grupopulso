@@ -100,6 +100,13 @@ type Tv = {
     | null;
 };
 
+type DeliveryRoute = {
+  id: string;
+  name: string;
+  company_id: string;
+  region: string | null;
+};
+
 type CurrentUser = {
   id: string;
 
@@ -233,6 +240,14 @@ export default function ContractForm({
   ] =
     useState<
       Tv[]
+    >([]);
+
+  const [
+    routes,
+    setRoutes,
+  ] =
+    useState<
+      DeliveryRoute[]
     >([]);
 
   /*
@@ -383,6 +398,12 @@ export default function ContractForm({
     useState(
       30
     );
+
+  const [
+    deliveryRouteId,
+    setDeliveryRouteId,
+  ] =
+    useState("");
 
   const [
     installmentValues,
@@ -601,6 +622,7 @@ export default function ContractForm({
           productsResult,
           paymentMethodsResult,
           tvsResult,
+          routesResult,
           sellerSettingsResult,
         ] =
           await Promise.all([
@@ -709,6 +731,24 @@ export default function ContractForm({
 
             supabase
               .from(
+                "delivery_routes"
+              )
+              .select(`
+                id,
+                name,
+                company_id,
+                region
+              `)
+              .eq(
+                "active",
+                true
+              )
+              .order(
+                "name"
+              ),
+
+            supabase
+              .from(
                 "seller_settings"
               )
               .select(`
@@ -772,6 +812,15 @@ export default function ContractForm({
         }
 
         if (
+          routesResult.error
+        ) {
+          console.error(
+            "Erro ao carregar rotas de entrega:",
+            routesResult.error
+          );
+        }
+
+        if (
           sellerSettingsResult.error
         ) {
           console.error(
@@ -820,6 +869,13 @@ export default function ContractForm({
             tvsResult.data ??
             []
           ) as Tv[]
+        );
+
+        setRoutes(
+          (
+            routesResult.data ??
+            []
+          ) as DeliveryRoute[]
         );
 
         setSellerSettings(
@@ -908,6 +964,39 @@ export default function ContractForm({
         companyId,
       ]
     );
+
+  const availableRoutes =
+    useMemo(
+      () =>
+        routes.filter(
+          (route) =>
+            route.company_id ===
+            companyId
+        ),
+      [
+        routes,
+        companyId,
+      ]
+    );
+
+  useEffect(
+    () => {
+      if (
+        deliveryRouteId &&
+        !availableRoutes.some(
+          (route) =>
+            route.id ===
+            deliveryRouteId
+        )
+      ) {
+        setDeliveryRouteId("");
+      }
+    },
+    [
+      availableRoutes,
+      deliveryRouteId,
+    ]
+  );
 
   /*
    * =====================================================
@@ -1968,6 +2057,9 @@ export default function ContractForm({
             ? selectedTvIds
             : [],
 
+        deliveryRouteId:
+          deliveryRouteId || null,
+
         notes:
           notes.trim() ||
           null,
@@ -2834,6 +2926,46 @@ export default function ContractForm({
                 className="input"
               />
             </Field>
+
+            {availableRoutes.length > 0 && (
+              <Field label="Rota de entrega (opcional)">
+                <select
+                  value={
+                    deliveryRouteId
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setDeliveryRouteId(
+                      event.target.value
+                    )
+                  }
+                  className="input"
+                >
+                  <option value="">
+                    Não vincular a nenhuma rota
+                  </option>
+
+                  {availableRoutes.map(
+                    (route) => (
+                      <option
+                        key={route.id}
+                        value={route.id}
+                      >
+                        {route.name}
+                        {route.region
+                          ? ` — ${route.region}`
+                          : ""}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <p className="mt-1 text-xs text-slate-400">
+                  O cliente entra nessa rota com o endereço principal. Dá para reordenar depois em Rotas.
+                </p>
+              </Field>
+            )}
           </div>
 
           {Number.isFinite(

@@ -70,6 +70,14 @@ type CreateContractInput = {
 
   tvIds?: string[];
 
+  /*
+   * Rota de entrega opcional. Quando informada, o cliente
+   * (com o endereço principal) é adicionado a essa rota.
+   */
+  deliveryRouteId?:
+    | string
+    | null;
+
   notes?:
     | string
     | null;
@@ -1461,6 +1469,108 @@ export async function createContract(
           ? `Não foi possível concluir o contrato: ${error.message}`
           : "Não foi possível gerar as parcelas do contrato.",
     };
+  }
+
+  /*
+   * =====================================================
+   * ROTA DE ENTREGA (opcional)
+   * =====================================================
+   *
+   * Falha aqui NÃO desfaz o contrato — só registra no log.
+   * O cliente pode ser adicionado à rota manualmente depois.
+   */
+
+  if (input.deliveryRouteId) {
+    try {
+      const {
+        data: route,
+      } = await supabase
+        .from("delivery_routes")
+        .select("id, company_id, active")
+        .eq("id", input.deliveryRouteId)
+        .maybeSingle();
+
+      if (
+        route &&
+        route.company_id ===
+          input.companyId &&
+        route.active !== false
+      ) {
+        const {
+          data: alreadyInRoute,
+        } = await supabase
+          .from("delivery_route_clients")
+          .select("id")
+          .eq("route_id", route.id)
+          .eq("client_id", input.clientId)
+          .maybeSingle();
+
+        if (!alreadyInRoute) {
+          const {
+            data: primaryAddress,
+          } = await supabase
+            .from("client_addresses")
+            .select("id, is_primary")
+            .eq("client_id", input.clientId)
+            .order("is_primary", {
+              ascending: false,
+            })
+            .limit(1)
+            .maybeSingle();
+
+          const {
+            data: lastInRoute,
+          } = await supabase
+            .from("delivery_route_clients")
+            .select("delivery_order")
+            .eq("route_id", route.id)
+            .order("delivery_order", {
+              ascending: false,
+            })
+            .limit(1)
+            .maybeSingle();
+
+          const nextOrder =
+            Number(
+              lastInRoute?.delivery_order ??
+                0
+            ) + 1;
+
+          const {
+            error: routeClientError,
+          } = await supabase
+            .from("delivery_route_clients")
+            .insert({
+              route_id: route.id,
+              client_id: input.clientId,
+              address_id:
+                primaryAddress?.id ??
+                null,
+              delivery_order: nextOrder,
+              active: true,
+            });
+
+          if (routeClientError) {
+            console.error(
+              "Contrato criado, mas falha ao vincular o cliente à rota:",
+              routeClientError
+            );
+          } else {
+            revalidatePath(
+              `/rotas/${route.id}`
+            );
+            revalidatePath(
+              `/rotas/${route.id}/assinantes`
+            );
+          }
+        }
+      }
+    } catch (routeError) {
+      console.error(
+        "Erro ao vincular cliente à rota de entrega:",
+        routeError
+      );
+    }
   }
 
   /*
