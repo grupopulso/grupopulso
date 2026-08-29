@@ -329,12 +329,26 @@ export async function getRenewalPrefill(
     };
   }
 
+  /*
+   * "Já renovado" = existe OUTRO contrato que nasceu como
+   * renovação DESTE (as notas dele contêm exatamente
+   * "Renovação do contrato <id>").
+   *
+   * Não basta procurar o id nas notas: o contrato de origem
+   * também passa a citar o id do novo contrato ("Renovado ...
+   * pelo contrato <novo>"), o que fazia o novo contrato ser
+   * tratado como "já renovado" apontando de volta para o
+   * antigo.
+   */
   const { data: existingRenewal } =
     await supabase
       .from("contracts")
       .select("id")
       .neq("id", contractId)
-      .ilike("notes", `%${contractId}%`)
+      .ilike(
+        "notes",
+        `%Renovação do contrato ${contractId}%`
+      )
       .maybeSingle();
 
   if (existingRenewal) {
