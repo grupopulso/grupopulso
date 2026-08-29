@@ -95,7 +95,25 @@ alter table public.newspaper_editions
   check (page_count is null or page_count > 0);
 ```
 
-### 2. Posição "Coluna" (espaço dos colunistas) nas edições existentes
+### 2. Posição "Coluna" (espaço dos colunistas)
+
+Primeiro libere o novo código `columnist` no CHECK de `position_code`
+(a lista antiga só tinha capa/contracapa/internos/sobrecapa):
+
+```sql
+alter table public.edition_ad_positions
+  drop constraint if exists edition_ad_positions_code_check;
+
+alter table public.edition_ad_positions
+  add constraint edition_ad_positions_code_check
+  check (position_code in (
+    'cover', 'back_cover', 'inside_bw', 'inside_color', 'overcover', 'columnist'
+  ));
+```
+
+> Se o nome da constraint for outro, rode para descobrir:
+> `select conname, pg_get_constraintdef(oid) from pg_constraint
+>  where conrelid = 'public.edition_ad_positions'::regclass and contype = 'c';`
 
 Novas edições já nascem com a posição "Coluna" (geral + em cada caderno).
 Para as edições **abertas** que já existem, rode o backfill:
