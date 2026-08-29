@@ -24,6 +24,7 @@ type PageProps = {
   searchParams: Promise<{
     ano?: string;
     mes?: string;
+    periodo?: string;
   }>;
 };
 
@@ -54,8 +55,10 @@ export default async function MetasPage({
   const isAdmin =
     access.profile.role === "admin";
 
-  const { ano, mes } =
+  const { ano, mes, periodo } =
     await searchParams;
+
+  const isAnnual = periodo === "ano";
 
   const now = new Date();
 
@@ -76,17 +79,23 @@ export default async function MetasPage({
       ? parsedMonth
       : now.getMonth() + 1;
 
-  const monthStart = dateStr(
-    year,
-    month,
-    1
-  );
+  /*
+   * Coluna `month` em company_goals:
+   * 1–12 = meta mensal, 0 = meta anual.
+   */
+  const goalMonth = isAnnual ? 0 : month;
 
-  const monthEnd = dateStr(
-    month === 12 ? year + 1 : year,
-    month === 12 ? 1 : month + 1,
-    1
-  );
+  const monthStart = isAnnual
+    ? dateStr(year, 1, 1)
+    : dateStr(year, month, 1);
+
+  const monthEnd = isAnnual
+    ? dateStr(year + 1, 1, 1)
+    : dateStr(
+        month === 12 ? year + 1 : year,
+        month === 12 ? 1 : month + 1,
+        1
+      );
 
   const supabase =
     await createClient();
@@ -163,7 +172,7 @@ export default async function MetasPage({
           target_amount
         `)
         .eq("year", year)
-        .eq("month", month)
+        .eq("month", goalMonth)
         .in("company_id", companyIds);
 
     if (error) {
@@ -294,9 +303,18 @@ export default async function MetasPage({
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextYear = month === 12 ? year + 1 : year;
 
-  const isCurrentMonth =
-    year === now.getFullYear() &&
-    month === now.getMonth() + 1;
+  const prevHref = isAnnual
+    ? `/metas?periodo=ano&ano=${year - 1}`
+    : `/metas?ano=${prevYear}&mes=${prevMonth}`;
+
+  const nextHref = isAnnual
+    ? `/metas?periodo=ano&ano=${year + 1}`
+    : `/metas?ano=${nextYear}&mes=${nextMonth}`;
+
+  const isCurrentPeriod = isAnnual
+    ? year === now.getFullYear()
+    : year === now.getFullYear() &&
+      month === now.getMonth() + 1;
 
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
@@ -312,41 +330,79 @@ export default async function MetasPage({
             </div>
 
             <p className="mt-1 text-sm text-slate-500">
-              Acompanhe o faturamento de cada empresa contra a meta do mês.
+              {isAnnual
+                ? "Acompanhe o faturamento acumulado de cada empresa contra a meta do ano."
+                : "Acompanhe o faturamento de cada empresa contra a meta do mês."}
             </p>
           </div>
 
-          {/* SELETOR DE MÊS */}
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            {/* ALTERNADOR MÊS / ANO */}
 
-          <div className="flex items-center gap-2">
-            <Link
-              href={`/metas?ano=${prevYear}&mes=${prevMonth}`}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Link>
+            <div className="inline-flex self-end rounded-xl border border-slate-200 bg-white p-1">
+              <Link
+                href={`/metas?ano=${year}&mes=${month}`}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  !isAnnual
+                    ? "bg-[#15704f] text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Mensal
+              </Link>
 
-            <div className="min-w-[170px] rounded-xl border border-slate-200 bg-white px-4 py-2 text-center">
-              <p className="text-sm font-semibold text-slate-900">
-                {MONTH_LABELS[month - 1]} {year}
-              </p>
-
-              {!isCurrentMonth && (
-                <Link
-                  href="/metas"
-                  className="text-[11px] font-medium text-[#15704f] hover:underline"
-                >
-                  Voltar para o mês atual
-                </Link>
-              )}
+              <Link
+                href={`/metas?periodo=ano&ano=${year}`}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  isAnnual
+                    ? "bg-[#15704f] text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Anual
+              </Link>
             </div>
 
-            <Link
-              href={`/metas?ano=${nextYear}&mes=${nextMonth}`}
-              className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Link>
+            {/* SELETOR DE PERÍODO */}
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={prevHref}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Link>
+
+              <div className="min-w-[170px] rounded-xl border border-slate-200 bg-white px-4 py-2 text-center">
+                <p className="text-sm font-semibold text-slate-900">
+                  {isAnnual
+                    ? `Ano ${year}`
+                    : `${MONTH_LABELS[month - 1]} ${year}`}
+                </p>
+
+                {!isCurrentPeriod && (
+                  <Link
+                    href={
+                      isAnnual
+                        ? "/metas?periodo=ano"
+                        : "/metas"
+                    }
+                    className="text-[11px] font-medium text-[#15704f] hover:underline"
+                  >
+                    {isAnnual
+                      ? "Voltar para o ano atual"
+                      : "Voltar para o mês atual"}
+                  </Link>
+                )}
+              </div>
+
+              <Link
+                href={nextHref}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -359,7 +415,11 @@ export default async function MetasPage({
           />
 
           <SummaryCard
-            label="Faturado no mês"
+            label={
+              isAnnual
+                ? "Faturado no ano"
+                : "Faturado no mês"
+            }
             value={formatCurrency(totalBilled)}
           />
 
@@ -402,7 +462,8 @@ export default async function MetasPage({
                 billed={row.billed}
                 progress={row.progress}
                 year={year}
-                month={month}
+                month={goalMonth}
+                isAnnual={isAnnual}
                 canEdit={isAdmin}
               />
             ))}
@@ -426,6 +487,7 @@ function CompanyGoalCard({
   progress,
   year,
   month,
+  isAnnual,
   canEdit,
 }: {
   company: Company;
@@ -434,6 +496,7 @@ function CompanyGoalCard({
   progress: number | null;
   year: number;
   month: number;
+  isAnnual: boolean;
   canEdit: boolean;
 }) {
   const percent =
@@ -478,7 +541,9 @@ function CompanyGoalCard({
       {target === null ? (
         <div className="mt-5 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-center">
           <p className="text-sm font-medium text-slate-500">
-            Meta não definida para este mês
+            {isAnnual
+              ? "Meta anual não definida"
+              : "Meta não definida para este mês"}
           </p>
 
           <p className="mt-1 text-xs text-slate-400">
