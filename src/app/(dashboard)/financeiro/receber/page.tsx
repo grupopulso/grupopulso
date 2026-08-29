@@ -18,6 +18,7 @@ const PAGE_SIZE = 20;
 
 type StatusFilter =
   | "all"
+  | "open"
   | ReturnType<typeof getFinancialEntryStatus>;
 
 const STATUS_FILTER_OPTIONS: {
@@ -25,11 +26,18 @@ const STATUS_FILTER_OPTIONS: {
   label: string;
 }[] = [
   { value: "all", label: "Todos os status" },
+  { value: "open", label: "Em aberto" },
   { value: "pending", label: FINANCIAL_ENTRY_STATUS_LABELS.pending },
   { value: "overdue", label: FINANCIAL_ENTRY_STATUS_LABELS.overdue },
   { value: "partial", label: FINANCIAL_ENTRY_STATUS_LABELS.partial },
   { value: "paid", label: FINANCIAL_ENTRY_STATUS_LABELS.paid },
   { value: "cancelled", label: FINANCIAL_ENTRY_STATUS_LABELS.cancelled },
+];
+
+const OPEN_STATUSES = [
+  "pending",
+  "partial",
+  "overdue",
 ];
 
 type PageProps = {
@@ -227,7 +235,12 @@ export default async function ContasReceberPage({
 
       const matchesStatus =
         statusFilter === "all" ||
-        entry.calculatedStatus === statusFilter;
+        (statusFilter === "open"
+          ? OPEN_STATUSES.includes(
+              entry.calculatedStatus
+            )
+          : entry.calculatedStatus ===
+            statusFilter);
 
       const matchesDate =
         (!dateFrom ||
@@ -272,6 +285,34 @@ export default async function ContasReceberPage({
       pageStart,
       pageStart + PAGE_SIZE
     );
+
+  const buildStatusHref = (
+    targetStatus: StatusFilter
+  ) => {
+    const params = new URLSearchParams();
+
+    if (targetStatus !== "all") {
+      params.set("status", targetStatus);
+    }
+
+    if (search) {
+      params.set("q", search);
+    }
+
+    if (dateFrom) {
+      params.set("from", dateFrom);
+    }
+
+    if (dateTo) {
+      params.set("to", dateTo);
+    }
+
+    const queryString = params.toString();
+
+    return queryString
+      ? `/financeiro/receber?${queryString}`
+      : "/financeiro/receber";
+  };
 
   const buildPageHref = (
     targetPage: number
@@ -346,23 +387,31 @@ export default async function ContasReceberPage({
           <SummaryCard
             label="Em aberto"
             value={formatCurrency(openTotal)}
+            href={buildStatusHref("open")}
+            active={statusFilter === "open"}
           />
 
           <SummaryCard
             label="A vencer"
             value={formatCurrency(upcomingTotal)}
+            href={buildStatusHref("pending")}
+            active={statusFilter === "pending"}
           />
 
           <SummaryCard
             label="Vencido"
             value={formatCurrency(overdueTotal)}
             tone="red"
+            href={buildStatusHref("overdue")}
+            active={statusFilter === "overdue"}
           />
 
           <SummaryCard
             label="Recebido"
             value={formatCurrency(receivedTotal)}
             tone="green"
+            href={buildStatusHref("paid")}
+            active={statusFilter === "paid"}
           />
         </div>
 
@@ -666,10 +715,14 @@ function SummaryCard({
   label,
   value,
   tone = "default",
+  href,
+  active = false,
 }: {
   label: string;
   value: string;
   tone?: "default" | "red" | "green";
+  href?: string;
+  active?: boolean;
 }) {
   const valueClass =
     tone === "red"
@@ -678,10 +731,19 @@ function SummaryCard({
         ? "text-emerald-700"
         : "text-slate-900";
 
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <p className="text-sm text-slate-500">
+  const base =
+    "block rounded-2xl border bg-white p-5 transition";
+
+  const inner = (
+    <>
+      <p className="flex items-center justify-between text-sm text-slate-500">
         {label}
+
+        {active && (
+          <span className="text-xs font-semibold text-[#15704f]">
+            filtrado
+          </span>
+        )}
       </p>
 
       <p
@@ -689,7 +751,28 @@ function SummaryCard({
       >
         {value}
       </p>
-    </div>
+    </>
+  );
+
+  if (!href) {
+    return (
+      <div className={`${base} border-slate-200`}>
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className={`${base} ${
+        active
+          ? "border-[#15704f] ring-1 ring-[#15704f]/20"
+          : "border-slate-200 hover:border-[#15704f]/40 hover:shadow-sm"
+      }`}
+    >
+      {inner}
+    </Link>
   );
 }
 
