@@ -64,6 +64,12 @@ export function addDays(
     `${date}T00:00:00Z`
   );
 
+  if (
+    Number.isNaN(base.getTime())
+  ) {
+    return "";
+  }
+
   base.setUTCDate(
     base.getUTCDate() + days
   );
@@ -94,6 +100,13 @@ export function buildDueDates(
     Number.isInteger(count) && count > 0
       ? count
       : 0;
+
+  if (!isValidDateOnly(firstDueDate)) {
+    return Array.from(
+      { length: safeCount },
+      () => ""
+    );
+  }
 
   return Array.from(
     { length: safeCount },
