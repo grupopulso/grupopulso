@@ -12,12 +12,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  "https://gpulso.com.br";
+const DEFAULT_SITE_URL = "https://gpulso.com.br";
+
+/*
+ * Nunca deixa um NEXT_PUBLIC_SITE_URL malformado (ex.: sem
+ * "https://") derrubar o layout raiz — cai no domínio padrão.
+ */
+function resolveMetadataBase(): URL {
+  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+
+  for (const candidate of [raw, DEFAULT_SITE_URL]) {
+    if (!candidate) continue;
+    try {
+      return new URL(candidate);
+    } catch {
+      // tenta o próximo
+    }
+  }
+
+  return new URL(DEFAULT_SITE_URL);
+}
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: resolveMetadataBase(),
   title: {
     default: "Grupo Pulso — Sistema de Gestão",
     template: "%s · Grupo Pulso",
