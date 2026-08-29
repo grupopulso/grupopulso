@@ -275,7 +275,11 @@ export default function AppShell({
             print:hidden
           "
         >
-          <div className="px-7 pb-6 pt-7">
+          <Link
+            href="/"
+            aria-label="Ir para o dashboard"
+            className="block rounded-xl px-7 pb-6 pt-7 transition hover:bg-slate-50"
+          >
             <p className="text-xs font-semibold uppercase tracking-[0.3em] text-[#15704f]">
               Grupo
             </p>
@@ -287,7 +291,7 @@ export default function AppShell({
             <p className="mt-1 text-xs text-slate-400">
               Plataforma de Gestão
             </p>
-          </div>
+          </Link>
 
           <nav className="flex-1 space-y-1 overflow-y-auto px-4 pb-6">
             {visibleNavigation.map(
