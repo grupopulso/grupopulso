@@ -18,6 +18,10 @@ import {
   isValidDateOnly,
 } from "@/app/lib/date-utils";
 
+import {
+  addStopsInGeographicOrder,
+} from "@/app/lib/delivery-route";
+
 const POTTENCIALIZA_COMPANY_ID =
   "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
 
@@ -1497,72 +1501,56 @@ export async function createContract(
         route.active !== false
       ) {
         const {
-          data: alreadyInRoute,
+          data: primaryAddress,
         } = await supabase
-          .from("delivery_route_clients")
-          .select("id")
-          .eq("route_id", route.id)
+          .from("client_addresses")
+          .select(
+            "id, is_primary, street, number"
+          )
           .eq("client_id", input.clientId)
+          .order("is_primary", {
+            ascending: false,
+          })
+          .limit(1)
           .maybeSingle();
 
-        if (!alreadyInRoute) {
-          const {
-            data: primaryAddress,
-          } = await supabase
-            .from("client_addresses")
-            .select("id, is_primary")
-            .eq("client_id", input.clientId)
-            .order("is_primary", {
-              ascending: false,
-            })
-            .limit(1)
-            .maybeSingle();
+        const { added, errors } =
+          await addStopsInGeographicOrder(
+            supabase,
+            route.id,
+            [
+              {
+                clientId: input.clientId,
+                addressId:
+                  primaryAddress?.id ??
+                  null,
+                street:
+                  primaryAddress?.street ??
+                  null,
+                number:
+                  primaryAddress?.number ??
+                  null,
+              },
+            ]
+          );
 
-          const {
-            data: lastInRoute,
-          } = await supabase
-            .from("delivery_route_clients")
-            .select("delivery_order")
-            .eq("route_id", route.id)
-            .order("delivery_order", {
-              ascending: false,
-            })
-            .limit(1)
-            .maybeSingle();
+        if (errors.length > 0) {
+          console.error(
+            "Contrato criado, mas houve erro ao vincular/reordenar a rota:",
+            errors
+          );
+        }
 
-          const nextOrder =
-            Number(
-              lastInRoute?.delivery_order ??
-                0
-            ) + 1;
-
-          const {
-            error: routeClientError,
-          } = await supabase
-            .from("delivery_route_clients")
-            .insert({
-              route_id: route.id,
-              client_id: input.clientId,
-              address_id:
-                primaryAddress?.id ??
-                null,
-              delivery_order: nextOrder,
-              active: true,
-            });
-
-          if (routeClientError) {
-            console.error(
-              "Contrato criado, mas falha ao vincular o cliente à rota:",
-              routeClientError
-            );
-          } else {
-            revalidatePath(
-              `/rotas/${route.id}`
-            );
-            revalidatePath(
-              `/rotas/${route.id}/assinantes`
-            );
-          }
+        if (added > 0) {
+          revalidatePath(
+            `/rotas/${route.id}`
+          );
+          revalidatePath(
+            `/rotas/${route.id}/assinantes`
+          );
+          revalidatePath(
+            `/rotas/${route.id}/imprimir`
+          );
         }
       }
     } catch (routeError) {

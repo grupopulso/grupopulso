@@ -8,6 +8,9 @@ import {
   requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
+import {
+  addStopsInGeographicOrder,
+} from "@/app/lib/delivery-route";
 
 async function getRouteCompanyId(
   routeId: string
@@ -63,6 +66,105 @@ export async function deleteRoute(routeId: string) {
   revalidatePath("/rotas");
 
   redirect("/rotas");
+}
+
+export async function addSubscribersToRoute(
+  routeId: string,
+  items: {
+    clientId: string;
+    addressId: string | null;
+  }[]
+) {
+  await requireModulePermission(
+    "routes",
+    "edit"
+  );
+
+  const companyId =
+    await getRouteCompanyId(routeId);
+
+  if (!companyId) {
+    return {
+      success: false,
+      message: "Rota não encontrada.",
+    };
+  }
+
+  await requireCompanyAccess(companyId);
+
+  const cleanItems = items.filter(
+    (item) => item.clientId
+  );
+
+  if (cleanItems.length === 0) {
+    return {
+      success: false,
+      message: "Selecione ao menos um assinante.",
+    };
+  }
+
+  const supabase = await createClient();
+
+  const addressIds = cleanItems
+    .map((item) => item.addressId)
+    .filter(Boolean) as string[];
+
+  const { data: addresses } =
+    addressIds.length > 0
+      ? await supabase
+          .from("client_addresses")
+          .select("id, street, number")
+          .in("id", addressIds)
+      : { data: [] as {
+          id: string;
+          street: string | null;
+          number: string | null;
+        }[] };
+
+  const addressById = new Map(
+    (addresses ?? []).map((address) => [
+      address.id,
+      address,
+    ])
+  );
+
+  const { added, errors } =
+    await addStopsInGeographicOrder(
+      supabase,
+      routeId,
+      cleanItems.map((item) => {
+        const address = item.addressId
+          ? addressById.get(item.addressId)
+          : null;
+
+        return {
+          clientId: item.clientId,
+          addressId: item.addressId,
+          street: address?.street ?? null,
+          number: address?.number ?? null,
+        };
+      })
+    );
+
+  revalidatePath(`/rotas/${routeId}`);
+  revalidatePath(
+    `/rotas/${routeId}/assinantes`
+  );
+  revalidatePath(
+    `/rotas/${routeId}/imprimir`
+  );
+
+  if (errors.length > 0 && added === 0) {
+    return {
+      success: false,
+      message: errors[0],
+    };
+  }
+
+  return {
+    success: true,
+    added,
+  };
 }
 
 export async function removeSubscriber(

@@ -14,7 +14,7 @@ import {
 
 import { useRouter } from "next/navigation";
 
-import { createClient } from "@/app/lib/supabase/client";
+import { addSubscribersToRoute } from "@/app/(dashboard)/rotas/[id]/actions";
 
 type Address = {
   id: string;
@@ -69,7 +69,6 @@ export default function RouteSubscribersManager({
   initialRelations: Relation[];
 }) {
   const router = useRouter();
-  const supabase = createClient();
 
   const [search, setSearch] =
     useState("");
@@ -205,43 +204,19 @@ export default function RouteSubscribersManager({
     setLoading(true);
     setError("");
 
-    const currentMaxOrder =
-      initialRelations.reduce(
-        (max, relation) =>
-          Math.max(
-            max,
-            relation.delivery_order ??
-              0
-          ),
-        0
+    const result =
+      await addSubscribersToRoute(
+        routeId,
+        selected.map((item) => ({
+          clientId: item.clientId,
+          addressId: item.addressId,
+        }))
       );
 
-    const rows =
-      selected.map(
-        (item, index) => ({
-          route_id: routeId,
-          client_id:
-            item.clientId,
-          address_id:
-            item.addressId,
-          delivery_order:
-            currentMaxOrder +
-            index +
-            1,
-          active: true,
-        })
-      );
-
-    const { error: insertError } =
-      await supabase
-        .from(
-          "delivery_route_clients"
-        )
-        .insert(rows);
-
-    if (insertError) {
+    if (!result.success) {
       setError(
-        insertError.message
+        result.message ??
+          "Não foi possível adicionar à rota."
       );
 
       setLoading(false);
