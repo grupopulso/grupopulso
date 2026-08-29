@@ -64,6 +64,11 @@ export default function EditionForm({
     setPublicationDate,
   ] = useState("");
 
+  const [
+    pageCount,
+    setPageCount,
+  ] = useState("");
+
   /*
    * =====================================================
    * META TOTAL DA EDIÇÃO
@@ -362,6 +367,11 @@ export default function EditionForm({
             salesGoal:
               numericSalesGoal,
 
+            pageCount:
+              pageCount.trim()
+                ? Number(pageCount)
+                : null,
+
             sections:
               sections.map(
                 (
@@ -546,6 +556,37 @@ export default function EditionForm({
                 }
                 className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
               />
+            </div>
+
+            {/* Nº DE PÁGINAS */}
+
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                Nº de páginas
+              </label>
+
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={
+                  pageCount
+                }
+                onChange={(
+                  event
+                ) =>
+                  setPageCount(
+                    event.target
+                      .value
+                  )
+                }
+                placeholder="Ex.: 16, 24, 36"
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-[#15704f]"
+              />
+
+              <p className="mt-1 text-xs text-slate-400">
+                Mapa da edição. Pode ser preenchido depois.
+              </p>
             </div>
           </div>
         </div>

@@ -34,6 +34,7 @@ import {
 } from "@/app/lib/estafeta-access";
 
 import SectionsManagement from "./sections-management";
+import EditionPageCountEditor from "./edition-page-count-editor";
 
 import {
   AddContractPublication,
@@ -294,6 +295,30 @@ export default async function EditionPage({
     !edition
   ) {
     notFound();
+  }
+
+  /*
+   * NÚMERO DE PÁGINAS (MAPA DA EDIÇÃO)
+   *
+   * Consulta isolada e tolerante a erro: a coluna
+   * page_count pode ainda não existir em bases não
+   * migradas.
+   */
+  let editionPageCount: number | null = null;
+
+  const { data: editionExtra } = await supabase
+    .from("newspaper_editions")
+    .select("page_count")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (
+    editionExtra &&
+    typeof editionExtra.page_count ===
+      "number"
+  ) {
+    editionPageCount =
+      editionExtra.page_count;
   }
 
   /*
@@ -1703,6 +1728,15 @@ export default async function EditionPage({
                     )}
                   </span>
 
+                  <EditionPageCountEditor
+                    editionId={edition.id}
+                    pageCount={editionPageCount}
+                    canEdit={
+                      edition.status !==
+                      "cancelled"
+                    }
+                  />
+
                   {company && (
                     <span>
                       {
@@ -2863,6 +2897,9 @@ function getPositionOrder(
 
     inside_bw:
       5,
+
+    columnist:
+      6,
   };
 
   return (

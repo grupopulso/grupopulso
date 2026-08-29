@@ -65,6 +65,15 @@ const DEFAULT_AD_POSITIONS = [
     name: "Sobrecapa",
     capacity: 1,
   },
+  {
+    /*
+     * Espaço dos colunistas — funciona como uma
+     * "capa" reservada, mas comporta vários nomes.
+     */
+    code: "columnist",
+    name: "Coluna",
+    capacity: null,
+  },
 ] as const;
 
 /*

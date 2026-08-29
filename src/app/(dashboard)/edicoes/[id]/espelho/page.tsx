@@ -1810,6 +1810,9 @@ function getPositionOrder(
 
     inside_bw:
       5,
+
+    columnist:
+      6,
   };
 
   return (

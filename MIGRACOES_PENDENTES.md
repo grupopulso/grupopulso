@@ -6,7 +6,7 @@ aplicar, marque com `[x]`.
 
 ---
 
-## [ ] J-a — Forma de pagamento prevista em lançamentos financeiros
+## [x] J-a — Forma de pagamento prevista em lançamentos financeiros
 
 Permite escolher a forma de pagamento (Dinheiro, Cheque, Boleto, PIX…)
 já no cadastro de uma receita/despesa futura.
@@ -21,17 +21,14 @@ create index if not exists financial_entries_payment_method_id_idx
   on public.financial_entries (payment_method_id);
 ```
 
-O formulário só envia `payment_method_id` quando o usuário escolhe uma
-forma, então o cadastro continua funcionando mesmo antes desta migração —
-mas o campo fica inerte até ela ser aplicada.
+_Aplicado em 2026-08-29._
 
 ---
 
-## [ ] D — Meta anual por empresa
+## [x] D — Meta anual por empresa
 
 A tela de Metas agora tem um alternador **Mensal / Anual**. A meta anual
 é gravada em `company_goals` com `month = 0` (1–12 continua sendo mensal).
-É preciso liberar o valor 0 na coluna `month`:
 
 ```sql
 alter table public.company_goals
@@ -42,16 +39,14 @@ alter table public.company_goals
   check (month between 0 and 12);
 ```
 
-Sem esta migração, salvar uma meta anual retorna erro de check constraint
-(as metas mensais seguem funcionando normalmente).
+_Aplicado em 2026-08-29._
 
 ---
 
-## [ ] E — Aporte de capital dos sócios
+## [x] E — Aporte de capital dos sócios
 
 Nova tabela espelhando `partner_withdrawals`, para registrar entrada de
 dinheiro que um sócio coloca na empresa (Agência Atthus / Pottencializa).
-A tela de Sócios já tem o formulário e a listagem — só falta a tabela.
 
 ```sql
 create table if not exists public.partner_contributions (
@@ -73,10 +68,6 @@ create index if not exists partner_contributions_user_id_idx
 
 alter table public.partner_contributions enable row level security;
 
--- Mesma política usada em partner_withdrawals: leitura/escrita para
--- usuários autenticados (o controle fino é feito nas Server Actions,
--- que exigem financial + acesso à empresa). Ajuste se a sua policy
--- de partner_withdrawals for diferente.
 create policy "partner_contributions_select"
   on public.partner_contributions for select
   to authenticated using (true);
@@ -90,7 +81,53 @@ create policy "partner_contributions_delete"
   to authenticated using (true);
 ```
 
-O lançamento financeiro gerado pelo aporte é do tipo `income` (quitado),
-mas a tela de Sócios o exclui do "Recebido" — aporte não entra na divisão
-de lucro. Sem a tabela, o formulário de aporte retorna erro ao salvar
-(o resto da tela continua funcionando).
+_Aplicado em 2026-08-29._
+
+---
+
+## [ ] C — Mapa da edição (nº de páginas) + posição "Coluna"
+
+### 1. Número de páginas da edição
+
+```sql
+alter table public.newspaper_editions
+  add column if not exists page_count integer
+  check (page_count is null or page_count > 0);
+```
+
+### 2. Posição "Coluna" (espaço dos colunistas) nas edições existentes
+
+Novas edições já nascem com a posição "Coluna" (geral + em cada caderno).
+Para as edições **abertas** que já existem, rode o backfill:
+
+```sql
+-- posição geral (sem caderno) para cada edição aberta que ainda não tem
+insert into public.edition_ad_positions
+  (edition_id, section_id, position_code, name, capacity, manually_blocked, blocked_reason, active)
+select e.id, null, 'columnist', 'Coluna', null, false, null, true
+from public.newspaper_editions e
+where e.status = 'open'
+  and not exists (
+    select 1 from public.edition_ad_positions p
+    where p.edition_id = e.id
+      and p.section_id is null
+      and p.position_code = 'columnist'
+  );
+
+-- posição por caderno
+insert into public.edition_ad_positions
+  (edition_id, section_id, position_code, name, capacity, manually_blocked, blocked_reason, active)
+select s.edition_id, s.id, 'columnist', 'Coluna', null, false, null, true
+from public.edition_sections s
+join public.newspaper_editions e on e.id = s.edition_id
+where e.status = 'open'
+  and not exists (
+    select 1 from public.edition_ad_positions p
+    where p.edition_id = s.edition_id
+      and p.section_id = s.id
+      and p.position_code = 'columnist'
+  );
+```
+
+Sem a parte 1, o campo "nº de páginas" fica inerte (não grava). Sem a
+parte 2, só as edições novas terão a posição "Coluna".

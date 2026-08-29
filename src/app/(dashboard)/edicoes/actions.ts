@@ -39,6 +39,12 @@ type CreateEditionInput = {
 
   salesGoal: number;
 
+  /*
+   * Nº de páginas da edição (mapa da edição).
+   * Opcional — 16, 24, 36…
+   */
+  pageCount?: number | null;
+
   sections?:
     CreateEditionSectionInput[];
 
@@ -125,6 +131,21 @@ const DEFAULT_AD_POSITIONS = [
     capacity:
       1,
   },
+
+  {
+    /*
+     * Espaço dos colunistas — funciona como uma
+     * "capa" reservada, mas comporta vários nomes.
+     */
+    code:
+      "columnist",
+
+    name:
+      "Coluna",
+
+    capacity:
+      null,
+  },
 ] as const;
 
 /*
@@ -165,6 +186,17 @@ export async function createEdition(
           0
       )
     );
+
+  const pageCount =
+    input.pageCount != null &&
+    Number.isFinite(
+      Number(input.pageCount)
+    ) &&
+    Number(input.pageCount) > 0
+      ? Math.round(
+          Number(input.pageCount)
+        )
+      : null;
 
   const sections =
     (
@@ -333,6 +365,15 @@ export async function createEdition(
 
         sales_goal:
           salesGoal,
+
+        /*
+         * Só envia page_count quando informado — assim
+         * a criação de edição continua funcionando mesmo
+         * antes da migração que adiciona a coluna.
+         */
+        ...(pageCount != null
+          ? { page_count: pageCount }
+          : {}),
 
         status:
           "open",
@@ -853,6 +894,92 @@ export async function updateEdition(
   return {
     success: true,
   };
+}
+
+/*
+ * =====================================================
+ * NÚMERO DE PÁGINAS (MAPA DA EDIÇÃO)
+ * =====================================================
+ */
+
+export async function updateEditionPageCount(
+  editionId: string,
+  pageCount: number | null
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  if (!editionId) {
+    return {
+      success: false,
+      message: "Edição inválida.",
+    };
+  }
+
+  const normalized =
+    pageCount != null &&
+    Number.isFinite(Number(pageCount)) &&
+    Number(pageCount) > 0
+      ? Math.round(Number(pageCount))
+      : null;
+
+  const supabase =
+    await createClient();
+
+  const { data: edition } =
+    await supabase
+      .from("newspaper_editions")
+      .select("id, company_id, status")
+      .eq("id", editionId)
+      .maybeSingle();
+
+  if (
+    !edition ||
+    edition.company_id !==
+      access.estafetaCompany.id
+  ) {
+    return {
+      success: false,
+      message: "Edição não encontrada.",
+    };
+  }
+
+  if (edition.status === "cancelled") {
+    return {
+      success: false,
+      message:
+        "Uma edição cancelada não pode ser editada.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("newspaper_editions")
+    .update({
+      page_count: normalized,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", editionId)
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    );
+
+  if (error) {
+    console.error(
+      "Erro ao atualizar nº de páginas da edição:",
+      error
+    );
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  revalidatePath("/edicoes");
+  revalidatePath(`/edicoes/${editionId}`);
+
+  return { success: true };
 }
 
 /*
