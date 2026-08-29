@@ -1606,6 +1606,44 @@ export default async function EditionPage({
       100
     );
 
+  /*
+   * Soma das metas dos cadernos x quanto já foi vendido
+   * dentro de cadernos (o restante do total da edição é
+   * publicidade "geral", sem caderno).
+   */
+  const sectionsGoalSum =
+    roundMoney(
+      sectionSummaries.reduce(
+        (total, section) =>
+          total + section.salesGoal,
+        0
+      )
+    );
+
+  const sectionsSoldSum =
+    roundMoney(
+      sectionSummaries.reduce(
+        (total, section) =>
+          total + section.soldAmount,
+        0
+      )
+    );
+
+  const generalSold =
+    Math.max(
+      roundMoney(
+        totalSales - sectionsSoldSum
+      ),
+      0
+    );
+
+  const sectionsGoalProgress =
+    sectionsGoalSum > 0
+      ? (sectionsSoldSum /
+          sectionsGoalSum) *
+        100
+      : 0;
+
   const company =
     getFirst(
       edition.company
@@ -1897,7 +1935,7 @@ export default async function EditionPage({
               <div className="mt-6">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs text-slate-500">
-                    Progresso
+                    Progresso da edição
                   </span>
 
                   <span className="text-xs font-semibold text-[#15704f]">
@@ -1918,6 +1956,83 @@ export default async function EditionPage({
                 </div>
               </div>
             )}
+
+            {/* META DA EDIÇÃO x SOMA DAS METAS DOS CADERNOS */}
+
+            <div className="mt-6 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Meta da edição
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {formatCurrency(
+                    editionSalesGoal
+                  )}
+                </p>
+
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Vendido:{" "}
+                  {formatCurrency(
+                    totalSales
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Soma das metas dos cadernos
+                </p>
+
+                <p className="mt-1 text-sm font-semibold text-slate-800">
+                  {formatCurrency(
+                    sectionsGoalSum
+                  )}
+
+                  {sectionsGoalSum > 0 && (
+                    <span className="ml-2 text-xs font-medium text-[#15704f]">
+                      {formatPercentage(
+                        sectionsGoalProgress
+                      )}
+                    </span>
+                  )}
+                </p>
+
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Vendido em cadernos:{" "}
+                  {formatCurrency(
+                    sectionsSoldSum
+                  )}
+                  {" · "}
+                  fora de caderno:{" "}
+                  {formatCurrency(
+                    generalSold
+                  )}
+                </p>
+              </div>
+
+              {sectionsGoalSum > 0 &&
+                Math.abs(
+                  sectionsGoalSum -
+                    editionSalesGoal
+                ) >= 0.01 && (
+                  <p className="text-xs text-amber-600 sm:col-span-2">
+                    A soma das metas dos cadernos{" "}
+                    {sectionsGoalSum >
+                    editionSalesGoal
+                      ? "ultrapassa"
+                      : "não cobre"}{" "}
+                    a meta total da edição em{" "}
+                    {formatCurrency(
+                      Math.abs(
+                        sectionsGoalSum -
+                          editionSalesGoal
+                      )
+                    )}
+                    .
+                  </p>
+                )}
+            </div>
           </div>
         </section>
 
