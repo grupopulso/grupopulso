@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -19,11 +20,14 @@ import {
 } from "@/app/lib/partner-shares";
 
 import {
+  createPartnerContribution,
   createPartnerWithdrawal,
   saveCompanyPartner,
 } from "./actions";
 
 import DeleteWithdrawalButton from "@/app/components/delete-withdrawal-button";
+import DeleteContributionButton from "@/app/components/delete-contribution-button";
+import DeletePartnerButton from "@/app/components/delete-partner-button";
 import TogglePartnerButton from "@/app/components/toggle-partner-button";
 
 /*
@@ -81,6 +85,23 @@ export default async function SociosFinanceiroPage({
 
   const month = getMonthRange(mes);
 
+  const selectedCompanyId =
+    await getSelectedCompanyId();
+
+  /*
+   * A tela de sócios respeita o seletor de empresa do
+   * topo: se uma empresa está selecionada, mostra só ela
+   * (quando é uma das empresas com divisão de sócios).
+   */
+  const visibleCompanies =
+    selectedCompanyId
+      ? PARTNER_COMPANIES.filter(
+          (company) =>
+            company.id ===
+            selectedCompanyId
+        )
+      : PARTNER_COMPANIES;
+
   const supabase = await createClient();
 
   const { data: allProfiles } =
@@ -93,11 +114,12 @@ export default async function SociosFinanceiroPage({
   const profiles = allProfiles ?? [];
 
   const companiesData = await Promise.all(
-    PARTNER_COMPANIES.map(async (company) => {
+    visibleCompanies.map(async (company) => {
       const [
         partnersResult,
         entriesResult,
         withdrawalsResult,
+        contributionsResult,
       ] = await Promise.all([
         supabase
           .from("company_partners")
@@ -141,6 +163,27 @@ export default async function SociosFinanceiroPage({
           .order("withdrawal_date", {
             ascending: false,
           }),
+
+        supabase
+          .from("partner_contributions")
+          .select(`
+            id,
+            user_id,
+            amount,
+            contribution_date,
+            notes,
+            financial_entry_id,
+            partner:user_profiles (
+              id,
+              name
+            )
+          `)
+          .eq("company_id", company.id)
+          .gte("contribution_date", month.start)
+          .lte("contribution_date", month.end)
+          .order("contribution_date", {
+            ascending: false,
+          }),
       ]);
 
       const partners = (
@@ -168,12 +211,32 @@ export default async function SociosFinanceiroPage({
           .filter(Boolean)
       );
 
+      const contributions = (
+        contributionsResult.data ?? []
+      ).map((contribution) => ({
+        ...contribution,
+        partner: getFirst(
+          contribution.partner
+        ),
+      }));
+
+      const contributionEntryIds = new Set(
+        contributions
+          .map(
+            (contribution) =>
+              contribution.financial_entry_id
+          )
+          .filter(Boolean)
+      );
+
       const entries =
         entriesResult.data ?? [];
 
       const received = entries
         .filter(
-          (entry) => entry.type === "income"
+          (entry) =>
+            entry.type === "income" &&
+            !contributionEntryIds.has(entry.id)
         )
         .reduce(
           (total, entry) =>
@@ -271,6 +334,7 @@ export default async function SociosFinanceiroPage({
         partnersPool,
         partners: partnerRows,
         withdrawals,
+        contributions,
         availableProfiles,
       };
     })
@@ -334,15 +398,29 @@ export default async function SociosFinanceiroPage({
           </div>
         )}
 
-        <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {companiesData.map((data) => (
-            <CompanyPartnerCard
-              key={data.company.id}
-              month={month}
-              data={data}
-            />
-          ))}
-        </div>
+        {companiesData.length === 0 ? (
+          <div className="mt-7 rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
+            <Users className="mx-auto h-7 w-7 text-slate-300" />
+
+            <h2 className="mt-3 font-semibold text-slate-800">
+              Sem divisão de sócios
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              A empresa selecionada não trabalha com divisão de lucro entre sócios. Selecione a Agência Atthus ou a Pottencializa no topo.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-2">
+            {companiesData.map((data) => (
+              <CompanyPartnerCard
+                key={data.company.id}
+                month={month}
+                data={data}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );
@@ -368,6 +446,7 @@ function CompanyPartnerCard({
     partnersPool,
     partners,
     withdrawals,
+    contributions,
     availableProfiles,
   } = data;
 
@@ -445,10 +524,20 @@ function CompanyPartnerCard({
                   </p>
                 </div>
 
-                <TogglePartnerButton
-                  partnerId={partner.id}
-                  active={partner.active}
-                />
+                <div className="flex items-start gap-2">
+                  <TogglePartnerButton
+                    partnerId={partner.id}
+                    active={partner.active}
+                  />
+
+                  <DeletePartnerButton
+                    partnerId={partner.id}
+                    partnerName={
+                      partner.partner?.name ??
+                      "este sócio"
+                    }
+                  />
+                </div>
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-3 text-sm">
@@ -553,6 +642,160 @@ function CompanyPartnerCard({
             </button>
           </form>
         )}
+      </div>
+
+      <div className="border-b border-slate-100 p-6">
+        <h3 className="text-sm font-semibold text-slate-700">
+          Aportes de capital do mês
+        </h3>
+
+        <p className="mt-1 text-xs text-slate-400">
+          Dinheiro que o sócio coloca na empresa. Entra no caixa, mas não conta como receita na divisão de lucro.
+        </p>
+
+        <form
+          action={createPartnerContribution}
+          className="mt-4 flex flex-wrap items-end gap-3 rounded-xl bg-slate-50 p-4"
+        >
+          <input
+            type="hidden"
+            name="company_id"
+            value={company.id}
+          />
+
+          <input
+            type="hidden"
+            name="mes"
+            value={month.key}
+          />
+
+          <div className="min-w-[160px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              Sócio
+            </label>
+
+            <select
+              name="user_id"
+              required
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#15704f]"
+            >
+              <option value="">
+                Selecione...
+              </option>
+
+              {partners
+                .filter(
+                  (partner) => partner.active
+                )
+                .map((partner) => (
+                  <option
+                    key={partner.id}
+                    value={partner.user_id}
+                  >
+                    {partner.partner?.name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
+          <div className="w-32">
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              Valor
+            </label>
+
+            <input
+              type="text"
+              name="amount"
+              required
+              placeholder="0,00"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#15704f]"
+            />
+          </div>
+
+          <div className="w-40">
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              Data
+            </label>
+
+            <input
+              type="date"
+              name="contribution_date"
+              required
+              defaultValue={month.start}
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#15704f]"
+            />
+          </div>
+
+          <div className="min-w-[160px] flex-1">
+            <label className="mb-1 block text-xs font-medium text-slate-500">
+              Observação
+            </label>
+
+            <input
+              type="text"
+              name="notes"
+              placeholder="Opcional"
+              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-[#15704f]"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="h-10 rounded-lg bg-[#15704f] px-4 text-sm font-semibold text-white transition hover:bg-[#105c41]"
+          >
+            Registrar
+          </button>
+        </form>
+
+        <div className="mt-4 divide-y divide-slate-100">
+          {contributions.map((contribution) => (
+            <div
+              key={contribution.id}
+              className="flex items-center justify-between gap-3 py-3"
+            >
+              <div>
+                <p className="text-sm font-semibold text-slate-800">
+                  {contribution.partner?.name ??
+                    "Sócio removido"}
+                </p>
+
+                <p className="text-xs text-slate-400">
+                  {formatDate(
+                    contribution.contribution_date
+                  )}
+                  {contribution.notes
+                    ? ` · ${contribution.notes}`
+                    : ""}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-semibold text-emerald-700">
+                  {formatCurrency(
+                    Number(contribution.amount)
+                  )}
+                </span>
+
+                <DeleteContributionButton
+                  contributionId={contribution.id}
+                  partnerName={
+                    contribution.partner?.name ??
+                    "sócio"
+                  }
+                  amountLabel={formatCurrency(
+                    Number(contribution.amount)
+                  )}
+                />
+              </div>
+            </div>
+          ))}
+
+          {!contributions.length && (
+            <p className="py-6 text-center text-sm text-slate-400">
+              Nenhum aporte registrado neste mês.
+            </p>
+          )}
+        </div>
       </div>
 
       <div className="p-6">
@@ -746,6 +989,25 @@ async function buildCompanyDataForType() {
         user_id: "",
         amount: 0,
         withdrawal_date: "",
+        notes: null as string | null,
+        financial_entry_id: null as
+          | string
+          | null,
+        partner: {
+          id: "",
+          name: "",
+        } as {
+          id: string;
+          name: string;
+        } | null,
+      },
+    ],
+    contributions: [
+      {
+        id: "",
+        user_id: "",
+        amount: 0,
+        contribution_date: "",
         notes: null as string | null,
         financial_entry_id: null as
           | string
