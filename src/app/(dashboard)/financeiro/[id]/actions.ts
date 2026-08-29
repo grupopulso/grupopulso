@@ -9,8 +9,9 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  requireAuthenticatedUser,
   requireCompanyAccess,
-  requireModulePermission,
+  requireFinancialEntryAccess,
 } from "@/app/lib/permissions";
 
 import {
@@ -33,10 +34,7 @@ export async function registerFinancialTransaction(
     notes?: string;
   }
 ) {
-  await requireModulePermission(
-    "financial",
-    "edit"
-  );
+  await requireAuthenticatedUser();
 
   const supabase =
     await createClient();
@@ -85,10 +83,23 @@ export async function registerFinancialTransaction(
   }
 
   /*
+   * Acesso por natureza do lançamento: "financial.edit"
+   * (geral) OU o módulo específico da natureza
+   * (accounts_receivable p/ receita, accounts_payable p/
+   * despesa) com permissão de editar.
+   */
+  await requireFinancialEntryAccess(
+    entry.type === "expense"
+      ? "expense"
+      : "income",
+    "edit"
+  );
+
+  /*
    * Garante que o usuário só possa registrar uma
    * movimentação para lançamentos de empresas às quais
-   * ele tem acesso (permissão "financial.edit" sozinha
-   * não bastava — permitia baixar lançamento de qualquer
+   * ele tem acesso (a permissão de módulo sozinha não
+   * bastava — permitia baixar lançamento de qualquer
    * empresa só sabendo o id).
    */
   await requireCompanyAccess(

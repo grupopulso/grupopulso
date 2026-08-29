@@ -22,7 +22,8 @@ import { createClient } from "@/app/lib/supabase/server";
 import RegisterTransactionForm from "@/app/components/register-transaction-form";
 
 import {
-  requireModulePermission,
+  requireAuthenticatedUser,
+  requireFinancialEntryAccess,
 } from "@/app/lib/permissions";
 
 import {
@@ -48,10 +49,7 @@ type PaymentMethod = {
 export default async function FinancialEntryPage({
   params,
 }: PageProps) {
-  await requireModulePermission(
-    "financial",
-    "view"
-  );
+  await requireAuthenticatedUser();
 
   const { id } = await params;
 
@@ -66,7 +64,7 @@ export default async function FinancialEntryPage({
   if (!user) {
     redirect("/login");
   }
-  
+
 
   /*
    * LANÇAMENTO FINANCEIRO
@@ -143,6 +141,19 @@ charge_sent_at,
   if (error || !entry) {
     notFound();
   }
+
+  /*
+   * Acesso por natureza: quem só tem "Contas a Receber"
+   * enxerga lançamentos de receita, mas não de despesa
+   * (e vice-versa). Quem tem o módulo geral "financial"
+   * enxerga os dois.
+   */
+  await requireFinancialEntryAccess(
+    entry.type === "expense"
+      ? "expense"
+      : "income",
+    "view"
+  );
 
   /*
    * FORMAS DE PAGAMENTO

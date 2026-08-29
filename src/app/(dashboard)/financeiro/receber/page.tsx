@@ -4,6 +4,7 @@ import { ArrowLeft, Plus } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
+  canAccessModule,
   requireModulePermission,
 } from "@/app/lib/permissions";
 import {
@@ -350,16 +351,25 @@ export default async function ContasReceberPage({
       : "/financeiro/receber";
   };
 
+  const canSeeGeneralFinancial =
+    canAccessModule(
+      access,
+      "financial",
+      "view"
+    );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
-        <Link
-          href="/financeiro"
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar ao financeiro
-        </Link>
+        {canSeeGeneralFinancial && (
+          <Link
+            href="/financeiro"
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-slate-900"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar ao financeiro
+          </Link>
+        )}
 
         <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>

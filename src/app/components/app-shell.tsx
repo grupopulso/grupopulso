@@ -8,10 +8,13 @@ import {
 } from "next/navigation";
 
 import {
+  ArrowDownLeft,
+  ArrowUpRight,
   BarChart3,
   Building2,
   CircleDollarSign,
   FileText,
+  HandCoins,
   LayoutDashboard,
   LogOut,
   Package,
@@ -22,6 +25,7 @@ import {
   BadgePercent,
   Target,
   Users,
+  Wallet,
 } from "lucide-react";
 
 import {
@@ -62,6 +66,14 @@ type NavigationItem = {
   module: string;
   adminOnly?: boolean;
   estafetaOnly?: boolean;
+
+  /*
+   * Item de sub-área do Financeiro: só aparece para quem
+   * NÃO tem o módulo geral "financial" (quem tem o geral
+   * já acessa tudo pela tela "Financeiro"). Serve para
+   * usuários com acesso restrito, ex.: só contas a receber.
+   */
+  financialSubArea?: boolean;
 };
 
 const navigation: NavigationItem[] = [
@@ -110,6 +122,35 @@ const navigation: NavigationItem[] = [
     href: "/financeiro",
     icon: CircleDollarSign,
     module: "financial",
+  },
+
+  {
+    label: "Contas a Receber",
+    href: "/financeiro/receber",
+    icon: ArrowDownLeft,
+    module: "accounts_receivable",
+    financialSubArea: true,
+  },
+  {
+    label: "Recebimentos",
+    href: "/financeiro/recebimentos",
+    icon: HandCoins,
+    module: "receipts",
+    financialSubArea: true,
+  },
+  {
+    label: "Contas a Pagar",
+    href: "/financeiro/pagar",
+    icon: ArrowUpRight,
+    module: "accounts_payable",
+    financialSubArea: true,
+  },
+  {
+    label: "Pagamentos",
+    href: "/financeiro/pagamentos",
+    icon: Wallet,
+    module: "payments",
+    financialSubArea: true,
   },
 
   {
@@ -193,6 +234,34 @@ export default function AppShell({
         !hasEstafetaAccess
       ) {
         return false;
+      }
+
+      /*
+       * Sub-área do Financeiro: só aparece para quem NÃO
+       * tem o módulo geral "financial" (quem tem o geral já
+       * acessa tudo pela tela "Financeiro"). Isso vale
+       * inclusive para o admin.
+       */
+      if (item.financialSubArea) {
+        const hasGeneralFinancial =
+          user.role === "admin" ||
+          permissions.some(
+            (permission) =>
+              permission.module ===
+                "financial" &&
+              permission.can_view
+          );
+
+        if (hasGeneralFinancial) {
+          return false;
+        }
+
+        return permissions.some(
+          (permission) =>
+            permission.module ===
+              item.module &&
+            permission.can_view
+        );
       }
 
       /*

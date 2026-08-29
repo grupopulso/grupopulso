@@ -246,6 +246,118 @@ export function canAccessModule(
 }
 
 /*
+ * =====================================================
+ * FINANCEIRO — ACESSO POR NATUREZA DO LANÇAMENTO
+ * =====================================================
+ *
+ * O módulo "financial" é o acesso GERAL (visão consolidada,
+ * fluxo, contas a pagar + receber juntos). Além dele existem
+ * módulos específicos por natureza:
+ *
+ *   receita  → accounts_receivable (cadastro/controle) + receipts (baixa)
+ *   despesa  → accounts_payable    (cadastro/controle) + payments  (baixa)
+ *
+ * Quem tem "financial" pode tudo. Quem só tem o específico
+ * (ex.: uma pessoa que só mexe com contas a receber) age
+ * apenas naquela natureza, sem ver o geral da empresa.
+ */
+
+const FINANCIAL_MODULES_BY_TYPE = {
+  income: ["accounts_receivable", "receipts"],
+  expense: ["accounts_payable", "payments"],
+} as const;
+
+/*
+ * Exige acesso a UM lançamento de natureza conhecida
+ * (receita ou despesa). Passa se o usuário tiver a
+ * permissão no módulo geral "financial" OU em um dos
+ * módulos específicos da natureza (accounts_receivable /
+ * receipts para receita; accounts_payable / payments para
+ * despesa). Senão, redireciona para /sem-permissao.
+ */
+export async function requireFinancialEntryAccess(
+  type: "income" | "expense",
+  action: PermissionAction = "view"
+) {
+  const access =
+    await requireAuthenticatedUser();
+
+  if (
+    access.profile.role === "admin"
+  ) {
+    return access;
+  }
+
+  const modules = [
+    "financial",
+    ...FINANCIAL_MODULES_BY_TYPE[type],
+  ];
+
+  if (
+    modules.some((module) =>
+      canAccessModule(
+        access,
+        module,
+        action
+      )
+    )
+  ) {
+    return access;
+  }
+
+  redirect("/sem-permissao");
+}
+
+/*
+ * Para o formulário de novo lançamento: descobre quais
+ * naturezas o usuário pode criar. Redireciona se não
+ * puder criar nenhuma.
+ */
+export async function requireFinancialCreateAccess() {
+  const access =
+    await requireAuthenticatedUser();
+
+  const isAdmin =
+    access.profile.role === "admin";
+
+  const canIncome =
+    isAdmin ||
+    canAccessModule(
+      access,
+      "financial",
+      "create"
+    ) ||
+    canAccessModule(
+      access,
+      "accounts_receivable",
+      "create"
+    );
+
+  const canExpense =
+    isAdmin ||
+    canAccessModule(
+      access,
+      "financial",
+      "create"
+    ) ||
+    canAccessModule(
+      access,
+      "accounts_payable",
+      "create"
+    );
+
+  if (!canIncome && !canExpense) {
+    redirect("/sem-permissao");
+  }
+
+  return {
+    access,
+    canIncome,
+    canExpense,
+  };
+}
+
+/*
  * Verifica se o usuário pode acessar
  * uma empresa específica.
  *

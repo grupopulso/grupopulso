@@ -67,20 +67,36 @@ type PaymentMethod = {
 
 type FinancialEntryFormProps = {
   initialClientId?: string;
+
+  /*
+   * Naturezas que o usuário pode lançar. Um usuário que só
+   * cuida de contas a receber recebe canExpense={false} e o
+   * seletor de tipo fica travado em "Receita".
+   */
+  canIncome?: boolean;
+  canExpense?: boolean;
 };
 
 export default function FinancialEntryForm({
   initialClientId = "",
+  canIncome = true,
+  canExpense = true,
 }: FinancialEntryFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const supabase = createClient();
 
-  const initialType =
-    searchParams.get("tipo") === "expense"
+  const bothTypes = canIncome && canExpense;
+
+  const initialType: "income" | "expense" =
+    !canIncome
       ? "expense"
-      : "income";
+      : !canExpense
+        ? "income"
+        : searchParams.get("tipo") === "expense"
+          ? "expense"
+          : "income";
 
   const [entryType, setEntryType] =
     useState<"income" | "expense">(initialType);
@@ -341,6 +357,9 @@ export default function FinancialEntryForm({
   function handleTypeChange(
     type: "income" | "expense"
   ) {
+    if (type === "income" && !canIncome) return;
+    if (type === "expense" && !canExpense) return;
+
     setEntryType(type);
 
     setClientId("");
@@ -387,6 +406,16 @@ export default function FinancialEntryForm({
     event.preventDefault();
 
     setError("");
+
+    if (
+      (entryType === "income" && !canIncome) ||
+      (entryType === "expense" && !canExpense)
+    ) {
+      setError(
+        "Seu acesso não permite lançar esse tipo de movimentação."
+      );
+      return;
+    }
 
     if (!companyId) {
       setError(
@@ -611,63 +640,96 @@ export default function FinancialEntryForm({
             Tipo de movimentação
           </h2>
 
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() =>
-                handleTypeChange(
-                  "income"
-                )
-              }
-              className={`rounded-2xl border p-5 text-left transition ${
+          {bothTypes ? (
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() =>
+                  handleTypeChange(
+                    "income"
+                  )
+                }
+                className={`rounded-2xl border p-5 text-left transition ${
+                  entryType === "income"
+                    ? "border-emerald-300 bg-emerald-50"
+                    : "border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <p
+                  className={`font-semibold ${
+                    entryType === "income"
+                      ? "text-emerald-700"
+                      : "text-slate-800"
+                  }`}
+                >
+                  Receita
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Valores que a empresa tem a receber.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleTypeChange(
+                    "expense"
+                  )
+                }
+                className={`rounded-2xl border p-5 text-left transition ${
+                  entryType === "expense"
+                    ? "border-red-300 bg-red-50"
+                    : "border-slate-200 hover:bg-slate-50"
+                }`}
+              >
+                <p
+                  className={`font-semibold ${
+                    entryType === "expense"
+                      ? "text-red-700"
+                      : "text-slate-800"
+                  }`}
+                >
+                  Despesa
+                </p>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Valores que a empresa tem a pagar.
+                </p>
+              </button>
+            </div>
+          ) : (
+            <div
+              className={`mt-5 rounded-2xl border p-5 ${
                 entryType === "income"
                   ? "border-emerald-300 bg-emerald-50"
-                  : "border-slate-200 hover:bg-slate-50"
+                  : "border-red-300 bg-red-50"
               }`}
             >
               <p
                 className={`font-semibold ${
                   entryType === "income"
                     ? "text-emerald-700"
-                    : "text-slate-800"
+                    : "text-red-700"
                 }`}
               >
-                Receita
+                {entryType === "income"
+                  ? "Receita"
+                  : "Despesa"}
               </p>
 
               <p className="mt-1 text-sm text-slate-500">
-                Valores que a empresa tem a receber.
+                {entryType === "income"
+                  ? "Valores que a empresa tem a receber."
+                  : "Valores que a empresa tem a pagar."}{" "}
+                Seu acesso permite lançar apenas{" "}
+                {entryType === "income"
+                  ? "receitas"
+                  : "despesas"}
+                .
               </p>
-            </button>
-
-            <button
-              type="button"
-              onClick={() =>
-                handleTypeChange(
-                  "expense"
-                )
-              }
-              className={`rounded-2xl border p-5 text-left transition ${
-                entryType === "expense"
-                  ? "border-red-300 bg-red-50"
-                  : "border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              <p
-                className={`font-semibold ${
-                  entryType === "expense"
-                    ? "text-red-700"
-                    : "text-slate-800"
-                }`}
-              >
-                Despesa
-              </p>
-
-              <p className="mt-1 text-sm text-slate-500">
-                Valores que a empresa tem a pagar.
-              </p>
-            </button>
-          </div>
+            </div>
+          )}
         </section>
 
         {/* ORIGEM */}
