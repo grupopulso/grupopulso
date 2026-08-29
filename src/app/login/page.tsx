@@ -1,14 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/client";
 
 export default function LoginPage() {
-  const router = useRouter();
-
   const [email, setEmail] = useState(
     "atthuscomunicacaoestrategica@gmail.com"
   );
@@ -35,17 +32,21 @@ export default function LoginPage() {
   console.error("Erro Supabase:", signInError);
 
   setError(signInError.message);
+  setLoading(false);
 
   return;
 }
 
-      router.replace("/");
-      router.refresh();
+      /*
+       * Navegação "hard" (não client-side): garante que o
+       * browser faça uma requisição nova para "/" já com o
+       * cookie de sessão, e que o middleware renove o token.
+       */
+      window.location.assign("/");
     } catch {
       setError(
         "Não foi possível acessar o sistema. Tente novamente."
       );
-    } finally {
       setLoading(false);
     }
   }
