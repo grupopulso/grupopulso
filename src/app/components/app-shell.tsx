@@ -24,6 +24,7 @@ import {
   Newspaper,
   BadgePercent,
   Target,
+  UserRound,
   Users,
   Wallet,
 } from "lucide-react";
@@ -74,6 +75,12 @@ type NavigationItem = {
    * usuários com acesso restrito, ex.: só contas a receber.
    */
   financialSubArea?: boolean;
+
+  /*
+   * Item pessoal (dados do próprio usuário) — visível para
+   * qualquer usuário autenticado, sem depender de permissão.
+   */
+  alwaysVisible?: boolean;
 };
 
 const navigation: NavigationItem[] = [
@@ -82,6 +89,13 @@ const navigation: NavigationItem[] = [
     href: "/",
     icon: LayoutDashboard,
     module: "dashboard",
+  },
+  {
+    label: "Meu painel",
+    href: "/meu-painel",
+    icon: UserRound,
+    module: "dashboard",
+    alwaysVisible: true,
   },
   {
     label: "Clientes",
@@ -234,6 +248,10 @@ export default function AppShell({
         !hasEstafetaAccess
       ) {
         return false;
+      }
+
+      if (item.alwaysVisible) {
+        return true;
       }
 
       /*
