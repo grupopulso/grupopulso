@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
+import {
+  createClient as createSupabaseAdminClient,
+} from "@supabase/supabase-js";
+
 import { createClient } from "@/app/lib/supabase/server";
 
 import {
@@ -11,6 +15,164 @@ import {
 import {
   createAuditLog,
 } from "@/app/lib/audit";
+
+function getAdminClient() {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url || !serviceRoleKey) {
+    throw new Error(
+      "As credenciais administrativas do Supabase não estão configuradas."
+    );
+  }
+
+  return createSupabaseAdminClient(
+    url,
+    serviceRoleKey,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+}
+
+export async function deleteUser(
+  userId: string
+) {
+  const admin = await requireAdmin();
+
+  if (!userId) {
+    return {
+      success: false,
+      message: "Usuário inválido.",
+    };
+  }
+
+  if (userId === admin.user.id) {
+    return {
+      success: false,
+      message:
+        "Você não pode excluir o seu próprio usuário.",
+    };
+  }
+
+  const supabase = await createClient();
+
+  const {
+    data: profile,
+  } = await supabase
+    .from("user_profiles")
+    .select("id, name")
+    .eq("id", userId)
+    .maybeSingle();
+
+  /*
+   * Bloqueia a exclusão se o usuário for responsável por
+   * contratos ou vendas — apagar deixaria esses registros
+   * órfãos. Nesse caso o correto é desativar o usuário.
+   */
+  const { count: contractCount } =
+    await supabase
+      .from("contracts")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("responsible_user_id", userId);
+
+  if ((contractCount ?? 0) > 0) {
+    return {
+      success: false,
+      message:
+        "Este usuário é responsável por contratos. Desative-o em vez de excluir.",
+    };
+  }
+
+  const { count: saleCount } =
+    await supabase
+      .from("edition_sales")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("seller_user_id", userId);
+
+  if ((saleCount ?? 0) > 0) {
+    return {
+      success: false,
+      message:
+        "Este usuário tem vendas de publicidade registradas. Desative-o em vez de excluir.",
+    };
+  }
+
+  const client = getAdminClient();
+
+  await client
+    .from("user_permissions")
+    .delete()
+    .eq("user_id", userId);
+
+  await client
+    .from("user_companies")
+    .delete()
+    .eq("user_id", userId);
+
+  await client
+    .from("company_partners")
+    .delete()
+    .eq("user_id", userId);
+
+  await client
+    .from("seller_settings")
+    .delete()
+    .eq("user_id", userId);
+
+  const { error: profileDeleteError } =
+    await client
+      .from("user_profiles")
+      .delete()
+      .eq("id", userId);
+
+  if (profileDeleteError) {
+    return {
+      success: false,
+      message:
+        "Não foi possível excluir: o usuário ainda tem registros vinculados. Desative-o em vez de excluir.",
+    };
+  }
+
+  const { error: authDeleteError } =
+    await client.auth.admin.deleteUser(
+      userId
+    );
+
+  if (authDeleteError) {
+    return {
+      success: false,
+      message: authDeleteError.message,
+    };
+  }
+
+  await createAuditLog({
+    module: "settings",
+    action: "delete",
+    entityType: "user",
+    entityId: userId,
+    description: `Usuário ${
+      profile?.name ?? userId
+    } excluído.`,
+  });
+
+  revalidatePath(
+    "/configuracoes/usuarios"
+  );
+
+  return { success: true };
+}
 
 const VALID_ROLES = [
   "admin",

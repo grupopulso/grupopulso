@@ -7,10 +7,57 @@ import {
     UserPlus,
 } from "lucide-react";
 
+import {
+  createClient as createSupabaseAdminClient,
+} from "@supabase/supabase-js";
+
 import { createClient } from "@/app/lib/supabase/server";
 import {
   requireAdmin,
 } from "@/app/lib/permissions";
+
+async function fetchEmailsById(): Promise<
+  Map<string, string>
+> {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  const map = new Map<string, string>();
+
+  if (!url || !serviceRoleKey) {
+    return map;
+  }
+
+  try {
+    const admin = createSupabaseAdminClient(
+      url,
+      serviceRoleKey,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
+    const { data } =
+      await admin.auth.admin.listUsers({
+        perPage: 1000,
+      });
+
+    for (const user of data?.users ?? []) {
+      if (user.email) {
+        map.set(user.id, user.email);
+      }
+    }
+  } catch {
+    // segue sem os e-mails
+  }
+
+  return map;
+}
 
 type Company = {
   id: string;
@@ -29,6 +76,8 @@ export default async function UsuariosPage() {
     await requireAdmin();
 
   const supabase = await createClient();
+
+  const emailsById = await fetchEmailsById();
 
   const {
     data: profiles,
@@ -207,8 +256,10 @@ export default async function UsuariosPage() {
                                   "Usuário sem nome"}
                               </p>
 
-                              <p className="mt-1 text-xs text-slate-400">
-                                {profile.id}
+                              <p className="mt-1 text-xs text-slate-500">
+                                {emailsById.get(
+                                  profile.id
+                                ) ?? "—"}
                               </p>
                             </div>
                           </Link>
