@@ -24,6 +24,8 @@ import {
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
 
+import SellerPicker from "./seller-picker";
+
 type NamedRef = {
   id: string;
   name: string | null;
@@ -76,14 +78,61 @@ function formatDate(value: string | null) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
-export default async function MeuPainelPage() {
+type PageProps = {
+  searchParams: Promise<{
+    vendedor?: string;
+  }>;
+};
+
+export default async function MeuPainelPage({
+  searchParams,
+}: PageProps) {
   const access =
     await requireAuthenticatedUser();
 
-  const userId = access.user.id;
+  const isAdmin =
+    access.profile.role === "admin";
+
+  const { vendedor } = await searchParams;
+
   const today = todayString();
 
   const supabase = await createClient();
+
+  /*
+   * Admin pode acompanhar o painel de outro vendedor via
+   * ?vendedor=<id>. Para os demais, é sempre o próprio.
+   */
+  let sellerOptions: {
+    id: string;
+    name: string | null;
+  }[] = [];
+
+  if (isAdmin) {
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("id, name")
+      .eq("active", true)
+      .order("name");
+
+    sellerOptions = data ?? [];
+  }
+
+  const userId =
+    isAdmin &&
+    vendedor &&
+    sellerOptions.some(
+      (option) => option.id === vendedor
+    )
+      ? vendedor
+      : access.user.id;
+
+  const viewingOther = userId !== access.user.id;
+
+  const viewingName =
+    sellerOptions.find(
+      (option) => option.id === userId
+    )?.name ?? null;
 
   /*
    * =========================
@@ -351,20 +400,39 @@ export default async function MeuPainelPage() {
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#15704f]/10">
-            <TrendingUp className="h-5 w-5 text-[#15704f]" />
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#15704f]/10">
+              <TrendingUp className="h-5 w-5 text-[#15704f]" />
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">
+                {viewingOther
+                  ? `Painel de ${
+                      viewingName ??
+                      "vendedor"
+                    }`
+                  : "Meu painel"}
+              </h1>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {viewingOther
+                  ? "Você está acompanhando o painel de outro vendedor."
+                  : "Seus contratos e vendas — acompanhamento, renovações e cobranças em atraso."}
+              </p>
+            </div>
           </div>
 
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              Meu painel
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Seus contratos e vendas — acompanhamento, renovações e cobranças em atraso.
-            </p>
-          </div>
+          {isAdmin && (
+            <SellerPicker
+              sellers={sellerOptions}
+              currentUserId={
+                access.user.id
+              }
+              selectedId={userId}
+            />
+          )}
         </div>
 
         {/* RESUMO */}
