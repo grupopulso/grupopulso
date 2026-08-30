@@ -1144,3 +1144,137 @@ function roundMoney(
     100
   );
 }
+
+/*
+ * =====================================================
+ * EXCLUIR CADERNO
+ * =====================================================
+ *
+ * Só permite excluir um caderno de uma edição aberta e
+ * que ainda não tenha vendas nem publicações de contrato
+ * vinculadas a ele. As posições padrão do caderno são
+ * removidas junto.
+ */
+
+export async function deleteEditionSection(
+  sectionId: string,
+  editionId: string
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  if (!sectionId || !editionId) {
+    return {
+      success: false,
+      message: "Caderno inválido.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const {
+    data: edition,
+  } = await supabase
+    .from("newspaper_editions")
+    .select("id, status")
+    .eq("id", editionId)
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    )
+    .maybeSingle();
+
+  if (!edition) {
+    return {
+      success: false,
+      message: "Edição não encontrada.",
+    };
+  }
+
+  if (edition.status !== "open") {
+    return {
+      success: false,
+      message:
+        "Esta edição não pode mais ser alterada.",
+    };
+  }
+
+  const { data: section } = await supabase
+    .from("edition_sections")
+    .select("id")
+    .eq("id", sectionId)
+    .eq("edition_id", editionId)
+    .maybeSingle();
+
+  if (!section) {
+    return {
+      success: false,
+      message: "Caderno não encontrado.",
+    };
+  }
+
+  const { count: saleItemCount } =
+    await supabase
+      .from("edition_sale_items")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("section_id", sectionId);
+
+  if ((saleItemCount ?? 0) > 0) {
+    return {
+      success: false,
+      message:
+        "Este caderno já tem vendas vinculadas. Remova as vendas antes de excluir.",
+    };
+  }
+
+  const { count: publicationCount } =
+    await supabase
+      .from(
+        "contract_edition_publications"
+      )
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("section_id", sectionId);
+
+  if ((publicationCount ?? 0) > 0) {
+    return {
+      success: false,
+      message:
+        "Este caderno tem publicações de contrato vinculadas. Mova-as antes de excluir.",
+    };
+  }
+
+  await supabase
+    .from("edition_ad_positions")
+    .delete()
+    .eq("section_id", sectionId);
+
+  const { error } = await supabase
+    .from("edition_sections")
+    .delete()
+    .eq("id", sectionId);
+
+  if (error) {
+    console.error(
+      "Erro ao excluir caderno:",
+      error
+    );
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  revalidatePath(
+    `/edicoes/${editionId}`
+  );
+
+  return { success: true };
+}

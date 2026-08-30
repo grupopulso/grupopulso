@@ -53,12 +53,12 @@ export async function saveCompanyGoal(
   }
 
   /*
-   * month = 0 representa a meta anual da empresa.
-   * 1–12 são metas mensais.
+   * A meta é sempre mensal (1–12). A meta anual não é um
+   * registro separado — é a soma das 12 metas mensais.
    */
   if (
     !Number.isInteger(month) ||
-    month < 0 ||
+    month < 1 ||
     month > 12
   ) {
     return {
@@ -137,14 +137,9 @@ export async function saveCompanyGoal(
     entityType: "company_goal",
     entityId: companyId,
     description:
-      `Meta de ${company.name} para ${
-        month === 0
-          ? `o ano de ${year}`
-          : `${String(month).padStart(
-              2,
-              "0"
-            )}/${year}`
-      } definida em ${formatCurrency(
+      `Meta de ${company.name} para ${String(
+        month
+      ).padStart(2, "0")}/${year} definida em ${formatCurrency(
         target
       )}.`,
     newData: {

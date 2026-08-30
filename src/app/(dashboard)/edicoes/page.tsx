@@ -125,10 +125,10 @@ export default async function EditionsPage() {
           .id
       )
       .order(
-        "publication_date",
+        "created_at",
         {
           ascending:
-            false,
+            true,
         }
       );
 
@@ -141,9 +141,38 @@ export default async function EditionsPage() {
     );
   }
 
-  const editionList =
-    editions ??
-    [];
+  /*
+   * Ordem: edições abertas primeiro (na ordem em que foram
+   * cadastradas — a mais nova fica por último), depois as
+   * fechadas, depois as canceladas. Fechar uma edição a
+   * empurra para o fim da lista.
+   */
+  const STATUS_ORDER: Record<
+    string,
+    number
+  > = {
+    open: 0,
+    closed: 1,
+    cancelled: 2,
+  };
+
+  const editionList = [
+    ...(editions ?? []),
+  ].sort((a, b) => {
+    const rankDiff =
+      (STATUS_ORDER[a.status] ?? 3) -
+      (STATUS_ORDER[b.status] ?? 3);
+
+    if (rankDiff !== 0) {
+      return rankDiff;
+    }
+
+    return String(
+      a.created_at ?? ""
+    ).localeCompare(
+      String(b.created_at ?? "")
+    );
+  });
 
   /*
    * =====================================================

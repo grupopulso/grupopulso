@@ -83,8 +83,6 @@ export default async function MetasPage({
    * Coluna `month` em company_goals:
    * 1–12 = meta mensal, 0 = meta anual.
    */
-  const goalMonth = isAnnual ? 0 : month;
-
   const monthStart = isAnnual
     ? dateStr(year, 1, 1)
     : dateStr(year, month, 1);
@@ -154,8 +152,12 @@ export default async function MetasPage({
 
   /*
    * =========================
-   * METAS DO MÊS
+   * METAS
    * =========================
+   *
+   * Mensal: a meta do mês selecionado.
+   * Anual: NÃO é uma meta separada — é a SOMA das 12 metas
+   * mensais daquela empresa no ano.
    */
 
   const goalsByCompany = new Map<
@@ -164,16 +166,23 @@ export default async function MetasPage({
   >();
 
   if (companyIds.length > 0) {
+    let goalsQuery = supabase
+      .from("company_goals")
+      .select(`
+        company_id,
+        target_amount
+      `)
+      .eq("year", year)
+      .in("company_id", companyIds);
+
+    goalsQuery = isAnnual
+      ? goalsQuery
+          .gte("month", 1)
+          .lte("month", 12)
+      : goalsQuery.eq("month", month);
+
     const { data: goals, error } =
-      await supabase
-        .from("company_goals")
-        .select(`
-          company_id,
-          target_amount
-        `)
-        .eq("year", year)
-        .eq("month", goalMonth)
-        .in("company_id", companyIds);
+      await goalsQuery;
 
     if (error) {
       console.error(
@@ -185,7 +194,10 @@ export default async function MetasPage({
     for (const goal of goals ?? []) {
       goalsByCompany.set(
         goal.company_id,
-        Number(goal.target_amount ?? 0)
+        (goalsByCompany.get(
+          goal.company_id
+        ) ?? 0) +
+          Number(goal.target_amount ?? 0)
       );
     }
   }
@@ -462,7 +474,7 @@ export default async function MetasPage({
                 billed={row.billed}
                 progress={row.progress}
                 year={year}
-                month={goalMonth}
+                month={month}
                 isAnnual={isAnnual}
                 canEdit={isAdmin}
               />
@@ -551,15 +563,21 @@ function CompanyGoalCard({
             {formatCurrency(billed)}
           </p>
 
-          {canEdit && (
-            <div className="mt-3 flex justify-center">
-              <GoalEditor
-                companyId={company.id}
-                year={year}
-                month={month}
-                currentTarget={null}
-              />
-            </div>
+          {isAnnual ? (
+            <p className="mt-2 text-xs text-slate-400">
+              A meta anual é a soma das metas mensais. Defina as metas de cada mês na aba Mensal.
+            </p>
+          ) : (
+            canEdit && (
+              <div className="mt-3 flex justify-center">
+                <GoalEditor
+                  companyId={company.id}
+                  year={year}
+                  month={month}
+                  currentTarget={null}
+                />
+              </div>
+            )
           )}
         </div>
       ) : (
@@ -615,15 +633,21 @@ function CompanyGoalCard({
             </div>
           </div>
 
-          {canEdit && (
-            <div className="mt-4 border-t border-slate-100 pt-3">
-              <GoalEditor
-                companyId={company.id}
-                year={year}
-                month={month}
-                currentTarget={target}
-              />
-            </div>
+          {isAnnual ? (
+            <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
+              Soma das 12 metas mensais de {year}. Edite pela aba Mensal.
+            </p>
+          ) : (
+            canEdit && (
+              <div className="mt-4 border-t border-slate-100 pt-3">
+                <GoalEditor
+                  companyId={company.id}
+                  year={year}
+                  month={month}
+                  currentTarget={target}
+                />
+              </div>
+            )
           )}
         </>
       )}

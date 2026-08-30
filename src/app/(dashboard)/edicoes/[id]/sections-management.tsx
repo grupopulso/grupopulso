@@ -17,12 +17,14 @@ import {
   Power,
   Save,
   Settings2,
+  Trash2,
   Unlock,
   X,
 } from "lucide-react";
 
 import {
   createEditionSection,
+  deleteEditionSection,
   setEditionAdPositionBlocked,
   setEditionSectionActive,
   updateEditionAdPositionCapacity,
@@ -372,6 +374,44 @@ export default function SectionsManagement({
    * ATIVAR / DESATIVAR CADERNO
    * =====================================================
    */
+
+  function handleDelete(
+    section: Section
+  ) {
+    if (
+      !window.confirm(
+        `Excluir o caderno "${section.name}"? As posições dele serão removidas. Essa ação não pode ser desfeita.`
+      )
+    ) {
+      return;
+    }
+
+    setMessage(null);
+
+    startTransition(async () => {
+      const result =
+        await deleteEditionSection(
+          section.id,
+          editionId
+        );
+
+      if (!result.success) {
+        setMessage({
+          type: "error",
+          text:
+            result.message ??
+            "Não foi possível excluir o caderno.",
+        });
+
+        return;
+      }
+
+      setMessage({
+        type: "success",
+        text: "Caderno excluído.",
+      });
+    });
+  }
 
   function handleToggle(
     section:
@@ -905,6 +945,23 @@ export default function SectionsManagement({
                           {section.active
                             ? "Desativar"
                             : "Ativar"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleDelete(
+                              section
+                            )
+                          }
+                          disabled={
+                            isPending
+                          }
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-500 transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+
+                          Excluir
                         </button>
                       </div>
                     )}

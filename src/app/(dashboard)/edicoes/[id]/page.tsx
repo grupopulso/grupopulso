@@ -23,6 +23,7 @@ import {
 
 import {
   LayoutGrid,
+  Pencil,
 } from "lucide-react";
 
 import {
@@ -1854,6 +1855,17 @@ export default async function EditionPage({
   Relatório
 </Link>
 
+{edition.status !== "cancelled" && (
+  <Link
+    href={`/edicoes/${edition.id}/editar`}
+    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f]"
+  >
+    <Pencil className="h-4 w-4" />
+
+    Editar edição
+  </Link>
+)}
+
 {edition.status === "closed" && (
   <ReopenEditionButton
     editionId={edition.id}
@@ -2076,6 +2088,71 @@ export default async function EditionPage({
                   </p>
                 )}
             </div>
+
+            {/* PROGRESSO POR CADERNO */}
+
+            {sectionSummaries.length > 0 && (
+              <div className="mt-6 space-y-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Progresso por caderno
+                </p>
+
+                {sectionSummaries.map(
+                  (section) => {
+                    const percent =
+                      section.salesGoal > 0
+                        ? Math.min(
+                            Math.max(
+                              section.progressPercentage,
+                              0
+                            ),
+                            100
+                          )
+                        : 0;
+
+                    return (
+                      <div
+                        key={section.id}
+                        className="rounded-xl border border-slate-200 bg-white p-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-slate-800">
+                            {section.name}
+                          </span>
+
+                          <span className="text-xs text-slate-500">
+                            {formatCurrency(
+                              section.soldAmount
+                            )}
+                            {" / "}
+                            {formatCurrency(
+                              section.salesGoal
+                            )}
+                            {section.salesGoal >
+                              0 && (
+                              <span className="ml-2 font-semibold text-[#15704f]">
+                                {formatPercentage(
+                                  section.progressPercentage
+                                )}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-[#15704f]"
+                            style={{
+                              width: `${percent}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+                )}
+              </div>
+            )}
           </div>
         </section>
 
