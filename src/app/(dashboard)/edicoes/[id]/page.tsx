@@ -35,6 +35,7 @@ import {
 
 import SectionsManagement from "./sections-management";
 import EditionPageCountEditor from "./edition-page-count-editor";
+import EditionGoalEditor from "./edition-goal-editor";
 
 import {
   AddContractPublication,
@@ -1885,7 +1886,7 @@ export default async function EditionPage({
         {/* META */}
 
         <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-6 py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
             <div className="flex items-center gap-2">
               <Goal className="h-5 w-5 text-[#15704f]" />
 
@@ -1893,6 +1894,14 @@ export default async function EditionPage({
                 Meta comercial da edição
               </h2>
             </div>
+
+            <EditionGoalEditor
+              editionId={edition.id}
+              salesGoal={editionSalesGoal}
+              canEdit={
+                edition.status !== "cancelled"
+              }
+            />
           </div>
 
           <div className="p-6">

@@ -984,6 +984,100 @@ export async function updateEditionPageCount(
 
 /*
  * =====================================================
+ * ALTERAR META COMERCIAL DA EDIÇÃO
+ * =====================================================
+ */
+
+export async function updateEditionSalesGoal(
+  editionId: string,
+  salesGoal: number
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  if (!editionId) {
+    return {
+      success: false,
+      message: "Edição inválida.",
+    };
+  }
+
+  if (
+    !Number.isFinite(Number(salesGoal)) ||
+    Number(salesGoal) < 0
+  ) {
+    return {
+      success: false,
+      message:
+        "Informe um valor de meta válido.",
+    };
+  }
+
+  const normalized = roundMoney(
+    Number(salesGoal)
+  );
+
+  const supabase =
+    await createClient();
+
+  const { data: edition } =
+    await supabase
+      .from("newspaper_editions")
+      .select("id, company_id, status")
+      .eq("id", editionId)
+      .maybeSingle();
+
+  if (
+    !edition ||
+    edition.company_id !==
+      access.estafetaCompany.id
+  ) {
+    return {
+      success: false,
+      message: "Edição não encontrada.",
+    };
+  }
+
+  if (edition.status === "cancelled") {
+    return {
+      success: false,
+      message:
+        "Uma edição cancelada não pode ser editada.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("newspaper_editions")
+    .update({
+      sales_goal: normalized,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", editionId)
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    );
+
+  if (error) {
+    console.error(
+      "Erro ao atualizar meta da edição:",
+      error
+    );
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+
+  revalidatePath("/edicoes");
+  revalidatePath(`/edicoes/${editionId}`);
+
+  return { success: true };
+}
+
+/*
+ * =====================================================
  * ALTERAR STATUS
  * =====================================================
  */
