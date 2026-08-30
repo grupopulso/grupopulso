@@ -43,12 +43,12 @@ const DEFAULT_AD_POSITIONS = [
   {
     code: "cover",
     name: "Capa",
-    capacity: 1,
+    capacity: null,
   },
   {
     code: "back_cover",
     name: "Contracapa",
-    capacity: 1,
+    capacity: null,
   },
   {
     code: "inside_bw",
@@ -63,7 +63,7 @@ const DEFAULT_AD_POSITIONS = [
   {
     code: "overcover",
     name: "Sobrecapa",
-    capacity: 1,
+    capacity: null,
   },
   {
     /*
@@ -930,7 +930,7 @@ export async function setEditionAdPositionBlocked(
           blocked
             ? reason
                 ?.trim() ||
-              "Bloqueada pelo administrador."
+              "Esgotado."
             : null,
 
         updated_at:

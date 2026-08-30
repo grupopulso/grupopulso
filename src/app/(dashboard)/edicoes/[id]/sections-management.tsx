@@ -11,7 +11,6 @@ import {
   CheckCircle2,
   Goal,
   InfinityIcon,
-  Lock,
   Pencil,
   Plus,
   Power,
@@ -482,7 +481,8 @@ export default function SectionsManagement({
           await setEditionAdPositionBlocked(
             position.id,
             editionId,
-            blocked
+            blocked,
+            blocked ? "Esgotado" : undefined
           );
 
         if (
@@ -506,8 +506,8 @@ export default function SectionsManagement({
 
           text:
             blocked
-              ? `${position.name} bloqueada.`
-              : `${position.name} desbloqueada.`,
+              ? `${position.name} marcada como esgotada.`
+              : `${position.name} reaberta.`,
         });
       }
     );
@@ -1221,13 +1221,13 @@ export default function SectionsManagement({
                                             <>
                                               <Unlock className="h-3.5 w-3.5" />
 
-                                              Desbloquear
+                                              Reabrir
                                             </>
                                           ) : (
                                             <>
-                                              <Lock className="h-3.5 w-3.5" />
+                                              <Ban className="h-3.5 w-3.5" />
 
-                                              Bloquear
+                                              Esgotar
                                             </>
                                           )}
                                         </button>
@@ -1382,10 +1382,10 @@ function PositionStatusBadge({
     "blocked"
   ) {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
-        <Lock className="h-3 w-3" />
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-700">
+        <Ban className="h-3 w-3" />
 
-        Bloqueada
+        Esgotada
       </span>
     );
   }

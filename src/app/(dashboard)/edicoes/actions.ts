@@ -85,7 +85,7 @@ const DEFAULT_AD_POSITIONS = [
       "Capa",
 
     capacity:
-      1,
+      null,
   },
 
   {
@@ -96,7 +96,7 @@ const DEFAULT_AD_POSITIONS = [
       "Contracapa",
 
     capacity:
-      1,
+      null,
   },
 
   {
@@ -129,7 +129,7 @@ const DEFAULT_AD_POSITIONS = [
       "Sobrecapa",
 
     capacity:
-      1,
+      null,
   },
 
   {
