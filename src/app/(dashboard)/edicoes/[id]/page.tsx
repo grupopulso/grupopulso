@@ -37,6 +37,7 @@ import {
 import SectionsManagement from "./sections-management";
 import EditionPageCountEditor from "./edition-page-count-editor";
 import EditionGoalEditor from "./edition-goal-editor";
+import EditionGeneralPositions from "./edition-general-positions";
 
 import {
   AddContractPublication,
@@ -1475,6 +1476,44 @@ export default async function EditionPage({
 
   /*
    * =====================================================
+   * POSIÇÕES DA EDIÇÃO (sem caderno)
+   * =====================================================
+   */
+
+  const generalPositionSummaries = (
+    generalPositions ?? []
+  )
+    .slice()
+    .sort(
+      (a, b) =>
+        getPositionOrder(
+          a.position_code
+        ) -
+        getPositionOrder(
+          b.position_code
+        )
+    )
+    .map((position) => ({
+      id: position.id,
+      name: position.name,
+      positionCode: position.position_code,
+      capacity:
+        position.capacity === null
+          ? null
+          : Number(position.capacity),
+      manuallyBlocked: Boolean(
+        position.manually_blocked
+      ),
+      blockedReason:
+        position.blocked_reason,
+      active: Boolean(position.active),
+      soldCount:
+        soldByPosition.get(position.id) ??
+        0,
+    }));
+
+  /*
+   * =====================================================
    * TOTAIS
    * =====================================================
    */
@@ -1663,13 +1702,6 @@ export default async function EditionPage({
       ),
       0
     );
-
-  const sectionsGoalProgress =
-    sectionsGoalSum > 0
-      ? (sectionsSoldSum /
-          sectionsGoalSum) *
-        100
-      : 0;
 
   const company =
     getFirst(
@@ -2012,81 +2044,72 @@ export default async function EditionPage({
               </div>
             )}
 
-            {/* META DA EDIÇÃO x SOMA DAS METAS DOS CADERNOS */}
+            {/* COMPOSIÇÃO DA META DA EDIÇÃO */}
 
-            <div className="mt-6 grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2">
-              <div>
+            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-baseline justify-between gap-3">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                  Meta da edição
+                  Meta total da edição
                 </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
+                <p className="text-sm font-semibold text-slate-800">
                   {formatCurrency(
                     editionSalesGoal
                   )}
-                </p>
-
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Vendido:{" "}
-                  {formatCurrency(
-                    totalSales
-                  )}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    vendido{" "}
+                    {formatCurrency(
+                      totalSales
+                    )}
+                  </span>
                 </p>
               </div>
 
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                  Soma das metas dos cadernos
-                </p>
+              <p className="mt-1 text-xs text-slate-400">
+                As metas dos cadernos são parte desta meta — não se somam a ela.
+              </p>
 
-                <p className="mt-1 text-sm font-semibold text-slate-800">
-                  {formatCurrency(
-                    sectionsGoalSum
-                  )}
+              <div className="mt-3 space-y-2 border-t border-slate-200 pt-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-slate-600">
+                    Reservado para cadernos
+                  </span>
 
-                  {sectionsGoalSum > 0 && (
-                    <span className="ml-2 text-xs font-medium text-[#15704f]">
-                      {formatPercentage(
-                        sectionsGoalProgress
+                  <span className="text-sm font-medium text-slate-800">
+                    {formatCurrency(
+                      sectionsGoalSum
+                    )}
+                    <span className="ml-2 text-xs font-normal text-slate-500">
+                      vendido{" "}
+                      {formatCurrency(
+                        sectionsSoldSum
                       )}
                     </span>
-                  )}
-                </p>
+                  </span>
+                </div>
 
-                <p className="mt-0.5 text-xs text-slate-500">
-                  Vendido em cadernos:{" "}
-                  {formatCurrency(
-                    sectionsSoldSum
-                  )}
-                  {" · "}
-                  fora de caderno:{" "}
-                  {formatCurrency(
-                    generalSold
-                  )}
-                </p>
-              </div>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-slate-600">
+                    Fora de caderno
+                  </span>
 
-              {sectionsGoalSum > 0 &&
-                Math.abs(
-                  sectionsGoalSum -
-                    editionSalesGoal
-                ) >= 0.01 && (
-                  <p className="text-xs text-amber-600 sm:col-span-2">
-                    A soma das metas dos cadernos{" "}
-                    {sectionsGoalSum >
-                    editionSalesGoal
-                      ? "ultrapassa"
-                      : "não cobre"}{" "}
-                    a meta total da edição em{" "}
+                  <span className="text-sm font-medium text-slate-800">
                     {formatCurrency(
-                      Math.abs(
-                        sectionsGoalSum -
-                          editionSalesGoal
+                      Math.max(
+                        editionSalesGoal -
+                          sectionsGoalSum,
+                        0
                       )
                     )}
-                    .
-                  </p>
-                )}
+                    <span className="ml-2 text-xs font-normal text-slate-500">
+                      vendido{" "}
+                      {formatCurrency(
+                        generalSold
+                      )}
+                    </span>
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* PROGRESSO POR CADERNO */}
@@ -2666,6 +2689,18 @@ export default async function EditionPage({
             </div>
           )}
         </section>
+
+        {/* POSIÇÕES DA EDIÇÃO (sem caderno) */}
+
+        <EditionGeneralPositions
+          editionId={edition.id}
+          editionOpen={
+            edition.status === "open"
+          }
+          positions={
+            generalPositionSummaries
+          }
+        />
       </div>
     </main>
   );

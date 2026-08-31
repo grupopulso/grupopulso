@@ -644,12 +644,6 @@ export default async function EditionsPage() {
                     )
                   );
 
-                const goalsDiffer =
-                  Math.abs(
-                    sectionsGoalSum -
-                      salesGoal
-                  ) >= 0.01;
-
                 const company =
                   getFirst(
                     edition.company
@@ -865,16 +859,24 @@ export default async function EditionsPage() {
                               )}
                             </div>
 
-                            {/* SOMA DAS METAS DOS CADERNOS */}
+                            {/* METAS DOS CADERNOS (parte da meta da edição) */}
 
                             <div className="rounded-xl bg-slate-50 px-4 py-3">
                               <p className="text-xs font-medium text-slate-400">
-                                Soma das metas dos cadernos
+                                Reservado para cadernos
                               </p>
 
                               <p className="mt-1 text-sm font-semibold text-slate-900">
                                 {formatCurrency(
                                   sectionsGoalSum
+                                )}
+                                {salesGoal > 0 && (
+                                  <span className="ml-1 text-xs font-normal text-slate-400">
+                                    de{" "}
+                                    {formatCurrency(
+                                      salesGoal
+                                    )}
+                                  </span>
                                 )}
                               </p>
 
@@ -909,23 +911,6 @@ export default async function EditionsPage() {
                               )}
                             </div>
                           </div>
-
-                          {salesGoal > 0 &&
-                            sectionsGoalSum >
-                              0 &&
-                            goalsDiffer && (
-                              <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                                A soma das metas dos cadernos (
-                                {formatCurrency(
-                                  sectionsGoalSum
-                                )}
-                                ) está diferente da meta da edição (
-                                {formatCurrency(
-                                  salesGoal
-                                )}
-                                ).
-                              </p>
-                            )}
                         </div>
                       )}
                     </div>
