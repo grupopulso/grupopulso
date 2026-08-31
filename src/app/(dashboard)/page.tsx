@@ -92,12 +92,61 @@ export type DashboardMetrics = {
   cancelled: number;
 };
 
-export default async function HomePage() {
+const MONTH_LABELS = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
+type PageProps = {
+  searchParams: Promise<{
+    mes?: string;
+    ano?: string;
+    periodo?: string;
+  }>;
+};
+
+export default async function HomePage({
+  searchParams,
+}: PageProps) {
   const access =
     await requireModulePermission(
       "dashboard",
       "view"
     );
+
+  const { mes, ano, periodo } =
+    await searchParams;
+
+  const realNow = new Date();
+
+  const isAnnual = periodo === "ano";
+
+  const parsedYear = Number(ano);
+  const parsedMonth = Number(mes);
+
+  const year =
+    Number.isInteger(parsedYear) &&
+    parsedYear >= 2000 &&
+    parsedYear <= 2100
+      ? parsedYear
+      : realNow.getFullYear();
+
+  const month =
+    Number.isInteger(parsedMonth) &&
+    parsedMonth >= 1 &&
+    parsedMonth <= 12
+      ? parsedMonth
+      : realNow.getMonth() + 1;
 
   const supabase =
     await createClient();
@@ -354,25 +403,22 @@ export default async function HomePage() {
    * ==========================
    */
 
-  const now =
-    new Date();
-
   const monthStart =
     toDatabaseDate(
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        1
-      )
+      isAnnual
+        ? new Date(year, 0, 1)
+        : new Date(
+            year,
+            month - 1,
+            1
+          )
     );
 
   const monthEnd =
     toDatabaseDate(
-      new Date(
-        now.getFullYear(),
-        now.getMonth() + 1,
-        0
-      )
+      isAnnual
+        ? new Date(year, 11, 31)
+        : new Date(year, month, 0)
     );
 
   const {
@@ -477,9 +523,6 @@ export default async function HomePage() {
    * ==========================
    */
 
-  const goalYear = now.getFullYear();
-  const goalMonth = now.getMonth() + 1;
-
   let goalsByCompany: {
     companyId: string;
     companyName: string;
@@ -489,18 +532,25 @@ export default async function HomePage() {
   }[] = [];
 
   if (allowedCompanyIds.length > 0) {
+    let goalQuery = supabase
+      .from("company_goals")
+      .select(
+        "company_id, target_amount"
+      )
+      .eq("year", year)
+      .in(
+        "company_id",
+        allowedCompanyIds
+      );
+
+    goalQuery = isAnnual
+      ? goalQuery
+          .gte("month", 1)
+          .lte("month", 12)
+      : goalQuery.eq("month", month);
+
     const { data: goalRows } =
-      await supabase
-        .from("company_goals")
-        .select(
-          "company_id, target_amount"
-        )
-        .eq("year", goalYear)
-        .eq("month", goalMonth)
-        .in(
-          "company_id",
-          allowedCompanyIds
-        );
+      await goalQuery;
 
     const targetByCompany = new Map<
       string,
@@ -510,7 +560,10 @@ export default async function HomePage() {
     for (const row of goalRows ?? []) {
       targetByCompany.set(
         row.company_id,
-        Number(row.target_amount ?? 0)
+        (targetByCompany.get(
+          row.company_id
+        ) ?? 0) +
+          Number(row.target_amount ?? 0)
       );
     }
 
@@ -594,8 +647,38 @@ export default async function HomePage() {
         })
     );
 
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevMonthYear =
+    month === 1 ? year - 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const nextMonthYear =
+    month === 12 ? year + 1 : year;
+
+  const period = {
+    isAnnual,
+    label: isAnnual
+      ? `Ano ${year}`
+      : `${MONTH_LABELS[month - 1]} ${year}`,
+    isCurrent: isAnnual
+      ? year === realNow.getFullYear()
+      : year === realNow.getFullYear() &&
+        month === realNow.getMonth() + 1,
+    prevHref: isAnnual
+      ? `/?periodo=ano&ano=${year - 1}`
+      : `/?ano=${prevMonthYear}&mes=${prevMonth}`,
+    nextHref: isAnnual
+      ? `/?periodo=ano&ano=${year + 1}`
+      : `/?ano=${nextMonthYear}&mes=${nextMonth}`,
+    resetHref: isAnnual
+      ? "/?periodo=ano"
+      : "/",
+    monthlyHref: `/?ano=${year}&mes=${month}`,
+    annualHref: `/?periodo=ano&ano=${year}`,
+  };
+
   return (
     <DashboardClient
+      period={period}
       user={{
         id:
           user.id,

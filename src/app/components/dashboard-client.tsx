@@ -9,6 +9,7 @@ import Link from "next/link";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Target,
@@ -64,6 +65,17 @@ type CompanyGoal = {
   billed: number;
 };
 
+type DashboardPeriod = {
+  isAnnual: boolean;
+  label: string;
+  isCurrent: boolean;
+  prevHref: string;
+  nextHref: string;
+  resetHref: string;
+  monthlyHref: string;
+  annualHref: string;
+};
+
 type DashboardClientProps = {
   user: {
     id: string;
@@ -71,6 +83,8 @@ type DashboardClientProps = {
     fullName: string;
     role: string;
   };
+
+  period: DashboardPeriod;
 
   companies: Company[];
 
@@ -83,6 +97,7 @@ type DashboardClientProps = {
 
 export default function DashboardClient({
   user,
+  period,
   companies,
   consolidatedMetrics,
   metricsByCompany,
@@ -122,7 +137,7 @@ const {
       <div className="p-8">
         {/* IDENTIFICAÇÃO */}
 
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">
               Visão Geral
@@ -133,22 +148,81 @@ const {
                 ? `Indicadores da ${selectedCompany.name}`
                 : "Indicadores consolidados do Grupo Pulso"}
             </p>
+
+            <div className="mt-1 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    selectedCompany?.color ??
+                    "#15704f",
+                }}
+              />
+
+              <span className="text-xs font-medium text-slate-600">
+                {selectedCompany?.name ??
+                  "Grupo Pulso"}
+              </span>
+            </div>
           </div>
 
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2">
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{
-                backgroundColor:
-                  selectedCompany?.color ??
-                  "#15704f",
-              }}
-            />
+          {/* SELETOR DE PERÍODO */}
 
-            <span className="text-sm font-medium text-slate-700">
-              {selectedCompany?.name ??
-                "Grupo Pulso"}
-            </span>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <div className="inline-flex self-end rounded-xl border border-slate-200 bg-white p-1">
+              <Link
+                href={period.monthlyHref}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  !period.isAnnual
+                    ? "bg-[#15704f] text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Mensal
+              </Link>
+
+              <Link
+                href={period.annualHref}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  period.isAnnual
+                    ? "bg-[#15704f] text-white"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                Anual
+              </Link>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={period.prevHref}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Link>
+
+              <div className="min-w-[160px] rounded-xl border border-slate-200 bg-white px-4 py-2 text-center">
+                <p className="text-sm font-semibold text-slate-900">
+                  {period.label}
+                </p>
+
+                {!period.isCurrent && (
+                  <Link
+                    href={period.resetHref}
+                    className="text-[11px] font-medium text-[#15704f] hover:underline"
+                  >
+                    Voltar para o atual
+                  </Link>
+                )}
+              </div>
+
+              <Link
+                href={period.nextHref}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
         </div>
 
@@ -171,7 +245,7 @@ const {
 
           <MetricCard
             icon={TrendingUp}
-            label="Recebido no mês"
+            label={period.isAnnual ? "Recebido no ano" : "Recebido no mês"}
             value={formatCurrency(
               metrics.receivedMonth
             )}
@@ -219,7 +293,7 @@ const {
 
           <MetricCard
             icon={TrendingDown}
-            label="Pago no mês"
+            label={period.isAnnual ? "Pago no ano" : "Pago no mês"}
             value={formatCurrency(
               metrics.paidMonth
             )}
@@ -230,7 +304,7 @@ const {
 
           <MetricCard
             icon={CircleDollarSign}
-            label="Resultado do mês"
+            label={period.isAnnual ? "Resultado do ano" : "Resultado do mês"}
             value={formatCurrency(
               metrics.monthResult
             )}
@@ -279,7 +353,7 @@ const {
                   <Target className="h-5 w-5 text-[#15704f]" />
 
                   <h2 className="font-semibold text-slate-900">
-                    Metas do mês
+                    {period.isAnnual ? "Metas do ano" : "Metas do mês"}
                   </h2>
                 </div>
 
