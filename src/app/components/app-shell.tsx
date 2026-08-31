@@ -131,6 +131,14 @@ const navigation: NavigationItem[] = [
   module: "contracts",
   estafetaOnly: true,
 },
+
+  {
+    label: "Rotas e Entregas",
+    href: "/rotas",
+    icon: Route,
+    module: "routes",
+    estafetaOnly: true,
+  },
   {
     label: "Financeiro",
     href: "/financeiro",
@@ -179,13 +187,7 @@ const navigation: NavigationItem[] = [
     icon: Target,
     module: "financial",
   },
-  {
-    label: "Rotas e Entregas",
-    href: "/rotas",
-    icon: Route,
-    module: "routes",
-  },
-  
+
   {
     label: "Relatórios",
     href: "/relatorios",
