@@ -405,18 +405,28 @@ export default async function AssinaturasPage({
                       </td>
 
                       <td className="px-5 py-4">
-                        {status !==
-                          "cancelled" && (
-                          <RenewContractButton
-                            contractId={
-                              contract.id
-                            }
-                            contractTitle={
-                              contract.title
-                            }
-                            compact
-                          />
-                        )}
+                        <div className="flex flex-wrap items-center gap-2">
+                          {status !==
+                            "cancelled" && (
+                            <RenewContractButton
+                              contractId={
+                                contract.id
+                              }
+                              contractTitle={
+                                contract.title
+                              }
+                              compact
+                            />
+                          )}
+
+                          <Link
+                            href={`/contratos/${contract.id}/recibo-assinatura`}
+                            target="_blank"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Recibo
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );

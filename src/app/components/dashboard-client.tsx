@@ -550,16 +550,17 @@ const {
 
                           <button
                             type="button"
-                           onClick={() =>
-  selectCompany(
-    company.id
-  )
-}
-                            
+                            onClick={() =>
+                              selectCompany(
+                                selected
+                                  ? "all"
+                                  : company.id
+                              )
+                            }
                             className="text-sm font-semibold text-[#15704f] transition hover:underline"
                           >
                             {selected
-                              ? "Selecionada"
+                              ? "Ver todas as empresas"
                               : "Visualizar"}
                           </button>
                         </div>
