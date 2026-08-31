@@ -23,6 +23,10 @@ import {
   diffInDays,
 } from "@/app/lib/date-utils";
 
+import {
+  createAuditLog,
+} from "@/app/lib/audit";
+
 export type RenewalPrefill = {
   sourceContractId: string;
   clientId: string;
@@ -544,6 +548,140 @@ export async function linkRenewalContracts(
     `/contratos/${newContractId}`
   );
   revalidatePath("/assinaturas");
+
+  return { success: true };
+}
+
+/*
+ * =====================================================
+ * TROCAR RESPONSÁVEL PELO CONTRATO
+ * =====================================================
+ *
+ * Só admin e gestores podem reatribuir — caso alguém
+ * cadastre um contrato em nome de outra pessoa por engano.
+ * Só atualiza `contracts.responsible_user_id`: comissões já
+ * geradas para o responsável anterior NÃO são alteradas
+ * retroativamente.
+ */
+
+export async function updateContractResponsible(
+  contractId: string,
+  newResponsibleUserId: string
+) {
+  const access =
+    await requireModulePermission(
+      "contracts",
+      "edit"
+    );
+
+  if (
+    access.profile.role !== "admin" &&
+    access.profile.role !== "manager"
+  ) {
+    return {
+      success: false,
+      error:
+        "Só administradores e gestores podem trocar o responsável pelo contrato.",
+    };
+  }
+
+  if (!contractId || !newResponsibleUserId) {
+    return {
+      success: false,
+      error: "Dados inválidos.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const { data: contract, error: contractError } =
+    await supabase
+      .from("contracts")
+      .select("id, company_id, title, responsible_user_id")
+      .eq("id", contractId)
+      .maybeSingle();
+
+  if (contractError || !contract) {
+    return {
+      success: false,
+      error: "Contrato não encontrado.",
+    };
+  }
+
+  await requireCompanyAccess(
+    contract.company_id
+  );
+
+  const adminDb = createAdminClient();
+
+  const { data: newResponsible, error: profileError } =
+    await adminDb
+      .from("user_profiles")
+      .select("id, name, active")
+      .eq("id", newResponsibleUserId)
+      .maybeSingle();
+
+  if (
+    profileError ||
+    !newResponsible ||
+    !newResponsible.active
+  ) {
+    return {
+      success: false,
+      error:
+        "Selecione um usuário ativo para ser o novo responsável.",
+    };
+  }
+
+  if (
+    contract.responsible_user_id ===
+    newResponsibleUserId
+  ) {
+    return { success: true };
+  }
+
+  const { error: updateError } =
+    await adminDb
+      .from("contracts")
+      .update({
+        responsible_user_id:
+          newResponsibleUserId,
+      })
+      .eq("id", contractId);
+
+  if (updateError) {
+    console.error(
+      "Erro ao trocar responsável do contrato:",
+      updateError
+    );
+
+    return {
+      success: false,
+      error: updateError.message,
+    };
+  }
+
+  await createAuditLog({
+    module: "contracts",
+    action: "update",
+    entityType: "contract",
+    entityId: contractId,
+    description: `Responsável do contrato ${contract.title} foi alterado para ${newResponsible.name ?? "outro usuário"}.`,
+    oldData: {
+      responsible_user_id:
+        contract.responsible_user_id,
+    },
+    newData: {
+      responsible_user_id:
+        newResponsibleUserId,
+    },
+  });
+
+  revalidatePath(
+    `/contratos/${contractId}`
+  );
+  revalidatePath("/meu-painel");
 
   return { success: true };
 }

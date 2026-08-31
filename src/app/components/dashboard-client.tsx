@@ -256,11 +256,11 @@ const {
 
           <MetricCard
             icon={ArrowDownLeft}
-            label="A receber"
+            label={period.isAnnual ? "A receber no ano" : "A receber no mês"}
             value={formatCurrency(
               metrics.receivableOpen
             )}
-            description="Saldo total em aberto"
+            description="Parcelas em aberto no período"
             tone="blue"
             href="/financeiro/receber"
           />
@@ -533,7 +533,11 @@ const {
                           />
 
                           <SmallMetric
-                            label="A receber"
+                            label={
+                              period.isAnnual
+                                ? "A receber no ano"
+                                : "A receber no mês"
+                            }
                             value={formatCurrency(
                               companyMetrics?.receivableOpen ??
                                 0

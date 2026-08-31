@@ -5,12 +5,14 @@ import {
   ArrowRight,
   CalendarClock,
   FileText,
+  HandCoins,
   RefreshCw,
   ShoppingCart,
   TrendingUp,
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireAuthenticatedUser,
 } from "@/app/lib/permissions";
@@ -397,6 +399,173 @@ export default async function MeuPainelPage({
       0
     );
 
+  /*
+   * =========================
+   * MINHAS COMISSÕES
+   * =========================
+   *
+   * Via service role: `sale_commissions` /
+   * `contract_commissions` têm RLS por módulo financeiro,
+   * que o vendedor não tem. A leitura já é escopada pelo
+   * `beneficiary_user_id = userId` — para quem não é admin,
+   * `userId` só pode ser o próprio usuário (ver acima).
+   */
+
+  const adminDb = createAdminClient();
+
+  const [
+    saleCommissionsResult,
+    contractCommissionsResult,
+  ] = await Promise.all([
+    adminDb
+      .from("sale_commissions")
+      .select(
+        `
+        id,
+        sale_id,
+        commission_type,
+        percentage,
+        base_amount,
+        amount,
+        amount_released,
+        amount_paid,
+        status,
+        created_at,
+        sale:edition_sales (
+          id,
+          client:clients ( id, name ),
+          edition:newspaper_editions ( id, name )
+        )
+      `
+      )
+      .eq("beneficiary_user_id", userId)
+      .order("created_at", { ascending: false }),
+
+    adminDb
+      .from("contract_commissions")
+      .select(
+        `
+        id,
+        contract_id,
+        percentage,
+        base_amount,
+        amount,
+        amount_released,
+        amount_paid,
+        status,
+        created_at,
+        contract:contracts (
+          id,
+          title,
+          client:clients ( id, name )
+        )
+      `
+      )
+      .eq("beneficiary_user_id", userId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  type MyCommission = {
+    id: string;
+    origin: "sale" | "contract";
+    label: string;
+    clientName: string;
+    percentage: number;
+    amount: number;
+    amountPaid: number;
+    status: string;
+    createdAt: string;
+  };
+
+  const myCommissions: MyCommission[] = [
+    ...(
+      saleCommissionsResult.data ?? []
+    ).map((commission) => {
+      const sale = getFirst(
+        commission.sale
+      );
+
+      const client = getFirst<NamedRef>(
+        sale?.client
+      );
+
+      const edition = getFirst<NamedRef>(
+        sale?.edition
+      );
+
+      return {
+        id: commission.id,
+        origin: "sale" as const,
+        label:
+          edition?.name ??
+          "Venda de publicidade",
+        clientName: client?.name ?? "—",
+        percentage: Number(
+          commission.percentage ?? 0
+        ),
+        amount: Number(
+          commission.amount ?? 0
+        ),
+        amountPaid: Number(
+          commission.amount_paid ?? 0
+        ),
+        status: commission.status,
+        createdAt: commission.created_at,
+      };
+    }),
+
+    ...(
+      contractCommissionsResult.data ?? []
+    ).map((commission) => {
+      const contract = getFirst(
+        commission.contract
+      );
+
+      const client = getFirst<NamedRef>(
+        contract?.client
+      );
+
+      return {
+        id: commission.id,
+        origin: "contract" as const,
+        label: contract?.title ?? "Contrato",
+        clientName: client?.name ?? "—",
+        percentage: Number(
+          commission.percentage ?? 0
+        ),
+        amount: Number(
+          commission.amount ?? 0
+        ),
+        amountPaid: Number(
+          commission.amount_paid ?? 0
+        ),
+        status: commission.status,
+        createdAt: commission.created_at,
+      };
+    }),
+  ].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt)
+  );
+
+  const commissionTotals = myCommissions.reduce(
+    (totals, commission) => {
+      totals.total += commission.amount;
+
+      if (commission.status === "paid") {
+        totals.paid += commission.amount;
+      } else if (
+        commission.status === "cancelled"
+      ) {
+        // não entra nos totais
+      } else {
+        totals.pending += commission.amount;
+      }
+
+      return totals;
+    },
+    { total: 0, pending: 0, paid: 0 }
+  );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
@@ -437,7 +606,7 @@ export default async function MeuPainelPage({
 
         {/* RESUMO */}
 
-        <div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-5">
           <SummaryCard
             icon={FileText}
             label="Contratos ativos"
@@ -484,6 +653,17 @@ export default async function MeuPainelPage({
                 ? "red"
                 : "default"
             }
+          />
+
+          <SummaryCard
+            icon={HandCoins}
+            label="Comissões a receber"
+            value={formatCurrency(
+              commissionTotals.pending
+            )}
+            hint={`${formatCurrency(
+              commissionTotals.paid
+            )} já pago`}
           />
         </div>
 
@@ -763,6 +943,97 @@ export default async function MeuPainelPage({
             </div>
           )}
         </Panel>
+
+        {/* MINHAS COMISSÕES */}
+
+        <Panel
+          title="Minhas comissões"
+          subtitle={`${formatCurrency(
+            commissionTotals.pending
+          )} a receber · ${formatCurrency(
+            commissionTotals.paid
+          )} já pago.`}
+        >
+          {myCommissions.length === 0 ? (
+            <EmptyRow text="Você ainda não tem comissões registradas." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-xs uppercase tracking-wide text-slate-400">
+                    <th className="pb-2 pr-4">
+                      Origem
+                    </th>
+                    <th className="pb-2 pr-4">
+                      Cliente
+                    </th>
+                    <th className="pb-2 pr-4">
+                      %
+                    </th>
+                    <th className="pb-2 pr-4 text-right">
+                      Valor
+                    </th>
+                    <th className="pb-2">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-slate-100">
+                  {myCommissions.map(
+                    (commission) => (
+                      <tr key={commission.id}>
+                        <td className="py-3 pr-4">
+                          <p className="font-medium text-slate-800">
+                            {commission.label}
+                          </p>
+
+                          <p className="text-xs text-slate-400">
+                            {commission.origin ===
+                            "sale"
+                              ? "Publicidade"
+                              : "Contrato"}
+                            {" · "}
+                            {formatDate(
+                              String(
+                                commission.createdAt
+                              ).slice(0, 10)
+                            )}
+                          </p>
+                        </td>
+
+                        <td className="py-3 pr-4 text-slate-600">
+                          {commission.clientName}
+                        </td>
+
+                        <td className="py-3 pr-4 text-slate-600">
+                          {commission.percentage.toFixed(
+                            2
+                          )}
+                          %
+                        </td>
+
+                        <td className="py-3 pr-4 text-right font-semibold text-slate-900">
+                          {formatCurrency(
+                            commission.amount
+                          )}
+                        </td>
+
+                        <td className="py-3">
+                          <CommissionStatusPill
+                            status={
+                              commission.status
+                            }
+                          />
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
       </div>
     </main>
   );
@@ -882,6 +1153,50 @@ function SaleStatusPill({
     draft: {
       label: "Rascunho",
       className: "bg-slate-100 text-slate-500",
+    },
+    cancelled: {
+      label: "Cancelada",
+      className: "bg-red-50 text-red-600",
+    },
+  };
+
+  const item = map[status] ?? {
+    label: status,
+    className: "bg-slate-100 text-slate-500",
+  };
+
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${item.className}`}
+    >
+      {item.label}
+    </span>
+  );
+}
+
+function CommissionStatusPill({
+  status,
+}: {
+  status: string;
+}) {
+  const map: Record<
+    string,
+    { label: string; className: string }
+  > = {
+    pending: {
+      label: "Pendente",
+      className:
+        "bg-amber-50 text-amber-700",
+    },
+    generated: {
+      label: "Liberada",
+      className:
+        "bg-blue-50 text-blue-700",
+    },
+    paid: {
+      label: "Paga",
+      className:
+        "bg-emerald-50 text-emerald-700",
     },
     cancelled: {
       label: "Cancelada",

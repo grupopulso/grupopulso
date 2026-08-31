@@ -9,6 +9,7 @@ import {
   Ban,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   Goal,
   InfinityIcon,
   Pencil,
@@ -36,6 +37,16 @@ import {
  * =====================================================
  */
 
+type PositionBuyer = {
+  clientName: string;
+
+  sizeDescription:
+    string | null;
+
+  source:
+    "sale" | "contract";
+};
+
 type Position = {
   id: string;
 
@@ -50,6 +61,9 @@ type Position = {
 
   soldCount:
     number;
+
+  buyers:
+    PositionBuyer[];
 
   manuallyBlocked:
     boolean;
@@ -160,6 +174,20 @@ export default function SectionsManagement({
         string
       >
     >({});
+
+  /*
+   * =====================================================
+   * COMPRADORES DA POSIÇÃO (expandir "Utilizado: N")
+   * =====================================================
+   */
+
+  const [
+    expandedPositionId,
+    setExpandedPositionId,
+  ] =
+    useState<
+      string | null
+    >(null);
 
   /*
    * =====================================================
@@ -1114,14 +1142,48 @@ export default function SectionsManagement({
                                       </div>
 
                                       <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
-                                        <span>
-                                          Utilizado:{" "}
-                                          <strong className="font-semibold text-slate-700">
-                                            {
-                                              position.soldCount
+                                        {position.soldCount >
+                                        0 ? (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setExpandedPositionId(
+                                                (
+                                                  current
+                                                ) =>
+                                                  current ===
+                                                  position.id
+                                                    ? null
+                                                    : position.id
+                                              )
                                             }
-                                          </strong>
-                                        </span>
+                                            className="inline-flex items-center gap-1 rounded-md text-slate-500 underline decoration-dotted underline-offset-2 transition hover:text-[#15704f]"
+                                          >
+                                            Utilizado:{" "}
+                                            <strong className="font-semibold text-slate-700">
+                                              {
+                                                position.soldCount
+                                              }
+                                            </strong>
+                                            <ChevronDown
+                                              className={`h-3 w-3 transition-transform ${
+                                                expandedPositionId ===
+                                                position.id
+                                                  ? "rotate-180"
+                                                  : ""
+                                              }`}
+                                            />
+                                          </button>
+                                        ) : (
+                                          <span>
+                                            Utilizado:{" "}
+                                            <strong className="font-semibold text-slate-700">
+                                              {
+                                                position.soldCount
+                                              }
+                                            </strong>
+                                          </span>
+                                        )}
 
                                         <span>
                                           Capacidade:{" "}
@@ -1139,6 +1201,47 @@ export default function SectionsManagement({
                                           </strong>
                                         </span>
                                       </div>
+
+                                      {expandedPositionId ===
+                                        position.id && (
+                                        <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                          {position.buyers
+                                            .length >
+                                          0 ? (
+                                            <ul className="space-y-1.5">
+                                              {position.buyers.map(
+                                                (
+                                                  buyer,
+                                                  index
+                                                ) => (
+                                                  <li
+                                                    key={
+                                                      index
+                                                    }
+                                                    className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 text-xs"
+                                                  >
+                                                    <span className="font-medium text-slate-700">
+                                                      {
+                                                        buyer.clientName
+                                                      }
+                                                    </span>
+
+                                                    <span className="text-slate-500">
+                                                      {buyer.sizeDescription
+                                                        ? buyer.sizeDescription
+                                                        : "Tamanho não informado"}
+                                                    </span>
+                                                  </li>
+                                                )
+                                              )}
+                                            </ul>
+                                          ) : (
+                                            <p className="text-xs text-slate-500">
+                                              Sem detalhes disponíveis.
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
 
                                       {position.manuallyBlocked &&
                                         position.blockedReason && (

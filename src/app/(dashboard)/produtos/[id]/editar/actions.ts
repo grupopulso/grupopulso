@@ -198,3 +198,128 @@ export async function updateProductRecord(
 
   return { success: true };
 }
+
+/*
+ * =====================================================
+ * EXCLUIR PRODUTO
+ * =====================================================
+ */
+
+type DeleteProductResult =
+  | { success: true }
+  | {
+      success: false;
+      error: string;
+      inUse?: {
+        contracts: number;
+        sales: number;
+      };
+    };
+
+export async function deleteProductRecord(
+  productId: string
+): Promise<DeleteProductResult> {
+  await requireModulePermission(
+    "products",
+    "delete"
+  );
+
+  if (!productId) {
+    return {
+      success: false,
+      error: "Produto inválido.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  const [
+    { count: contractsCount },
+    { count: salesCount },
+  ] = await Promise.all([
+    supabase
+      .from("contracts")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("product_id", productId),
+
+    supabase
+      .from("edition_sale_items")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("product_id", productId),
+  ]);
+
+  const inUseContracts =
+    contractsCount ?? 0;
+
+  const inUseSales =
+    salesCount ?? 0;
+
+  if (
+    inUseContracts > 0 ||
+    inUseSales > 0
+  ) {
+    return {
+      success: false,
+      error:
+        `Este produto já foi usado em ${inUseContracts} contrato(s) e ${inUseSales} venda(s) de publicidade — não é possível excluir. Marque-o como inativo na edição do produto, se preferir parar de oferecê-lo.`,
+      inUse: {
+        contracts: inUseContracts,
+        sales: inUseSales,
+      },
+    };
+  }
+
+  const {
+    data: product,
+    error: fetchError,
+  } = await supabase
+    .from("products")
+    .select("id, name")
+    .eq("id", productId)
+    .maybeSingle();
+
+  if (fetchError || !product) {
+    return {
+      success: false,
+      error: "Produto não encontrado.",
+    };
+  }
+
+  const { error: deleteError } =
+    await supabase
+      .from("products")
+      .delete()
+      .eq("id", productId);
+
+  if (deleteError) {
+    console.error(
+      "Erro ao excluir produto:",
+      deleteError
+    );
+
+    return {
+      success: false,
+      error: deleteError.message,
+    };
+  }
+
+  await createAuditLog({
+    module: "products",
+    action: "delete",
+    entityType: "product",
+    entityId: productId,
+    description: `Produto ${product.name} foi excluído.`,
+    oldData: product,
+  });
+
+  revalidatePath("/produtos");
+
+  return { success: true };
+}

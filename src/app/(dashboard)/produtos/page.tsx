@@ -4,14 +4,24 @@ import { PackagePlus } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
+  canAccessModule,
   requireModulePermission,
 } from "@/app/lib/permissions";
+
+import DeleteProductButton from "./delete-product-button";
 
 export default async function ProdutosPage() {
   const access =
     await requireModulePermission(
       "products",
       "view"
+    );
+
+  const canDelete =
+    canAccessModule(
+      access,
+      "products",
+      "delete"
     );
 
   const supabase =
@@ -216,12 +226,25 @@ if (selectedCompanyId) {
                       </td>
 
                       <td className="px-5 py-4 text-right">
-                        <Link
-                          href={`/produtos/${product.id}/editar`}
-                          className="text-sm font-semibold text-[#15704f] hover:underline"
-                        >
-                          Editar
-                        </Link>
+                        <div className="flex items-center justify-end gap-4">
+                          <Link
+                            href={`/produtos/${product.id}/editar`}
+                            className="text-sm font-semibold text-[#15704f] hover:underline"
+                          >
+                            Editar
+                          </Link>
+
+                          {canDelete && (
+                            <DeleteProductButton
+                              productId={
+                                product.id
+                              }
+                              productName={
+                                product.name
+                              }
+                            />
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );

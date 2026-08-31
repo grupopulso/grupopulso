@@ -105,6 +105,18 @@ type ClientRecord = {
   name: string;
 };
 
+type PositionBuyer = {
+  clientName: string;
+
+  sizeDescription:
+    | string
+    | null;
+
+  source:
+    | "sale"
+    | "contract";
+};
+
 type ProductRecord = {
   id: string;
   name: string;
@@ -1177,6 +1189,109 @@ export default async function EditionPage({
 
   /*
    * =====================================================
+   * QUEM COMPROU CADA POSIÇÃO
+   * =====================================================
+   *
+   * Para o "Utilizado: N" ser clicável e mostrar direto
+   * quem são os clientes e o tamanho do anúncio, sem
+   * precisar abrir o espelho.
+   */
+
+  const buyersByPosition =
+    new Map<
+      string,
+      PositionBuyer[]
+    >();
+
+  function addBuyer(
+    positionId: string,
+    buyer: PositionBuyer
+  ) {
+    const current =
+      buyersByPosition.get(
+        positionId
+      ) ??
+      [];
+
+    current.push(buyer);
+
+    buyersByPosition.set(
+      positionId,
+      current
+    );
+  }
+
+  for (
+    const sale of
+      confirmedSales
+  ) {
+    const saleClient =
+      getFirst(
+        sale.client
+      );
+
+    for (
+      const item of
+        sale.items ??
+        []
+    ) {
+      if (
+        item.ad_position_id
+      ) {
+        addBuyer(
+          item.ad_position_id,
+          {
+            clientName:
+              saleClient?.name ??
+              "Cliente",
+
+            sizeDescription:
+              item.size_description,
+
+            source: "sale",
+          }
+        );
+      }
+    }
+  }
+
+  for (
+    const publication of
+      contractPublications
+  ) {
+    if (
+      publication.ad_position_id
+    ) {
+      const contract =
+        contractsById.get(
+          publication.contract_id
+        );
+
+      const client =
+        contract
+          ? contractClientsById.get(
+              contract.client_id
+            )
+          : null;
+
+      addBuyer(
+        publication.ad_position_id,
+        {
+          clientName:
+            client?.name ??
+            "Cliente",
+
+          sizeDescription:
+            publication.size_description,
+
+          source: "contract",
+        }
+      );
+    }
+  }
+
+  /*
+   * =====================================================
    * POSIÇÕES UTILIZADAS / BLOQUEADAS
    * =====================================================
    */
@@ -1421,6 +1536,12 @@ export default async function EditionPage({
 
                   soldCount,
 
+                  buyers:
+                    buyersByPosition.get(
+                      position.id
+                    ) ??
+                    [],
+
                   manuallyBlocked:
                     Boolean(
                       position.manually_blocked
@@ -1510,6 +1631,9 @@ export default async function EditionPage({
       soldCount:
         soldByPosition.get(position.id) ??
         0,
+      buyers:
+        buyersByPosition.get(position.id) ??
+        [],
     }));
 
   /*

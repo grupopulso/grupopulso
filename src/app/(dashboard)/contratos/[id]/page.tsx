@@ -20,6 +20,7 @@ import {
 
 import DeleteContractButton from "./delete-contract-button";
 import RenewContractButton from "./renew-contract-button";
+import ContractResponsibleEditor from "./contract-responsible-editor";
 
 import {
   createClient,
@@ -45,10 +46,15 @@ type PageProps = {
 export default async function ContractDetailPage({
   params,
 }: PageProps) {
-  await requireModulePermission(
-    "contracts",
-    "view"
-  );
+  const access =
+    await requireModulePermission(
+      "contracts",
+      "view"
+    );
+
+  const canReassignResponsible =
+    access.profile.role === "admin" ||
+    access.profile.role === "manager";
 
   const {
     id,
@@ -495,6 +501,26 @@ export default async function ContractDetailPage({
 
     responsibleProfile =
       profile;
+  }
+
+  /*
+   * Opções para o admin/gestor trocar o responsável.
+   */
+  let responsibleOptions: {
+    id: string;
+    name: string | null;
+  }[] = [];
+
+  if (canReassignResponsible) {
+    const { data: activeUsers } =
+      await supabase
+        .from("user_profiles")
+        .select("id, name")
+        .eq("active", true)
+        .order("name");
+
+    responsibleOptions =
+      activeUsers ?? [];
   }
 
   /*
@@ -1069,6 +1095,31 @@ const commissionProfilesById =
                   "—"
                 }
               />
+
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Responsável
+                </p>
+
+                <div className="mt-1">
+                  <ContractResponsibleEditor
+                    contractId={contract.id}
+                    currentUserId={
+                      contract.responsible_user_id
+                    }
+                    currentUserName={
+                      responsibleProfile?.name ??
+                      null
+                    }
+                    canEdit={
+                      canReassignResponsible
+                    }
+                    options={
+                      responsibleOptions
+                    }
+                  />
+                </div>
+              </div>
 
               <Info
                 label="Produto / Serviço"

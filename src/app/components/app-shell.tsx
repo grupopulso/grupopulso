@@ -180,6 +180,7 @@ const navigation: NavigationItem[] = [
   href: "/comissoes",
   icon: BadgePercent,
   module: "financial",
+  adminOnly: true,
 },
   {
     label: "Metas",

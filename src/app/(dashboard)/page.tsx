@@ -509,6 +509,8 @@ export default async function HomePage({
       entries,
       transactions:
         allowedTransactions,
+      monthStart,
+      monthEnd,
     });
 
   /*
@@ -644,6 +646,9 @@ export default async function HomePage({
                 );
               }
             ),
+
+          monthStart,
+          monthEnd,
         })
     );
 
@@ -722,6 +727,8 @@ function calculateMetrics({
   contracts,
   entries,
   transactions,
+  monthStart,
+  monthEnd,
 }: {
   companyId:
     | string
@@ -738,6 +745,17 @@ function calculateMetrics({
 
   transactions:
     Transaction[];
+
+  /*
+   * Período selecionado (mês ou ano) — usado para que
+   * "A receber" mostre só as parcelas com vencimento
+   * dentro do período, e não o saldo total em aberto.
+   */
+  monthStart:
+    string;
+
+  monthEnd:
+    string;
 }): DashboardMetrics {
   const today =
     toDatabaseDate(
@@ -821,7 +839,11 @@ function calculateMetrics({
       .filter(
         (entry) =>
           entry.type ===
-          "income"
+            "income" &&
+          entry.due_date >=
+            monthStart &&
+          entry.due_date <=
+            monthEnd
       )
       .reduce(
         (total, entry) =>

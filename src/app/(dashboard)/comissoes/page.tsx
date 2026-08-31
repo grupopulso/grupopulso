@@ -1,6 +1,10 @@
 import Link from "next/link";
 
 import {
+  redirect,
+} from "next/navigation";
+
+import {
   BadgePercent,
   CircleDollarSign,
   Clock3,
@@ -123,6 +127,19 @@ export default async function CommissionsPage({
 }: PageProps) {
   const access =
     await requireEstafetaAccess();
+
+  /*
+   * Comissões é uma tela SOMENTE ADMIN — vendedores
+   * acompanham as próprias comissões em "Meu painel".
+   */
+  if (
+    access.profile.role !==
+    "admin"
+  ) {
+    redirect(
+      "/sem-permissao"
+    );
+  }
 
   const {
     q: qParam,
