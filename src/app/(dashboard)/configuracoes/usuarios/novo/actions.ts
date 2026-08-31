@@ -25,6 +25,8 @@ const MODULES = [
   "clients",
   "products",
   "contracts",
+  "subscriptions",
+  "editions",
   "financial",
   "accounts_receivable",
   "accounts_payable",

@@ -7,8 +7,19 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  canAccessModule,
   requireAuthenticatedUser,
 } from "@/app/lib/permissions";
+
+/*
+ * Módulos que, quando concedidos, também liberam a área do
+ * O Estafeta (assinaturas / edições) — sem precisar do
+ * vínculo direto com a empresa.
+ */
+const ESTAFETA_MODULES = [
+  "subscriptions",
+  "editions",
+];
 
 export async function requireEstafetaAccess() {
   const access =
@@ -63,7 +74,63 @@ export async function requireEstafetaAccess() {
   }
 
   /*
-   * Usuários comuns precisam
+   * Usuários comuns entram se
+   * tiverem permissão explícita
+   * em Assinaturas ou Edições
+   * (configurada na matriz de
+   * acesso), mesmo sem vínculo
+   * direto com a empresa.
+   */
+  const hasEstafetaModule =
+    ESTAFETA_MODULES.some(
+      (module) =>
+        canAccessModule(
+          access,
+          module,
+          "view"
+        )
+    );
+
+  if (hasEstafetaModule) {
+    const {
+      data: company,
+      error,
+    } =
+      await supabase
+        .from("companies")
+        .select(`
+          id,
+          name,
+          slug,
+          color
+        `)
+        .eq(
+          "slug",
+          "o-estafeta"
+        )
+        .eq(
+          "active",
+          true
+        )
+        .maybeSingle();
+
+    if (
+      error ||
+      !company
+    ) {
+      notFound();
+    }
+
+    return {
+      ...access,
+
+      estafetaCompany:
+        company,
+    };
+  }
+
+  /*
+   * Caso contrário, precisam
    * possuir vínculo com
    * O Estafeta.
    */

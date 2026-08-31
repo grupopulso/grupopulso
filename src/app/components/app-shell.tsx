@@ -120,7 +120,7 @@ const navigation: NavigationItem[] = [
   label: "Assinaturas",
   href: "/assinaturas",
   icon: Repeat,
-  module: "contracts",
+  module: "subscriptions",
   estafetaOnly: true,
 },
 
@@ -128,7 +128,7 @@ const navigation: NavigationItem[] = [
   label: "Edições e Publicidade",
   href: "/edicoes",
   icon: Newspaper,
-  module: "contracts",
+  module: "editions",
   estafetaOnly: true,
 },
 
@@ -249,7 +249,22 @@ export default function AppShell({
         item.estafetaOnly &&
         !hasEstafetaAccess
       ) {
-        return false;
+        /*
+         * Sem vínculo com O Estafeta, o item ainda
+         * aparece se houver permissão explícita no
+         * módulo (matriz de acesso).
+         */
+        const hasModulePermission =
+          permissions.some(
+            (permission) =>
+              permission.module ===
+                item.module &&
+              permission.can_view
+          );
+
+        if (!hasModulePermission) {
+          return false;
+        }
       }
 
       if (item.alwaysVisible) {

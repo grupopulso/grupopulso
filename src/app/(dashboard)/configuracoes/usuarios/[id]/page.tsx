@@ -87,6 +87,14 @@ const MODULES = [
     name: "Contratos e Assinaturas",
   },
   {
+    key: "subscriptions",
+    name: "Assinaturas (O Estafeta)",
+  },
+  {
+    key: "editions",
+    name: "Edições e Publicidade (O Estafeta)",
+  },
+  {
     key: "financial",
     name: "Financeiro",
   },
