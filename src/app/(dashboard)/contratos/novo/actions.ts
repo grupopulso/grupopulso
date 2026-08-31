@@ -96,6 +96,15 @@ type CreateContractInput = {
   notes?:
     | string
     | null;
+
+  /*
+   * Responsável pelo contrato (vendedor). Só admin e
+   * gestores podem informar outro usuário — caso
+   * contrário, é sempre quem está logado.
+   */
+  responsibleUserId?:
+    | string
+    | null;
 };
 
 /*
@@ -108,10 +117,11 @@ export async function createContract(
   input:
     CreateContractInput
 ) {
-  await requireModulePermission(
-    "contracts",
-    "create"
-  );
+  const access =
+    await requireModulePermission(
+      "contracts",
+      "create"
+    );
 
   const isCourtesy = Boolean(
     input.courtesy
@@ -148,7 +158,7 @@ export async function createContract(
     };
   }
 
-  const responsibleUserId =
+  let responsibleUserId =
     user.id;
 
   /*
@@ -163,6 +173,52 @@ export async function createContract(
    * para esse usuário).
    */
   const supabase = createAdminClient();
+
+  /*
+   * Admin e gestores podem cadastrar o contrato em nome de
+   * outro usuário (ex.: gestor lançando uma venda feita por
+   * um admin), informando `responsibleUserId`. Qualquer
+   * outro usuário sempre aparece como responsável por si
+   * mesmo — o campo é ignorado nesse caso.
+   */
+  const canAssignResponsible =
+    access.profile.role === "admin" ||
+    access.profile.role === "manager";
+
+  if (
+    canAssignResponsible &&
+    input.responsibleUserId &&
+    input.responsibleUserId !==
+      responsibleUserId
+  ) {
+    const {
+      data: chosenResponsible,
+      error: chosenResponsibleError,
+    } = await supabase
+      .from("user_profiles")
+      .select("id, active")
+      .eq(
+        "id",
+        input.responsibleUserId
+      )
+      .maybeSingle();
+
+    if (
+      chosenResponsibleError ||
+      !chosenResponsible ||
+      !chosenResponsible.active
+    ) {
+      return {
+        success: false,
+
+        error:
+          "Selecione um responsável ativo para o contrato.",
+      };
+    }
+
+    responsibleUserId =
+      chosenResponsible.id;
+  }
 
   /*
    * =====================================================
@@ -1972,6 +2028,18 @@ export type ContractFormData = {
     company_id: string;
     commission_percentage: number | string;
   }[];
+
+  /*
+   * Só preenchido para admin/gestor: opções de
+   * responsável pelo contrato + se ele pode escolher
+   * outra pessoa além de si mesmo.
+   */
+  currentUserId: string;
+  canAssignResponsible: boolean;
+  responsibleOptions: {
+    id: string;
+    name: string | null;
+  }[];
 };
 
 export async function getContractFormData(): Promise<ContractFormData> {
@@ -1982,6 +2050,10 @@ export async function getContractFormData(): Promise<ContractFormData> {
 
   const isAdmin =
     access.profile.role === "admin";
+
+  const canAssignResponsible =
+    access.profile.role === "admin" ||
+    access.profile.role === "manager";
 
   const scopedCompanyIds = isAdmin
     ? null
@@ -1997,6 +2069,7 @@ export async function getContractFormData(): Promise<ContractFormData> {
     tvsResult,
     routesResult,
     sellerSettingsResult,
+    responsibleOptionsResult,
   ] = await Promise.all([
     adminDb
       .from("clients")
@@ -2070,15 +2143,35 @@ export async function getContractFormData(): Promise<ContractFormData> {
       .eq("active", true)
       .order("name"),
 
-    adminDb
-      .from("seller_settings")
-      .select(`
-        user_id,
-        company_id,
-        commission_percentage
-      `)
-      .eq("user_id", access.user.id)
-      .eq("active", true),
+    canAssignResponsible
+      ? adminDb
+          .from("seller_settings")
+          .select(`
+            user_id,
+            company_id,
+            commission_percentage
+          `)
+          .eq("active", true)
+      : adminDb
+          .from("seller_settings")
+          .select(`
+            user_id,
+            company_id,
+            commission_percentage
+          `)
+          .eq("user_id", access.user.id)
+          .eq("active", true),
+
+    canAssignResponsible
+      ? adminDb
+          .from("user_profiles")
+          .select("id, name")
+          .eq("active", true)
+          .order("name")
+      : Promise.resolve({
+          data: [],
+          error: null,
+        }),
   ]);
 
   for (const [label, result] of [
@@ -2089,6 +2182,7 @@ export async function getContractFormData(): Promise<ContractFormData> {
     ["TVs", tvsResult],
     ["rotas", routesResult],
     ["comissões", sellerSettingsResult],
+    ["responsáveis", responsibleOptionsResult],
   ] as const) {
     if (result.error) {
       console.error(
@@ -2140,5 +2234,10 @@ export async function getContractFormData(): Promise<ContractFormData> {
     routes,
     sellerSettings: (sellerSettingsResult.data ??
       []) as ContractFormData["sellerSettings"],
+    currentUserId: access.user.id,
+    canAssignResponsible,
+    responsibleOptions:
+      (responsibleOptionsResult.data ??
+        []) as ContractFormData["responsibleOptions"],
   };
 }

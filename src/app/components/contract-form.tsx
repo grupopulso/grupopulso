@@ -289,6 +289,36 @@ export default function ContractForm({
 
   /*
    * =====================================================
+   * RESPONSÁVEL PELO CONTRATO
+   *
+   * Por padrão é sempre quem está logado. Admin/gestor
+   * pode escolher outra pessoa (ex.: gestor lançando uma
+   * venda feita por um admin).
+   * =====================================================
+   */
+
+  const [
+    canAssignResponsible,
+    setCanAssignResponsible,
+  ] =
+    useState(false);
+
+  const [
+    responsibleOptions,
+    setResponsibleOptions,
+  ] =
+    useState<
+      { id: string; name: string | null }[]
+    >([]);
+
+  const [
+    responsibleUserId,
+    setResponsibleUserId,
+  ] =
+    useState("");
+
+  /*
+   * =====================================================
    * FORM
    * =====================================================
    */
@@ -693,6 +723,18 @@ export default function ContractForm({
           formData.sellerSettings as SellerSetting[]
         );
 
+        setCanAssignResponsible(
+          formData.canAssignResponsible
+        );
+
+        setResponsibleOptions(
+          formData.responsibleOptions
+        );
+
+        setResponsibleUserId(
+          formData.currentUserId
+        );
+
         /*
          * CLIENTE INICIAL
          */
@@ -820,12 +862,16 @@ export default function ContractForm({
             setting
           ) =>
             setting.company_id ===
-            companyId
+              companyId &&
+            (!responsibleUserId ||
+              setting.user_id ===
+                responsibleUserId)
         ) ??
         null,
       [
         sellerSettings,
         companyId,
+        responsibleUserId,
       ]
     );
 
@@ -1859,6 +1905,12 @@ export default function ContractForm({
         notes:
           notes.trim() ||
           null,
+
+        responsibleUserId:
+          canAssignResponsible
+            ? responsibleUserId ||
+              null
+            : null,
       });
 
     if (
@@ -2079,6 +2131,52 @@ export default function ContractForm({
                 }
               />
             </div>
+
+            {/* RESPONSÁVEL (só admin/gestor) */}
+
+            {canAssignResponsible && (
+              <Field label="Responsável pelo contrato">
+                <select
+                  value={
+                    responsibleUserId
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setResponsibleUserId(
+                      event.target.value
+                    )
+                  }
+                  className="input"
+                >
+                  {responsibleOptions.map(
+                    (
+                      option
+                    ) => (
+                      <option
+                        key={
+                          option.id
+                        }
+                        value={
+                          option.id
+                        }
+                      >
+                        {option.name ??
+                          "Usuário"}
+                        {option.id ===
+                        currentUser?.id
+                          ? " (eu)"
+                          : ""}
+                      </option>
+                    )
+                  )}
+                </select>
+
+                <p className="mt-1.5 text-xs text-slate-400">
+                  Por padrão é quem está cadastrando. Troque se estiver lançando um contrato vendido por outra pessoa.
+                </p>
+              </Field>
+            )}
 
             {/* PRODUTO */}
 
