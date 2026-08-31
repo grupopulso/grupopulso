@@ -28,7 +28,7 @@ import {
 
 import {
   createContract,
-  getContractPaymentMethods,
+  getContractFormData,
 } from "@/app/(dashboard)/contratos/novo/actions";
 
 import {
@@ -653,202 +653,18 @@ export default function ContractForm({
             null,
         });
 
-        const [
-          clientsResult,
-          companiesResult,
-          productsResult,
-          paymentMethodsResult,
-          tvsResult,
-          routesResult,
-          sellerSettingsResult,
-        ] =
-          await Promise.all([
-            supabase
-              .from(
-                "clients"
-              )
-              .select(`
-                id,
-                name,
-
-                client_companies (
-                  company_id,
-                  status
-                )
-              `)
-              .eq(
-                "active",
-                true
-              )
-              .order(
-                "name"
-              ),
-
-            supabase
-              .from(
-                "companies"
-              )
-              .select(`
-                id,
-                name
-              `)
-              .eq(
-                "active",
-                true
-              )
-              .order(
-                "name"
-              ),
-
-            supabase
-              .from(
-                "products"
-              )
-              .select(`
-                id,
-                company_id,
-                name,
-                default_price,
-                billing_frequency,
-                commission_percentage
-              `)
-              .eq(
-                "active",
-                true
-              )
-              .order(
-                "name"
-              ),
-
-            getContractPaymentMethods(),
-
-            supabase
-              .from(
-                "pottencializa_tvs"
-              )
-              .select(`
-                id,
-                name,
-                location
-              `)
-              .eq(
-                "company_id",
-                POTTENCIALIZA_COMPANY_ID
-              )
-              .eq(
-                "active",
-                true
-              )
-              .order(
-                "name"
-              ),
-
-            supabase
-              .from(
-                "delivery_routes"
-              )
-              .select(`
-                id,
-                name,
-                company_id,
-                region
-              `)
-              .eq(
-                "active",
-                true
-              )
-              .order(
-                "name"
-              ),
-
-            supabase
-              .from(
-                "seller_settings"
-              )
-              .select(`
-                user_id,
-                company_id,
-                commission_percentage
-              `)
-              .eq(
-                "user_id",
-                authenticatedUser.id
-              )
-              .eq(
-                "active",
-                true
-              ),
-          ]);
-
-        if (
-          clientsResult.error
-        ) {
-          console.error(
-            "Erro ao carregar clientes:",
-            clientsResult.error
-          );
-        }
-
-        if (
-          companiesResult.error
-        ) {
-          console.error(
-            "Erro ao carregar empresas:",
-            companiesResult.error
-          );
-        }
-
-        if (
-          productsResult.error
-        ) {
-          console.error(
-            "Erro ao carregar produtos:",
-            productsResult.error
-          );
-        }
-
-        if (
-          tvsResult.error
-        ) {
-          console.error(
-            "Erro ao carregar TVs:",
-            tvsResult.error
-          );
-        }
-
-        if (
-          routesResult.error
-        ) {
-          console.error(
-            "Erro ao carregar rotas de entrega:",
-            routesResult.error
-          );
-        }
-
-        if (
-          sellerSettingsResult.error
-        ) {
-          console.error(
-            "Erro ao carregar comissão:",
-            sellerSettingsResult.error
-          );
-        }
+        const formData =
+          await getContractFormData();
 
         const loadedClients =
-          (
-            clientsResult.data ??
-            []
-          ) as Client[];
+          formData.clients as Client[];
 
         setClients(
           loadedClients
         );
 
         setCompanies(
-          (
-            companiesResult.data ??
-            []
-          ).filter(
+          formData.companies.filter(
             (company) =>
               !allowedCompanyIds ||
               allowedCompanyIds.includes(
@@ -858,36 +674,23 @@ export default function ContractForm({
         );
 
         setProducts(
-          (
-            productsResult.data ??
-            []
-          ) as Product[]
+          formData.products as Product[]
         );
 
         setPaymentMethods(
-          paymentMethodsResult ??
-            []
+          formData.paymentMethods
         );
 
         setTvs(
-          (
-            tvsResult.data ??
-            []
-          ) as Tv[]
+          formData.tvs as Tv[]
         );
 
         setRoutes(
-          (
-            routesResult.data ??
-            []
-          ) as DeliveryRoute[]
+          formData.routes as DeliveryRoute[]
         );
 
         setSellerSettings(
-          (
-            sellerSettingsResult.data ??
-            []
-          ) as SellerSetting[]
+          formData.sellerSettings as SellerSetting[]
         );
 
         /*

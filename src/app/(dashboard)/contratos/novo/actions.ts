@@ -1919,3 +1919,226 @@ export async function getContractPaymentMethods(): Promise<
 
   return (data ?? []) as ContractPaymentMethod[];
 }
+
+/*
+ * =====================================================
+ * DADOS DE REFERÊNCIA DO FORMULÁRIO DE CONTRATO
+ * =====================================================
+ *
+ * Clientes, empresas, produtos, formas de pagamento, TVs,
+ * rotas e configs de comissão do vendedor logado.
+ *
+ * Tudo via service role: o vendedor precisa apenas de
+ * `contracts.create`. Sem isso, as RLS de `products`,
+ * `payment_methods`, `delivery_routes` etc. (que exigem
+ * os módulos financial / products / routes) deixariam as
+ * listas vazias. O escopo de empresa é aplicado aqui
+ * manualmente para não-admins.
+ */
+export type ContractFormData = {
+  clients: {
+    id: string;
+    name: string;
+    client_companies:
+      | { company_id: string; status: string }[]
+      | null;
+  }[];
+  companies: { id: string; name: string }[];
+  products: {
+    id: string;
+    company_id: string;
+    name: string;
+    default_price: number | null;
+    billing_frequency: string | null;
+    commission_percentage:
+      | number
+      | string
+      | null;
+  }[];
+  paymentMethods: ContractPaymentMethod[];
+  tvs: {
+    id: string;
+    name: string;
+    location: string | null;
+  }[];
+  routes: {
+    id: string;
+    name: string;
+    company_id: string;
+    region: string | null;
+  }[];
+  sellerSettings: {
+    user_id: string;
+    company_id: string;
+    commission_percentage: number | string;
+  }[];
+};
+
+export async function getContractFormData(): Promise<ContractFormData> {
+  const access = await requireModulePermission(
+    "contracts",
+    "create"
+  );
+
+  const isAdmin =
+    access.profile.role === "admin";
+
+  const scopedCompanyIds = isAdmin
+    ? null
+    : access.companyIds;
+
+  const adminDb = createAdminClient();
+
+  const [
+    clientsResult,
+    companiesResult,
+    productsResult,
+    paymentMethodsResult,
+    tvsResult,
+    routesResult,
+    sellerSettingsResult,
+  ] = await Promise.all([
+    adminDb
+      .from("clients")
+      .select(`
+        id,
+        name,
+        client_companies (
+          company_id,
+          status
+        )
+      `)
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("companies")
+      .select(`
+        id,
+        name
+      `)
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("products")
+      .select(`
+        id,
+        company_id,
+        name,
+        default_price,
+        billing_frequency,
+        commission_percentage
+      `)
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("payment_methods")
+      .select(`
+        id,
+        name,
+        code,
+        use_for
+      `)
+      .eq("active", true)
+      .in("use_for", ["income", "both"])
+      .order("name"),
+
+    adminDb
+      .from("pottencializa_tvs")
+      .select(`
+        id,
+        name,
+        location
+      `)
+      .eq(
+        "company_id",
+        POTTENCIALIZA_COMPANY_ID
+      )
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("delivery_routes")
+      .select(`
+        id,
+        name,
+        company_id,
+        region
+      `)
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("seller_settings")
+      .select(`
+        user_id,
+        company_id,
+        commission_percentage
+      `)
+      .eq("user_id", access.user.id)
+      .eq("active", true),
+  ]);
+
+  for (const [label, result] of [
+    ["clientes", clientsResult],
+    ["empresas", companiesResult],
+    ["produtos", productsResult],
+    ["formas de pagamento", paymentMethodsResult],
+    ["TVs", tvsResult],
+    ["rotas", routesResult],
+    ["comissões", sellerSettingsResult],
+  ] as const) {
+    if (result.error) {
+      console.error(
+        `Erro ao carregar ${label} do formulário de contrato:`,
+        result.error
+      );
+    }
+  }
+
+  const inScope = (companyId: string) =>
+    !scopedCompanyIds ||
+    scopedCompanyIds.includes(companyId);
+
+  const clients = (
+    (clientsResult.data ?? []) as ContractFormData["clients"]
+  ).filter(
+    (client) =>
+      !scopedCompanyIds ||
+      (client.client_companies ?? []).some(
+        (relation) =>
+          scopedCompanyIds.includes(
+            relation.company_id
+          )
+      )
+  );
+
+  const companies = (
+    (companiesResult.data ?? []) as ContractFormData["companies"]
+  ).filter((company) => inScope(company.id));
+
+  const products = (
+    (productsResult.data ?? []) as ContractFormData["products"]
+  ).filter((product) =>
+    inScope(product.company_id)
+  );
+
+  const routes = (
+    (routesResult.data ?? []) as ContractFormData["routes"]
+  ).filter((route) => inScope(route.company_id));
+
+  return {
+    clients,
+    companies,
+    products,
+    paymentMethods: (paymentMethodsResult.data ??
+      []) as ContractPaymentMethod[],
+    tvs: (tvsResult.data ??
+      []) as ContractFormData["tvs"],
+    routes,
+    sellerSettings: (sellerSettingsResult.data ??
+      []) as ContractFormData["sellerSettings"],
+  };
+}
