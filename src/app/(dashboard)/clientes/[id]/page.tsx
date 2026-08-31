@@ -24,6 +24,8 @@ import {
   createClient,
 } from "@/app/lib/supabase/server";
 
+import { getSelectedCompanyId } from "@/app/lib/company-filter";
+
 import {
   requireAnyCompanyAccess,
   requireModulePermission,
@@ -214,20 +216,35 @@ export default async function ClientPage({
   const isAdmin =
     access.profile.role === "admin";
 
+  const selectedCompanyId =
+    await getSelectedCompanyId();
+
   /*
    * As sublistas abaixo são por client_id. Se o cliente é
-   * compartilhado entre empresas, um usuário não-admin não
-   * deve ver contratos/lançamentos de empresas às quais
-   * não tem acesso.
+   * compartilhado entre empresas:
+   * - um usuário não-admin não vê contratos/lançamentos de
+   *   empresas às quais não tem acesso;
+   * - se há uma empresa selecionada no topo, só mostramos
+   *   os registros dela (não misturar empresas do grupo).
    */
   const canSeeCompany = (
     companyId: string | null | undefined
-  ) =>
-    isAdmin ||
-    (Boolean(companyId) &&
-      access.companyIds.includes(
-        companyId as string
-      ));
+  ) => {
+    if (
+      selectedCompanyId &&
+      companyId !== selectedCompanyId
+    ) {
+      return false;
+    }
+
+    return (
+      isAdmin ||
+      (Boolean(companyId) &&
+        access.companyIds.includes(
+          companyId as string
+        ))
+    );
+  };
 
   /*
    * =========================
