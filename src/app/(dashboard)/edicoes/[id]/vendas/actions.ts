@@ -5,8 +5,8 @@ import {
 } from "next/cache";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireEstafetaAccess,
@@ -249,8 +249,13 @@ export async function createEditionSale(
   const access =
     await requireEstafetaAccess();
 
-  const supabase =
-    await createClient();
+  /*
+   * Escrita via service role: o acesso já foi validado por
+   * `requireEstafetaAccess()`. Permite que o vendedor SEM o
+   * módulo financeiro registre a venda de publicidade, que
+   * gera lançamentos em `financial_entries` (RLS financeira).
+   */
+  const supabase = createAdminClient();
 
   /*
    * =====================================================
@@ -1012,8 +1017,13 @@ export async function updateEditionSale(
   const access =
     await requireEstafetaAccess();
 
-  const supabase =
-    await createClient();
+  /*
+   * Escrita via service role: o acesso já foi validado por
+   * `requireEstafetaAccess()`. Permite que o vendedor SEM o
+   * módulo financeiro registre a venda de publicidade, que
+   * gera lançamentos em `financial_entries` (RLS financeira).
+   */
+  const supabase = createAdminClient();
 
   if (
     !input.saleId ||
@@ -1950,8 +1960,13 @@ export async function cancelEditionSale(
   const access =
     await requireEstafetaAccess();
 
-  const supabase =
-    await createClient();
+  /*
+   * Escrita via service role: o acesso já foi validado por
+   * `requireEstafetaAccess()`. Permite que o vendedor SEM o
+   * módulo financeiro registre a venda de publicidade, que
+   * gera lançamentos em `financial_entries` (RLS financeira).
+   */
+  const supabase = createAdminClient();
 
   if (
     !saleId ||
@@ -2283,10 +2298,8 @@ export async function cancelEditionSale(
  */
 
 async function calculateProductCommission(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   companyId: string,
   items:
@@ -2527,10 +2540,8 @@ async function calculateProductCommission(
  */
 
 async function createSaleCommissions(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   input: {
     saleId: string;
@@ -2787,10 +2798,8 @@ async function createSaleCommissions(
  */
 
 async function createSaleFinancialEntries(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   input: {
     saleId: string;
@@ -3070,10 +3079,8 @@ async function createSaleFinancialEntries(
  */
 
 async function validateSaleItems(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   editionId:
     string,
@@ -3774,10 +3781,8 @@ function normalizeSaleItems(
  */
 
 async function rollbackSale(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   saleId:
     string
@@ -4048,8 +4053,13 @@ export async function moveEditionSale(
   const access =
     await requireEstafetaAccess();
 
-  const supabase =
-    await createClient();
+  /*
+   * Escrita via service role: o acesso já foi validado por
+   * `requireEstafetaAccess()`. Permite que o vendedor SEM o
+   * módulo financeiro registre a venda de publicidade, que
+   * gera lançamentos em `financial_entries` (RLS financeira).
+   */
+  const supabase = createAdminClient();
 
   if (!saleId || !targetEditionId) {
     return {

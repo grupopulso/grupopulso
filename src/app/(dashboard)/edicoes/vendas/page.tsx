@@ -7,7 +7,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
@@ -65,8 +65,13 @@ export default async function VendasPublicidadePage({
 
   const search = (q ?? "").trim();
 
+  /*
+   * Service role: acesso já validado por
+   * `requireEstafetaAccess()` e tudo é filtrado por
+   * `access.estafetaCompany.id`.
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   /*
    * EDIÇÕES (para o filtro)

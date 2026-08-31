@@ -1,4 +1,4 @@
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
@@ -92,8 +92,14 @@ export async function loadSaleFormData(
   const access =
     await requireEstafetaAccess();
 
-  const supabase =
-    await createClient();
+  /*
+   * Leitura via service role: `requireEstafetaAccess` já
+   * garantiu o acesso e tudo é filtrado por
+   * `access.estafetaCompany.id`. Necessário porque
+   * `products` e `financial_payment_methods` têm RLS por
+   * módulo (products / financial) que o vendedor não tem.
+   */
+  const supabase = createAdminClient();
 
   const {
     data: edition,

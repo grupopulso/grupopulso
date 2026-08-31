@@ -10,8 +10,8 @@ import {
 } from "next/navigation";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireEstafetaAccess,
@@ -59,8 +59,13 @@ export default async function EditEditionSalePage({
     saleId,
   } = await params;
 
+  /*
+   * Leitura via service role: acesso já validado por
+   * `requireEstafetaAccess()`. Necessário pois a tela puxa
+   * dados financeiros da venda (RLS por módulo financial).
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   /*
    * =========================

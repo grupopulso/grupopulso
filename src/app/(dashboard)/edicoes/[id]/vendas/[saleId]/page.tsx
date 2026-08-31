@@ -16,8 +16,8 @@ import {
 import SaleActions from "./sale-actions";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireEstafetaAccess,
@@ -57,8 +57,14 @@ export default async function SaleDetailPage({
     saleId,
   } = await params;
 
+  /*
+   * Service role: acesso já validado por
+   * `requireEstafetaAccess()`; consultas filtradas por
+   * `access.estafetaCompany.id`. A tela mostra o financeiro
+   * da venda (RLS por módulo financial).
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   /*
    * =========================

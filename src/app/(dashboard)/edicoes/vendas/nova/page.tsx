@@ -10,7 +10,7 @@ import {
 
 import { notFound } from "next/navigation";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
@@ -41,7 +41,7 @@ export default async function NovaVendaPage({
 
   if (!edicao) {
     const supabase =
-      await createClient();
+      createAdminClient();
 
     const { data: editions } =
       await supabase
