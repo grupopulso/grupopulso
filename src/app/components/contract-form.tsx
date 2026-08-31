@@ -31,6 +31,10 @@ import {
 } from "@/app/(dashboard)/contratos/novo/actions";
 
 import {
+  createClientRecord,
+} from "@/app/(dashboard)/clientes/novo/actions";
+
+import {
   linkRenewalContracts,
   type RenewalPrefill,
 } from "@/app/(dashboard)/contratos/[id]/actions";
@@ -521,6 +525,30 @@ export default function ContractForm({
   const [
     newClientWhatsapp,
     setNewClientWhatsapp,
+  ] =
+    useState("");
+
+  const [
+    newClientStreet,
+    setNewClientStreet,
+  ] =
+    useState("");
+
+  const [
+    newClientNumber,
+    setNewClientNumber,
+  ] =
+    useState("");
+
+  const [
+    newClientNeighborhood,
+    setNewClientNeighborhood,
+  ] =
+    useState("");
+
+  const [
+    newClientCity,
+    setNewClientCity,
   ] =
     useState("");
 
@@ -1613,70 +1641,60 @@ export default function ContractForm({
       return;
     }
 
+    if (
+      !newClientStreet.trim()
+    ) {
+      setError(
+        "Informe o endereço do cliente."
+      );
+
+      return;
+    }
+
     setCreatingClient(
       true
     );
 
-    const {
-      data:
-        createdClient,
-      error:
-        createClientError,
-    } =
-      await supabase
-        .from(
-          "clients"
-        )
-        .insert({
-          type:
-            newClientType,
-
-          name:
-            newClientName.trim(),
-
-          trade_name:
-            newClientTradeName
-              .trim() ||
+    const result =
+      await createClientRecord({
+        type: newClientType,
+        name: newClientName.trim(),
+        tradeName:
+          newClientTradeName.trim() ||
+          null,
+        cpfCnpj:
+          newClientDocument.trim() ||
+          null,
+        email:
+          newClientEmail.trim() ||
+          null,
+        phone:
+          newClientPhone.trim() ||
+          null,
+        whatsapp:
+          newClientWhatsapp.trim() ||
+          null,
+        notes: null,
+        status: "active",
+        companyIds: [companyId],
+        address: {
+          street:
+            newClientStreet.trim() ||
             null,
-
-          cpf_cnpj:
-            newClientDocument
-              .trim() ||
+          number:
+            newClientNumber.trim() ||
             null,
-
-          email:
-            newClientEmail
-              .trim() ||
+          neighborhood:
+            newClientNeighborhood.trim() ||
             null,
-
-          phone:
-            newClientPhone
-              .trim() ||
+          city:
+            newClientCity.trim() ||
             null,
+        },
+      });
 
-          whatsapp:
-            newClientWhatsapp
-              .trim() ||
-            null,
-
-          active:
-            true,
-        })
-        .select(`
-          id,
-          name
-        `)
-        .single();
-
-    if (
-      createClientError ||
-      !createdClient
-    ) {
-      setError(
-        createClientError
-          ?.message ??
-          "Não foi possível cadastrar o cliente."
-      );
+    if (!result.success) {
+      setError(result.error);
 
       setCreatingClient(
         false
@@ -1685,51 +1703,10 @@ export default function ContractForm({
       return;
     }
 
-    const {
-      error:
-        relationError,
-    } =
-      await supabase
-        .from(
-          "client_companies"
-        )
-        .insert({
-          client_id:
-            createdClient.id,
-
-          company_id:
-            companyId,
-
-          status:
-            "active",
-
-          notes:
-            null,
-        });
-
-    if (
-      relationError
-    ) {
-      await supabase
-        .from(
-          "clients"
-        )
-        .delete()
-        .eq(
-          "id",
-          createdClient.id
-        );
-
-      setError(
-        relationError.message
-      );
-
-      setCreatingClient(
-        false
-      );
-
-      return;
-    }
+    const createdClient = {
+      id: result.clientId,
+      name: newClientName.trim(),
+    };
 
     const newClient:
       Client = {
@@ -1787,6 +1764,10 @@ export default function ContractForm({
     setNewClientEmail("");
     setNewClientPhone("");
     setNewClientWhatsapp("");
+    setNewClientStreet("");
+    setNewClientNumber("");
+    setNewClientNeighborhood("");
+    setNewClientCity("");
 
     setCreatingClient(
       false
@@ -3347,6 +3328,70 @@ export default function ContractForm({
                       event
                     ) =>
                       setNewClientWhatsapp(
+                        event.target.value
+                      )
+                    }
+                    className="input"
+                  />
+                </Field>
+
+                <Field label="Endereço (rua)">
+                  <input
+                    value={
+                      newClientStreet
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNewClientStreet(
+                        event.target.value
+                      )
+                    }
+                    className="input"
+                  />
+                </Field>
+
+                <Field label="Número">
+                  <input
+                    value={
+                      newClientNumber
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNewClientNumber(
+                        event.target.value
+                      )
+                    }
+                    className="input"
+                  />
+                </Field>
+
+                <Field label="Bairro">
+                  <input
+                    value={
+                      newClientNeighborhood
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNewClientNeighborhood(
+                        event.target.value
+                      )
+                    }
+                    className="input"
+                  />
+                </Field>
+
+                <Field label="Cidade">
+                  <input
+                    value={
+                      newClientCity
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setNewClientCity(
                         event.target.value
                       )
                     }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireAnyCompanyAccess,
   requireModulePermission,
@@ -24,6 +25,14 @@ export async function updateClient(
     );
 
   const supabase = await createClient();
+
+  /*
+   * Escritas via cliente administrativo (service role):
+   * o acesso já foi validado por `requireModulePermission`
+   * e `requireAnyCompanyAccess` logo abaixo. Evita bloqueio
+   * de RLS ao gravar em `clients`.
+   */
+  const adminDb = createAdminClient();
 
   const {
   data: oldClient,
@@ -164,7 +173,7 @@ export async function updateClient(
 
   const {
     error: clientError,
-  } = await supabase
+  } = await adminDb
     .from("clients")
     .update({
       name,
@@ -203,7 +212,7 @@ export async function updateClient(
    */
   const {
     error: deleteCompaniesError,
-  } = await supabase
+  } = await adminDb
     .from("client_companies")
     .delete()
     .eq("client_id", clientId);
@@ -222,7 +231,7 @@ export async function updateClient(
   if (companyIds.length) {
     const {
       error: insertCompaniesError,
-    } = await supabase
+    } = await adminDb
       .from("client_companies")
       .insert(
         companyIds.map(
@@ -279,7 +288,7 @@ export async function updateClient(
   ) {
     const {
       error: addressError,
-    } = await supabase
+    } = await adminDb
       .from("client_addresses")
       .update({
         street:
@@ -320,7 +329,7 @@ export async function updateClient(
   ) {
     const {
       error: addressError,
-    } = await supabase
+    } = await adminDb
       .from("client_addresses")
       .insert({
         client_id:

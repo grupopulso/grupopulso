@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -57,6 +58,14 @@ export async function createClientRecord(
 
   const supabase =
     await createClient();
+
+  /*
+   * Escritas usam o cliente administrativo (service role):
+   * o acesso já foi validado acima por `requireModulePermission`
+   * e o escopo de empresa é checado manualmente mais abaixo.
+   * Isso evita bloqueio por RLS ao inserir em `clients`.
+   */
+  const adminDb = createAdminClient();
 
   const name =
     input.name.trim();
@@ -173,7 +182,7 @@ export async function createClientRecord(
   const {
     data: client,
     error: clientError,
-  } = await supabase
+  } = await adminDb
     .from("clients")
     .insert({
       type: input.type,
@@ -241,7 +250,7 @@ export async function createClientRecord(
   if (hasAddress) {
     const {
       error: addressError,
-    } = await supabase
+    } = await adminDb
       .from("client_addresses")
       .insert({
         client_id: client.id,
@@ -274,7 +283,7 @@ export async function createClientRecord(
 
     if (addressError) {
       await rollbackClient(
-        supabase,
+        adminDb,
         client.id
       );
 
@@ -299,7 +308,7 @@ export async function createClientRecord(
 
   const {
     error: relationsError,
-  } = await supabase
+  } = await adminDb
     .from("client_companies")
     .insert(
       companyIds.map(
@@ -313,7 +322,7 @@ export async function createClientRecord(
 
   if (relationsError) {
     await rollbackClient(
-      supabase,
+      adminDb,
       client.id
     );
 
@@ -359,10 +368,8 @@ export async function createClientRecord(
 }
 
 async function rollbackClient(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   clientId: string
 ) {
