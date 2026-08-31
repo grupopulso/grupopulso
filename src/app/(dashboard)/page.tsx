@@ -859,7 +859,11 @@ function calculateMetrics({
       .filter(
         (entry) =>
           entry.type ===
-          "expense"
+            "expense" &&
+          entry.due_date >=
+            monthStart &&
+          entry.due_date <=
+            monthEnd
       )
       .reduce(
         (total, entry) =>
@@ -872,6 +876,10 @@ function calculateMetrics({
 
   /*
    * VENCIDOS
+   *
+   * Também restrito ao período selecionado (vencimento
+   * dentro do mês/ano), além de já vencido em relação a
+   * hoje.
    */
 
   const receivableOverdue =
@@ -880,6 +888,10 @@ function calculateMetrics({
         (entry) =>
           entry.type ===
             "income" &&
+          entry.due_date >=
+            monthStart &&
+          entry.due_date <=
+            monthEnd &&
           entry.due_date <
             today &&
           calculateOpenAmount(
@@ -901,6 +913,10 @@ function calculateMetrics({
         (entry) =>
           entry.type ===
             "expense" &&
+          entry.due_date >=
+            monthStart &&
+          entry.due_date <=
+            monthEnd &&
           entry.due_date <
             today &&
           calculateOpenAmount(

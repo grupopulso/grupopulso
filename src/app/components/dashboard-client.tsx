@@ -267,11 +267,15 @@ const {
 
           <MetricCard
             icon={TrendingDown}
-            label="Receitas vencidas"
+            label={
+              period.isAnnual
+                ? "Receitas vencidas no ano"
+                : "Receitas vencidas no mês"
+            }
             value={formatCurrency(
               metrics.receivableOverdue
             )}
-            description="Valores em atraso"
+            description="Valores em atraso no período"
             tone="red"
             href="/financeiro/receber?status=overdue"
           />
@@ -282,11 +286,11 @@ const {
         <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             icon={ArrowUpRight}
-            label="A pagar"
+            label={period.isAnnual ? "A pagar no ano" : "A pagar no mês"}
             value={formatCurrency(
               metrics.payableOpen
             )}
-            description="Despesas em aberto"
+            description="Despesas em aberto no período"
             tone="orange"
             href="/financeiro/pagar"
           />
@@ -320,11 +324,15 @@ const {
 
           <MetricCard
             icon={TrendingDown}
-            label="Despesas vencidas"
+            label={
+              period.isAnnual
+                ? "Despesas vencidas no ano"
+                : "Despesas vencidas no mês"
+            }
             value={formatCurrency(
               metrics.payableOverdue
             )}
-            description="Pagamentos em atraso"
+            description="Pagamentos em atraso no período"
             tone="orange"
             href="/financeiro/pagar?status=overdue"
           />
