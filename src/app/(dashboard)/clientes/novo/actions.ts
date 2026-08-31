@@ -69,6 +69,35 @@ export async function createClientRecord(
     };
   }
 
+  if (!input.cpfCnpj?.trim()) {
+    return {
+      success: false,
+      error:
+        input.type === "company"
+          ? "Informe o CNPJ do cliente."
+          : "Informe o CPF do cliente.",
+    };
+  }
+
+  if (
+    !input.phone?.trim() &&
+    !input.whatsapp?.trim()
+  ) {
+    return {
+      success: false,
+      error:
+        "Informe um telefone ou WhatsApp.",
+    };
+  }
+
+  if (!input.address?.street?.trim()) {
+    return {
+      success: false,
+      error:
+        "Informe o endereço do cliente.",
+    };
+  }
+
   const companyIds =
     [
       ...new Set(

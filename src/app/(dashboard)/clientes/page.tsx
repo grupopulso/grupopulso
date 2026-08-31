@@ -7,12 +7,28 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
-export default async function ClientesPage() {
+type PageProps = {
+  searchParams: Promise<{
+    q?: string;
+  }>;
+};
+
+export default async function ClientesPage({
+  searchParams,
+}: PageProps) {
   const access =
     await requireModulePermission(
       "clients",
       "view"
     );
+
+  const { q: qParam } =
+    await searchParams;
+
+  const search =
+    (qParam ?? "")
+      .trim()
+      .toLocaleLowerCase("pt-BR");
 
   const supabase =
     await createClient();
@@ -107,7 +123,42 @@ export default async function ClientesPage() {
             )
         );
       }
-    ) ?? [];
+    )
+      .filter((client) => {
+        if (!search) return true;
+
+        const haystack = [
+          client.name,
+          client.email,
+          client.cpf_cnpj,
+          client.phone,
+          client.whatsapp,
+        ]
+          .map((value) =>
+            (value ?? "").toLocaleLowerCase("pt-BR")
+          )
+          .join(" ");
+
+        if (haystack.includes(search)) {
+          return true;
+        }
+
+        const searchDigits = search.replace(/\D/g, "");
+
+        if (!searchDigits) {
+          return false;
+        }
+
+        const digitsHaystack = [
+          client.cpf_cnpj,
+          client.phone,
+          client.whatsapp,
+        ]
+          .map((value) => (value ?? "").replace(/\D/g, ""))
+          .join(" ");
+
+        return digitsHaystack.includes(searchDigits);
+      }) ?? [];
 
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
@@ -179,20 +230,46 @@ export default async function ClientesPage() {
 
         <div className="mt-7 rounded-2xl border border-slate-200 bg-white">
           <div className="flex flex-col gap-4 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
-            <div className="relative w-full max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <form
+              method="GET"
+              className="flex w-full max-w-md items-center gap-2"
+            >
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
-              <input
-                placeholder="Buscar por nome, CPF, CNPJ..."
-                className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none transition focus:border-[#15704f]"
-              />
-            </div>
+                <input
+                  name="q"
+                  defaultValue={qParam ?? ""}
+                  placeholder="Buscar por nome, CPF, CNPJ, telefone..."
+                  className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none transition focus:border-[#15704f]"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="h-10 shrink-0 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+              >
+                Buscar
+              </button>
+
+              {search && (
+                <Link
+                  href="/clientes"
+                  className="shrink-0 text-sm font-medium text-slate-500 hover:text-slate-900"
+                >
+                  Limpar
+                </Link>
+              )}
+            </form>
 
             <p className="text-xs text-slate-400">
               {clients.length}{" "}
               {clients.length === 1
                 ? "cliente"
                 : "clientes"}
+              {search
+                ? " encontrado(s)"
+                : ""}
             </p>
           </div>
 

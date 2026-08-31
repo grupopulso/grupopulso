@@ -52,6 +52,13 @@ type CreateContractInput = {
 
   value: number;
 
+  /*
+   * Cortesia: o cliente ganha a assinatura/contrato. Não
+   * gera parcelas, financeiro nem comissão — só o registro
+   * do contrato com valor 0.
+   */
+  courtesy?: boolean;
+
   billingFrequency:
     BillingFrequency;
 
@@ -100,6 +107,10 @@ export async function createContract(
   await requireModulePermission(
     "contracts",
     "create"
+  );
+
+  const isCourtesy = Boolean(
+    input.courtesy
   );
 
   const supabase =
@@ -207,6 +218,7 @@ export async function createContract(
   }
 
   if (
+    !isCourtesy &&
     !input.paymentMethodId
   ) {
     return {
@@ -218,11 +230,14 @@ export async function createContract(
   }
 
   if (
-    !Number.isInteger(
-      input.installments
-    ) ||
-    input.installments <
-      1
+    !isCourtesy &&
+    (
+      !Number.isInteger(
+        input.installments
+      ) ||
+      input.installments <
+        1
+    )
   ) {
     return {
       success: false,
@@ -233,11 +248,14 @@ export async function createContract(
   }
 
   if (
-    !Number.isFinite(
-      input.value
-    ) ||
-    input.value <=
-      0
+    !isCourtesy &&
+    (
+      !Number.isFinite(
+        input.value
+      ) ||
+      input.value <=
+        0
+    )
   ) {
     return {
       success: false,
@@ -247,6 +265,10 @@ export async function createContract(
     };
   }
 
+  const contractValue = isCourtesy
+    ? 0
+    : input.value;
+
   /*
    * =====================================================
    * VALIDAR PARCELAS
@@ -254,9 +276,13 @@ export async function createContract(
    */
 
   let validatedInstallmentValues:
-    number[];
+    number[] = [];
+
+  let validatedInstallmentDues:
+    string[] = [];
 
   if (
+    !isCourtesy &&
     input.installmentValues &&
     input.installmentValues.length >
       0
@@ -337,7 +363,7 @@ export async function createContract(
           "A soma das parcelas precisa ser igual ao valor do contrato.",
       };
     }
-  } else {
+  } else if (!isCourtesy) {
     /*
      * Compatibilidade com chamadas
      * que ainda não enviem os valores
@@ -357,10 +383,8 @@ export async function createContract(
    * =====================================================
    */
 
-  let validatedInstallmentDues:
-    string[];
-
   if (
+    !isCourtesy &&
     input.installmentDues &&
     input.installmentDues.length > 0
   ) {
@@ -392,7 +416,7 @@ export async function createContract(
 
     validatedInstallmentDues =
       input.installmentDues.slice();
-  } else {
+  } else if (!isCourtesy) {
     validatedInstallmentDues =
       Array.from(
         {
@@ -521,8 +545,11 @@ export async function createContract(
       .maybeSingle();
 
   if (
-    responsibleSettingError ||
-    !responsibleSetting
+    !isCourtesy &&
+    (
+      responsibleSettingError ||
+      !responsibleSetting
+    )
   ) {
     return {
       success: false,
@@ -535,7 +562,7 @@ export async function createContract(
   const sellerDefaultPercentage =
     Number(
       responsibleSetting
-        .commission_percentage ??
+        ?.commission_percentage ??
         0
     );
 
@@ -667,13 +694,15 @@ export async function createContract(
   }
 
   const commissionAmount =
-    roundMoney(
-      input.value *
-        (
-          commissionPercentage /
-          100
-        )
-    );
+    isCourtesy
+      ? 0
+      : roundMoney(
+          input.value *
+            (
+              commissionPercentage /
+              100
+            )
+        );
 
   /*
    * =====================================================
@@ -774,41 +803,50 @@ export async function createContract(
    * =====================================================
    */
 
-  const {
-    data:
-      paymentMethod,
-    error:
-      paymentMethodError,
-  } =
-    await supabase
-      .from(
-        "payment_methods"
-      )
-      .select(`
-        id,
-        name,
-        active
-      `)
-      .eq(
-        "id",
-        input.paymentMethodId
-      )
-      .eq(
-        "active",
-        true
-      )
-      .maybeSingle();
+  let paymentMethod: {
+    id: string;
+    name: string;
+  } | null = null;
 
-  if (
-    paymentMethodError ||
-    !paymentMethod
-  ) {
-    return {
-      success: false,
-
+  if (!isCourtesy) {
+    const {
+      data:
+        paymentMethodRow,
       error:
-        "Forma de pagamento inválida.",
-    };
+        paymentMethodError,
+    } =
+      await supabase
+        .from(
+          "payment_methods"
+        )
+        .select(`
+          id,
+          name,
+          active
+        `)
+        .eq(
+          "id",
+          input.paymentMethodId
+        )
+        .eq(
+          "active",
+          true
+        )
+        .maybeSingle();
+
+    if (
+      paymentMethodError ||
+      !paymentMethodRow
+    ) {
+      return {
+        success: false,
+
+        error:
+          "Forma de pagamento inválida.",
+      };
+    }
+
+    paymentMethod = paymentMethodRow;
   }
 
   /*
@@ -860,7 +898,7 @@ export async function createContract(
           null,
 
         value:
-          input.value,
+          contractValue,
 
         billing_frequency:
           input.billingFrequency,
@@ -872,18 +910,29 @@ export async function createContract(
           input.autoRenew,
 
         payment_method_id:
-          input.paymentMethodId,
+          isCourtesy
+            ? null
+            : input.paymentMethodId,
 
         installments:
-          input.installments,
+          isCourtesy
+            ? 1
+            : input.installments,
 
         first_due_date:
-          input.firstDueDate,
+          isCourtesy
+            ? input.startDate
+            : input.firstDueDate,
 
         notes:
-          input.notes
-            ?.trim() ||
-          null,
+          [
+            input.notes?.trim() || null,
+            isCourtesy
+              ? "Cortesia — assinatura sem cobrança."
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" ") || null,
       })
       .select(`
         id
@@ -1047,8 +1096,10 @@ export async function createContract(
 
   for (
     const rule of
-      overrideRules ??
-      []
+      isCourtesy
+        ? []
+        : overrideRules ??
+          []
   ) {
     const percentage =
       Number(
@@ -1235,8 +1286,9 @@ export async function createContract(
     for (
       let index =
         0;
+      !isCourtesy &&
       index <
-      input.installments;
+        input.installments;
       index++
     ) {
       const installmentNumber =
@@ -1358,7 +1410,7 @@ export async function createContract(
               [
                 `Parcela ${installmentNumber}/${input.installments} do contrato ${contract.id}.`,
 
-                `Forma de pagamento: ${paymentMethod.name}.`,
+                `Forma de pagamento: ${paymentMethod?.name ?? "—"}.`,
 
                 productName
                   ? `Produto/serviço: ${productName}.`

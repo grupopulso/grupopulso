@@ -59,6 +59,32 @@ export default function ClientForm({ companies }: Props) {
       return;
     }
 
+    if (!name.trim()) {
+      setError("Informe o nome do cliente.");
+      return;
+    }
+
+    if (!cpfCnpj.trim()) {
+      setError(
+        type === "company"
+          ? "Informe o CNPJ."
+          : "Informe o CPF."
+      );
+      return;
+    }
+
+    if (!phone.trim() && !whatsapp.trim()) {
+      setError(
+        "Informe um telefone ou WhatsApp."
+      );
+      return;
+    }
+
+    if (!street.trim()) {
+      setError("Informe o endereço (rua).");
+      return;
+    }
+
     setError("");
 
     startTransition(async () => {

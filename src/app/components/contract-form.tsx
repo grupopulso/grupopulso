@@ -39,6 +39,8 @@ import {
   buildDueDates,
 } from "@/app/lib/date-utils";
 
+import ClientCombobox from "@/app/components/client-combobox";
+
 /*
  * =====================================================
  * TIPOS
@@ -432,6 +434,12 @@ export default function ContractForm({
     useState(
       renewal?.autoRenew ?? false
     );
+
+  const [
+    courtesy,
+    setCourtesy,
+  ] =
+    useState(false);
 
   const [
     notes,
@@ -1584,6 +1592,27 @@ export default function ContractForm({
       return;
     }
 
+    if (
+      !newClientDocument.trim()
+    ) {
+      setError(
+        "Informe o CPF ou CNPJ do cliente."
+      );
+
+      return;
+    }
+
+    if (
+      !newClientPhone.trim() &&
+      !newClientWhatsapp.trim()
+    ) {
+      setError(
+        "Informe um telefone ou WhatsApp do cliente."
+      );
+
+      return;
+    }
+
     setCreatingClient(
       true
     );
@@ -1853,6 +1882,7 @@ export default function ContractForm({
     }
 
     if (
+      !courtesy &&
       !currentSellerSetting
     ) {
       setError(
@@ -1883,6 +1913,7 @@ export default function ContractForm({
     }
 
     if (
+      !courtesy &&
       !firstDueDate
     ) {
       setError(
@@ -1893,6 +1924,7 @@ export default function ContractForm({
     }
 
     if (
+      !courtesy &&
       !paymentMethodId
     ) {
       setError(
@@ -1903,11 +1935,14 @@ export default function ContractForm({
     }
 
     if (
-      !Number.isFinite(
-        numericValue
-      ) ||
-      numericValue <=
-        0
+      !courtesy &&
+      (
+        !Number.isFinite(
+          numericValue
+        ) ||
+        numericValue <=
+          0
+      )
     ) {
       setError(
         "Informe um valor válido."
@@ -1917,6 +1952,7 @@ export default function ContractForm({
     }
 
     if (
+      !courtesy &&
       installments <
       1
     ) {
@@ -1927,87 +1963,80 @@ export default function ContractForm({
       return;
     }
 
-    if (
-      installmentValues.length !==
-      installments
-    ) {
-      setError(
-        "Os valores das parcelas estão inconsistentes."
-      );
+    let parsedInstallmentValues:
+      number[] = [];
 
-      return;
-    }
+    if (!courtesy) {
+      if (
+        installmentValues.length !==
+        installments
+      ) {
+        setError(
+          "Os valores das parcelas estão inconsistentes."
+        );
 
-    const parsedInstallmentValues =
-      installmentValues.map(
-        (
-          amount
-        ) =>
-          parseMoney(
-            amount
-          )
-      );
+        return;
+      }
 
-    if (
-      parsedInstallmentValues.some(
-        (
-          amount
-        ) =>
-          !Number.isFinite(
-            amount
-          ) ||
-          amount <=
-            0
-      )
-    ) {
-      setError(
-        "Informe um valor válido para todas as parcelas."
-      );
+      parsedInstallmentValues =
+        installmentValues.map(
+          (amount) =>
+            parseMoney(amount)
+        );
 
-      return;
-    }
-
-    const parsedInstallmentTotal =
-      roundMoney(
-        parsedInstallmentValues.reduce(
-          (
-            total,
-            amount
-          ) =>
-            total +
-            amount,
-          0
+      if (
+        parsedInstallmentValues.some(
+          (amount) =>
+            !Number.isFinite(
+              amount
+            ) ||
+            amount <= 0
         )
-      );
+      ) {
+        setError(
+          "Informe um valor válido para todas as parcelas."
+        );
 
-    if (
-      Math.abs(
-        parsedInstallmentTotal -
-          numericValue
-      ) >=
-      0.01
-    ) {
-      setError(
-        `A soma das parcelas precisa ser exatamente ${formatCurrency(
-          numericValue
-        )}.`
-      );
+        return;
+      }
 
-      return;
-    }
+      const parsedInstallmentTotal =
+        roundMoney(
+          parsedInstallmentValues.reduce(
+            (total, amount) =>
+              total + amount,
+            0
+          )
+        );
 
-    if (
-      installmentDues.length !==
-        installments ||
-      installmentDues.some(
-        (due) => !due
-      )
-    ) {
-      setError(
-        "Informe a data de vencimento de todas as parcelas."
-      );
+      if (
+        Math.abs(
+          parsedInstallmentTotal -
+            numericValue
+        ) >= 0.01
+      ) {
+        setError(
+          `A soma das parcelas precisa ser exatamente ${formatCurrency(
+            numericValue
+          )}.`
+        );
 
-      return;
+        return;
+      }
+
+      if (
+        installmentDues.length !==
+          installments ||
+        installmentDues.some(
+          (due) => !due
+        )
+      ) {
+        setError(
+          "Informe a data de vencimento de todas as parcelas."
+        );
+
+        return;
+      }
     }
 
     setLoading(
@@ -2033,21 +2062,35 @@ export default function ContractForm({
           endDate ||
           null,
 
-        firstDueDate,
+        firstDueDate:
+          courtesy
+            ? startDate
+            : firstDueDate,
 
         value:
-          numericValue,
+          courtesy ? 0 : numericValue,
+
+        courtesy,
 
         billingFrequency,
 
-        paymentMethodId,
+        paymentMethodId:
+          courtesy
+            ? ""
+            : paymentMethodId,
 
-        installments,
+        installments:
+          courtesy ? 1 : installments,
 
         installmentValues:
-          parsedInstallmentValues,
+          courtesy
+            ? []
+            : parsedInstallmentValues,
 
-        installmentDues,
+        installmentDues:
+          courtesy
+            ? []
+            : installmentDues,
 
         autoRenew,
 
@@ -2270,43 +2313,18 @@ export default function ContractForm({
                 </button>
               </div>
 
-              <select
-                value={
-                  clientId
-                }
-                onChange={(
-                  event
-                ) =>
-                  handleClientChange(
-                    event.target.value
-                  )
-                }
-                required
-                className="input mt-2"
-              >
-                <option value="">
-                  Selecione...
-                </option>
-
-                {clients.map(
-                  (
-                    client
-                  ) => (
-                    <option
-                      key={
-                        client.id
-                      }
-                      value={
-                        client.id
-                      }
-                    >
-                      {
-                        client.name
-                      }
-                    </option>
-                  )
+              <ClientCombobox
+                clients={clients.map(
+                  (client) => ({
+                    id: client.id,
+                    name: client.name,
+                  })
                 )}
-              </select>
+                value={clientId}
+                onChange={
+                  handleClientChange
+                }
+              />
             </div>
 
             {/* PRODUTO */}
@@ -2374,7 +2392,9 @@ export default function ContractForm({
             <Field label="Valor total">
               <input
                 value={
-                  value
+                  courtesy
+                    ? "0,00 (cortesia)"
+                    : value
                 }
                 onChange={(
                   event
@@ -2385,9 +2405,24 @@ export default function ContractForm({
                 }
                 placeholder="0,00"
                 inputMode="decimal"
-                required
-                className="input"
+                required={!courtesy}
+                disabled={courtesy}
+                className="input disabled:bg-slate-50 disabled:text-slate-400"
               />
+
+              <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={courtesy}
+                  onChange={(event) =>
+                    setCourtesy(
+                      event.target.checked
+                    )
+                  }
+                  className="h-4 w-4"
+                />
+                Cortesia — o cliente ganha (sem cobrança, sem parcelas, sem comissão)
+              </label>
             </Field>
 
             {/* PERIODICIDADE */}
@@ -2792,6 +2827,11 @@ export default function ContractForm({
             COBRANÇA
            ================================================= */}
 
+        {courtesy ? (
+          <section className="mt-6 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+            Contrato de cortesia — sem forma de pagamento, parcelas ou comissão.
+          </section>
+        ) : (
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#15704f]/10">
@@ -3094,6 +3134,7 @@ export default function ContractForm({
               </div>
             )}
         </section>
+        )}
 
         {/* OBSERVAÇÕES */}
 
@@ -3124,7 +3165,8 @@ export default function ContractForm({
             disabled={
               loading ||
               userLoading ||
-              !installmentsBalanced
+              (!courtesy &&
+                !installmentsBalanced)
             }
             className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-6 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:cursor-not-allowed disabled:opacity-50"
           >
