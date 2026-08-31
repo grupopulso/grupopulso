@@ -28,6 +28,7 @@ import {
 
 import {
   createContract,
+  getContractPaymentMethods,
 } from "@/app/(dashboard)/contratos/novo/actions";
 
 import {
@@ -719,30 +720,7 @@ export default function ContractForm({
                 "name"
               ),
 
-            supabase
-              .from(
-                "payment_methods"
-              )
-              .select(`
-                id,
-                name,
-                code,
-                use_for
-              `)
-              .eq(
-                "active",
-                true
-              )
-              .in(
-                "use_for",
-                [
-                  "income",
-                  "both",
-                ]
-              )
-              .order(
-                "name"
-              ),
+            getContractPaymentMethods(),
 
             supabase
               .from(
@@ -830,15 +808,6 @@ export default function ContractForm({
         }
 
         if (
-          paymentMethodsResult.error
-        ) {
-          console.error(
-            "Erro ao carregar formas de pagamento:",
-            paymentMethodsResult.error
-          );
-        }
-
-        if (
           tvsResult.error
         ) {
           console.error(
@@ -896,7 +865,7 @@ export default function ContractForm({
         );
 
         setPaymentMethods(
-          paymentMethodsResult.data ??
+          paymentMethodsResult ??
             []
         );
 

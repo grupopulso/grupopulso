@@ -9,6 +9,10 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
   requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -275,8 +279,13 @@ export async function getRenewalPrefill(
     "create"
   );
 
-  const supabase =
-    await createClient();
+  /*
+   * Prefill de renovação: leitura via service role para
+   * não depender de o vendedor ter o módulo financeiro /
+   * `contracts.view` amplo. O escopo de empresa é checado
+   * abaixo com `requireCompanyAccess`.
+   */
+  const supabase = createAdminClient();
 
   if (!contractId) {
     return {
@@ -466,8 +475,12 @@ export async function linkRenewalContracts(
     "create"
   );
 
-  const supabase =
-    await createClient();
+  /*
+   * Registro do vínculo de renovação no contrato antigo:
+   * update via service role (o vendedor pode não ter
+   * `contracts.edit`). Escopo de empresa checado abaixo.
+   */
+  const supabase = createAdminClient();
 
   if (!oldContractId || !newContractId) {
     return {

@@ -9,6 +9,10 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
   requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -113,7 +117,7 @@ export async function createContract(
     input.courtesy
   );
 
-  const supabase =
+  const authClient =
     await createClient();
 
   /*
@@ -129,7 +133,7 @@ export async function createContract(
     error:
       userError,
   } =
-    await supabase.auth
+    await authClient.auth
       .getUser();
 
   if (
@@ -146,6 +150,19 @@ export async function createContract(
 
   const responsibleUserId =
     user.id;
+
+  /*
+   * Toda a escrita do contrato (contrato + parcelas +
+   * comissões + lançamentos financeiros) roda com o
+   * cliente administrativo. O acesso já foi validado
+   * por `requireModulePermission("contracts","create")`
+   * e por `requireCompanyAccess` logo abaixo. Isso permite
+   * que um vendedor SEM acesso ao módulo financeiro
+   * consiga criar o contrato, mesmo que ele gere
+   * lançamentos em `financial_entries` (bloqueado por RLS
+   * para esse usuário).
+   */
+  const supabase = createAdminClient();
 
   /*
    * =====================================================
@@ -1658,10 +1675,8 @@ export async function createContract(
  */
 
 async function rollbackContract(
-  supabase: Awaited<
-    ReturnType<
-      typeof createClient
-    >
+  supabase: ReturnType<
+    typeof createAdminClient
   >,
   contractId:
     string
@@ -1851,4 +1866,56 @@ function roundMoney(
     ) /
     100
   );
+}
+
+/*
+ * =====================================================
+ * FORMAS DE PAGAMENTO PARA O CONTRATO
+ * =====================================================
+ *
+ * O vendedor não tem acesso ao módulo financeiro, então
+ * a leitura direta de `payment_methods` no navegador é
+ * bloqueada por RLS. Aqui devolvemos as formas de
+ * recebimento ativas via service role, exigindo apenas
+ * permissão de criar contrato.
+ */
+export type ContractPaymentMethod = {
+  id: string;
+  name: string;
+  code: string;
+  use_for: string;
+};
+
+export async function getContractPaymentMethods(): Promise<
+  ContractPaymentMethod[]
+> {
+  await requireModulePermission(
+    "contracts",
+    "create"
+  );
+
+  const adminDb = createAdminClient();
+
+  const { data, error } = await adminDb
+    .from("payment_methods")
+    .select(`
+      id,
+      name,
+      code,
+      use_for
+    `)
+    .eq("active", true)
+    .in("use_for", ["income", "both"])
+    .order("name");
+
+  if (error) {
+    console.error(
+      "Erro ao carregar formas de pagamento:",
+      error
+    );
+
+    return [];
+  }
+
+  return (data ?? []) as ContractPaymentMethod[];
 }
