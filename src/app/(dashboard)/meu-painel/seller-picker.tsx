@@ -2,6 +2,7 @@
 
 import {
   useRouter,
+  useSearchParams,
 } from "next/navigation";
 
 type Seller = {
@@ -20,6 +21,8 @@ export default function SellerPicker({
 }) {
   const router = useRouter();
 
+  const searchParams = useSearchParams();
+
   return (
     <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
       <span className="text-xs font-medium text-slate-500">
@@ -31,13 +34,25 @@ export default function SellerPicker({
         onChange={(event) => {
           const value = event.target.value;
 
+          /*
+           * Preserva o período (mes/ano/periodo) já
+           * selecionado ao trocar de vendedor.
+           */
+          const query = new URLSearchParams(
+            searchParams.toString()
+          );
+
           if (value === currentUserId) {
-            router.push("/meu-painel");
+            query.delete("vendedor");
           } else {
-            router.push(
-              `/meu-painel?vendedor=${value}`
-            );
+            query.set("vendedor", value);
           }
+
+          const qs = query.toString();
+
+          router.push(
+            qs ? `/meu-painel?${qs}` : "/meu-painel"
+          );
         }}
         className="bg-transparent text-sm font-semibold text-slate-800 outline-none"
       >

@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   ArrowRight,
   CalendarClock,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   HandCoins,
   RefreshCw,
@@ -80,9 +82,35 @@ function formatDate(value: string | null) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
+const MONTH_LABELS = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
+function formatDateOnly(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 type PageProps = {
   searchParams: Promise<{
     vendedor?: string;
+    mes?: string;
+    ano?: string;
+    periodo?: string;
   }>;
 };
 
@@ -95,9 +123,138 @@ export default async function MeuPainelPage({
   const isAdmin =
     access.profile.role === "admin";
 
-  const { vendedor } = await searchParams;
+  const { vendedor, mes, ano, periodo } =
+    await searchParams;
 
   const today = todayString();
+
+  /*
+   * =========================
+   * PERÍODO (mensal/anual, igual ao dashboard)
+   * =========================
+   */
+
+  const realNow = new Date();
+
+  const isAnnual = periodo === "ano";
+
+  const parsedYear = Number(ano);
+  const parsedMonth = Number(mes);
+
+  const year =
+    Number.isInteger(parsedYear) &&
+    parsedYear >= 2000 &&
+    parsedYear <= 2100
+      ? parsedYear
+      : realNow.getFullYear();
+
+  const month =
+    Number.isInteger(parsedMonth) &&
+    parsedMonth >= 1 &&
+    parsedMonth <= 12
+      ? parsedMonth
+      : realNow.getMonth() + 1;
+
+  const periodStart = formatDateOnly(
+    isAnnual
+      ? new Date(year, 0, 1)
+      : new Date(year, month - 1, 1)
+  );
+
+  const periodEndInclusive = formatDateOnly(
+    isAnnual
+      ? new Date(year, 11, 31)
+      : new Date(year, month, 0)
+  );
+
+  const periodEndExclusive = formatDateOnly(
+    isAnnual
+      ? new Date(year + 1, 0, 1)
+      : new Date(year, month, 1)
+  );
+
+  function buildPeriodHref(
+    params: Record<string, string | undefined>
+  ) {
+    const query = new URLSearchParams();
+
+    if (vendedor) {
+      query.set("vendedor", vendedor);
+    }
+
+    for (const [key, value] of Object.entries(
+      params
+    )) {
+      if (value) {
+        query.set(key, value);
+      }
+    }
+
+    const qs = query.toString();
+
+    return qs
+      ? `/meu-painel?${qs}`
+      : "/meu-painel";
+  }
+
+  const prevMonth =
+    month === 1 ? 12 : month - 1;
+
+  const prevMonthYear =
+    month === 1 ? year - 1 : year;
+
+  const nextMonth =
+    month === 12 ? 1 : month + 1;
+
+  const nextMonthYear =
+    month === 12 ? year + 1 : year;
+
+  const period = {
+    isAnnual,
+
+    label: isAnnual
+      ? `Ano ${year}`
+      : `${MONTH_LABELS[month - 1]} ${year}`,
+
+    isCurrent: isAnnual
+      ? year === realNow.getFullYear()
+      : year === realNow.getFullYear() &&
+        month === realNow.getMonth() + 1,
+
+    prevHref: isAnnual
+      ? buildPeriodHref({
+          periodo: "ano",
+          ano: String(year - 1),
+        })
+      : buildPeriodHref({
+          ano: String(prevMonthYear),
+          mes: String(prevMonth),
+        }),
+
+    nextHref: isAnnual
+      ? buildPeriodHref({
+          periodo: "ano",
+          ano: String(year + 1),
+        })
+      : buildPeriodHref({
+          ano: String(nextMonthYear),
+          mes: String(nextMonth),
+        }),
+
+    resetHref: isAnnual
+      ? buildPeriodHref({ periodo: "ano" })
+      : buildPeriodHref({}),
+
+    monthlyHref: buildPeriodHref({
+      ano: String(year),
+      mes: String(month),
+    }),
+
+    annualHref: buildPeriodHref({
+      periodo: "ano",
+      ano: String(year),
+    }),
+  };
 
   const supabase = await createClient();
 
@@ -271,7 +428,9 @@ export default async function MeuPainelPage({
         )
         .in("contract_id", contractIds)
         .eq("type", "income")
-        .neq("status", "cancelled");
+        .neq("status", "cancelled")
+        .gte("due_date", periodStart)
+        .lte("due_date", periodEndInclusive);
 
     const contractTitleById = new Map(
       myContracts.map((contract) => [
@@ -371,6 +530,8 @@ export default async function MeuPainelPage({
     `
     )
     .eq("seller_user_id", userId)
+    .gte("created_at", periodStart)
+    .lt("created_at", periodEndExclusive)
     .order("created_at", {
       ascending: false,
     });
@@ -439,6 +600,8 @@ export default async function MeuPainelPage({
       `
       )
       .eq("beneficiary_user_id", userId)
+      .gte("created_at", periodStart)
+      .lt("created_at", periodEndExclusive)
       .order("created_at", { ascending: false }),
 
     adminDb
@@ -462,6 +625,8 @@ export default async function MeuPainelPage({
       `
       )
       .eq("beneficiary_user_id", userId)
+      .gte("created_at", periodStart)
+      .lt("created_at", periodEndExclusive)
       .order("created_at", { ascending: false }),
   ]);
 
@@ -593,15 +758,76 @@ export default async function MeuPainelPage({
             </div>
           </div>
 
-          {isAdmin && (
-            <SellerPicker
-              sellers={sellerOptions}
-              currentUserId={
-                access.user.id
-              }
-              selectedId={userId}
-            />
-          )}
+          <div className="flex flex-col items-stretch gap-3 sm:items-end">
+            {isAdmin && (
+              <SellerPicker
+                sellers={sellerOptions}
+                currentUserId={
+                  access.user.id
+                }
+                selectedId={userId}
+              />
+            )}
+
+            {/* SELETOR DE PERÍODO */}
+
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <div className="inline-flex self-end rounded-xl border border-slate-200 bg-white p-1">
+                <Link
+                  href={period.monthlyHref}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    !period.isAnnual
+                      ? "bg-[#15704f] text-white"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Mensal
+                </Link>
+
+                <Link
+                  href={period.annualHref}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    period.isAnnual
+                      ? "bg-[#15704f] text-white"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Anual
+                </Link>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Link
+                  href={period.prevHref}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Link>
+
+                <div className="min-w-[160px] rounded-xl border border-slate-200 bg-white px-4 py-2 text-center">
+                  <p className="text-sm font-semibold text-slate-900">
+                    {period.label}
+                  </p>
+
+                  {!period.isCurrent && (
+                    <Link
+                      href={period.resetHref}
+                      className="text-[11px] font-medium text-[#15704f] hover:underline"
+                    >
+                      Voltar para o atual
+                    </Link>
+                  )}
+                </div>
+
+                <Link
+                  href={period.nextHref}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* RESUMO */}
@@ -643,7 +869,11 @@ export default async function MeuPainelPage({
 
           <SummaryCard
             icon={AlertTriangle}
-            label="Cobranças em atraso"
+            label={
+              period.isAnnual
+                ? "Cobranças em atraso no ano"
+                : "Cobranças em atraso no mês"
+            }
             value={formatCurrency(
               overdueTotal
             )}
@@ -657,7 +887,11 @@ export default async function MeuPainelPage({
 
           <SummaryCard
             icon={HandCoins}
-            label="Comissões a receber"
+            label={
+              period.isAnnual
+                ? "Comissões a receber no ano"
+                : "Comissões a receber no mês"
+            }
             value={formatCurrency(
               commissionTotals.pending
             )}
@@ -751,7 +985,7 @@ export default async function MeuPainelPage({
 
         <Panel
           title="Cobranças em atraso"
-          subtitle="Parcelas vencidas dos contratos sob sua responsabilidade."
+          subtitle={`Parcelas vencidas dos contratos sob sua responsabilidade, com vencimento em ${period.label}.`}
         >
           {overdueEntries.length === 0 ? (
             <EmptyRow text="Nenhuma cobrança em atraso. 👍" />
@@ -895,7 +1129,7 @@ export default async function MeuPainelPage({
 
         <Panel
           title="Minhas vendas de publicidade"
-          subtitle={`${mySales.length} venda(s) · ${formatCurrency(
+          subtitle={`${mySales.length} venda(s) em ${period.label} · ${formatCurrency(
             confirmedSalesTotal
           )} confirmado.`}
         >
@@ -948,7 +1182,7 @@ export default async function MeuPainelPage({
 
         <Panel
           title="Minhas comissões"
-          subtitle={`${formatCurrency(
+          subtitle={`Em ${period.label}: ${formatCurrency(
             commissionTotals.pending
           )} a receber · ${formatCurrency(
             commissionTotals.paid
