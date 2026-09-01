@@ -749,6 +749,28 @@ export default async function ClientPage({
                         return null;
                       }
 
+                      const companyContracts =
+                        contracts.filter(
+                          (contract) =>
+                            getCompany(
+                              contract.company
+                            )?.id ===
+                            company.id
+                        );
+
+                      const urgentContract =
+                        getMostUrgentContract(
+                          companyContracts
+                        );
+
+                      const status =
+                        getMostUrgentContractStatus(
+                          companyContracts
+                        ) ??
+                        normalizeStoredStatus(
+                          relation.status
+                        );
+
                       return (
                         <div
                           key={`${company.id}-${index}`}
@@ -777,22 +799,25 @@ export default async function ClientPage({
                             </div>
                           </div>
 
-                          <StatusBadge
-                            status={
-                              getMostUrgentContractStatus(
-                                contracts.filter(
-                                  (contract) =>
-                                    getCompany(
-                                      contract.company
-                                    )?.id ===
-                                    company.id
-                                )
-                              ) ??
-                              normalizeStoredStatus(
-                                relation.status
-                              )
-                            }
-                          />
+                          {urgentContract ? (
+                            <Link
+                              href={`/contratos/${urgentContract.id}`}
+                              className="transition hover:opacity-80"
+                              title="Abrir o contrato"
+                            >
+                              <StatusBadge
+                                status={
+                                  status
+                                }
+                              />
+                            </Link>
+                          ) : (
+                            <StatusBadge
+                              status={
+                                status
+                              }
+                            />
+                          )}
                         </div>
                       );
                     }
@@ -843,11 +868,12 @@ export default async function ClientPage({
                         );
 
                       return (
-                        <div
+                        <Link
                           key={
                             contract.id
                           }
-                          className="rounded-xl border border-slate-200 p-4 transition hover:bg-slate-50"
+                          href={`/contratos/${contract.id}`}
+                          className="block rounded-xl border border-slate-200 p-4 transition hover:border-[#15704f]/40 hover:bg-slate-50"
                         >
                           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                             <div>
@@ -907,7 +933,7 @@ export default async function ClientPage({
                               />
                             </div>
                           </div>
-                        </div>
+                        </Link>
                       );
                     }
                   )
@@ -1356,6 +1382,49 @@ function getMainStatus(
   }
 
   return "active";
+}
+
+/*
+ * Dado os contratos de um cliente numa empresa, acha o contrato
+ * cujo status calculado é o mais urgente (vencido > a vencer >
+ * ativo > cancelado) — usado para linkar o badge de "Empresas
+ * vinculadas" direto pro contrato correspondente.
+ */
+function getMostUrgentContract<
+  T extends {
+    status: string;
+    start_date: string;
+    end_date: string | null;
+  },
+>(contracts: T[]): T | null {
+  const priority = [
+    "expired",
+    "expiring",
+    "active",
+    "cancelled",
+  ];
+
+  let best: T | null = null;
+  let bestRank = Infinity;
+
+  for (const contract of contracts) {
+    const status = getContractStatus(
+      contract
+    );
+
+    const rank =
+      priority.indexOf(status);
+
+    if (
+      rank !== -1 &&
+      rank < bestRank
+    ) {
+      best = contract;
+      bestRank = rank;
+    }
+  }
+
+  return best;
 }
 
 function getCompany(

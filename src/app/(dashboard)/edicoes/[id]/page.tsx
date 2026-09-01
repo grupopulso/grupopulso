@@ -1833,7 +1833,36 @@ export default async function EditionPage({
     );
 
   return (
-    <main className="min-h-screen bg-[#f5f7f6] p-8">
+    <main className="min-h-screen bg-[#f5f7f6]">
+      {/* BARRA FIXA: nome da edição + data */}
+
+      <div className="sticky top-20 z-20 border-b border-slate-200 bg-white/95 px-8 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-3 gap-y-1">
+          <p className="font-semibold text-slate-900">
+            {edition.name}
+          </p>
+
+          {edition.edition_number && (
+            <span className="text-xs text-slate-400">
+              Nº {edition.edition_number}
+            </span>
+          )}
+
+          <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
+            <CalendarDays className="h-3.5 w-3.5" />
+
+            {formatDate(
+              edition.publication_date
+            )}
+          </span>
+
+          <StatusBadge
+            status={edition.status}
+          />
+        </div>
+      </div>
+
+      <div className="p-8">
       <div className="mx-auto max-w-7xl">
         <Link
           href="/edicoes"
@@ -2825,6 +2854,7 @@ export default async function EditionPage({
             generalPositionSummaries
           }
         />
+      </div>
       </div>
     </main>
   );
