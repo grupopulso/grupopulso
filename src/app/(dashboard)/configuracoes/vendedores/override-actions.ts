@@ -5,8 +5,8 @@ import {
 } from "next/cache";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireAuthenticatedUser,
@@ -73,8 +73,12 @@ export async function saveOverrideRule(
     };
   }
 
+  /*
+   * Service role: já validado que quem chama é admin logo
+   * acima. Evita bloqueio de RLS em `seller_override_rules`.
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   /*
    * Confirma que os dois usuários
@@ -240,8 +244,12 @@ export async function toggleOverrideRule(
     };
   }
 
+  /*
+   * Service role: já validado que quem chama é admin logo
+   * acima. Evita bloqueio de RLS em `seller_override_rules`.
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   const {
     error,
@@ -308,8 +316,12 @@ export async function deleteOverrideRule(
     };
   }
 
+  /*
+   * Service role: já validado que quem chama é admin logo
+   * acima. Evita bloqueio de RLS em `seller_override_rules`.
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   const {
     error,

@@ -14,6 +14,7 @@ import {
 } from "@/app/lib/permissions";
 
 import SellerManagement from "./seller-management";
+import OverrideManagement from "./override-management";
 
 export default async function SellersSettingsPage() {
   const access =
@@ -145,6 +146,39 @@ export default async function SellersSettingsPage() {
     );
   }
 
+  /*
+   * =========================
+   * COMISSÕES ADICIONAIS (override)
+   * =========================
+   */
+
+  const {
+    data: overrideRules,
+    error: overrideRulesError,
+  } =
+    await supabase
+      .from(
+        "seller_override_rules"
+      )
+      .select(`
+        id,
+        company_id,
+        beneficiary_user_id,
+        source_user_id,
+        percentage,
+        active
+      `)
+      .order(
+        "created_at"
+      );
+
+  if (overrideRulesError) {
+    console.error(
+      "Erro ao carregar comissões adicionais:",
+      overrideRulesError
+    );
+  }
+
   const users =
     (
       profiles ??
@@ -230,6 +264,25 @@ export default async function SellersSettingsPage() {
           }
           settings={
             settings ??
+            []
+          }
+        />
+
+        {/* COMISSÕES ADICIONAIS */}
+
+        <OverrideManagement
+          users={
+            users
+          }
+          companies={
+            companyOptions
+          }
+          sellerSettings={
+            settings ??
+            []
+          }
+          rules={
+            overrideRules ??
             []
           }
         />
