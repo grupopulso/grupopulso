@@ -378,6 +378,21 @@ export default async function RelatorioEdicoesPage({
         )
       : editionSummaries;
 
+  const editionMaxScale =
+    visibleEditionSummaries.length >
+    0
+      ? Math.max(
+          ...visibleEditionSummaries.map(
+            (edition) =>
+              Math.max(
+                edition.goal,
+                edition.sold
+              )
+          ),
+          1
+        ) * 1.15
+      : 1;
+
   function monthHref(
     monthNumber: number | null
   ) {
@@ -779,6 +794,204 @@ export default async function RelatorioEdicoesPage({
             })}
           </div>
         </div>
+
+        {/* GRÁFICO POR EDIÇÃO (só com um mês selecionado) */}
+
+        {selectedMonth !== null && (
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-slate-900">
+                  Meta x Vendido por edição —{" "}
+                  {
+                    MONTH_LABELS_FULL[
+                      selectedMonth -
+                        1
+                    ]
+                  }
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Cada edição publicada no mês, com a mesma comparação de meta x vendido. Clique para abrir a edição.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                <LegendItem
+                  swatchClass="bg-slate-300"
+                  label="Meta"
+                />
+
+                <LegendItem
+                  swatchClass="bg-[#15704f]"
+                  label="Vendido (meta atingida)"
+                />
+
+                <LegendItem
+                  swatchClass="bg-amber-500"
+                  label="Vendido (abaixo da meta)"
+                />
+              </div>
+            </div>
+
+            {visibleEditionSummaries.length >
+            0 ? (
+              <div className="mt-8 flex items-end gap-2 overflow-x-auto pb-2 sm:gap-4">
+                {visibleEditionSummaries.map(
+                  (edition) => {
+                    const goalHeight =
+                      editionMaxScale >
+                      0
+                        ? (edition.goal /
+                            editionMaxScale) *
+                          100
+                        : 0;
+
+                    const soldHeight =
+                      editionMaxScale >
+                      0
+                        ? (edition.sold /
+                            editionMaxScale) *
+                          100
+                        : 0;
+
+                    const soldColor =
+                      edition.goal <=
+                      0
+                        ? "bg-slate-300"
+                        : edition.sold >=
+                            edition.goal
+                          ? "bg-[#15704f]"
+                          : "bg-amber-500";
+
+                    const editionLabel =
+                      edition.editionNumber
+                        ? `Nº ${edition.editionNumber}`
+                        : edition.name.slice(
+                            0,
+                            10
+                          );
+
+                    return (
+                      <Link
+                        key={
+                          edition.id
+                        }
+                        href={`/edicoes/${edition.id}`}
+                        className="flex min-w-[56px] flex-1 flex-col items-center gap-2 rounded-lg py-1 transition hover:bg-slate-50"
+                      >
+                        <div className="group relative flex h-48 items-end gap-1">
+                          {/* TOOLTIP */}
+
+                          <div className="pointer-events-none absolute -top-2 left-1/2 z-10 w-max max-w-[220px] -translate-x-1/2 -translate-y-full whitespace-normal rounded-lg bg-slate-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                            <p className="font-semibold">
+                              {
+                                edition.name
+                              }
+                            </p>
+
+                            <p className="mt-1 text-slate-300">
+                              {formatDate(
+                                edition.date
+                              )}
+                            </p>
+
+                            <p className="mt-1 text-slate-300">
+                              Meta:{" "}
+                              <span className="font-medium text-white">
+                                {formatCurrency(
+                                  edition.goal
+                                )}
+                              </span>
+                            </p>
+
+                            <p className="text-slate-300">
+                              Vendido:{" "}
+                              <span className="font-medium text-white">
+                                {formatCurrency(
+                                  edition.sold
+                                )}
+                              </span>
+                            </p>
+
+                            {edition.percent !==
+                              null && (
+                              <p
+                                className={`mt-1 font-semibold ${
+                                  edition.percent >=
+                                  100
+                                    ? "text-emerald-300"
+                                    : "text-amber-300"
+                                }`}
+                              >
+                                {formatPercentage(
+                                  edition.percent
+                                )}{" "}
+                                da meta
+                              </p>
+                            )}
+
+                            <div className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-900" />
+                          </div>
+
+                          <div
+                            className="w-3.5 rounded-t bg-slate-200"
+                            style={{
+                              height: `${goalHeight}%`,
+                            }}
+                          />
+
+                          <div
+                            className={`w-3.5 rounded-t transition-all ${soldColor}`}
+                            style={{
+                              height: `${soldHeight}%`,
+                            }}
+                          />
+                        </div>
+
+                        <span className="max-w-[80px] truncate text-xs font-medium text-slate-600">
+                          {
+                            editionLabel
+                          }
+                        </span>
+
+                        {edition.percent !==
+                        null ? (
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              edition.percent >=
+                              100
+                                ? "text-[#15704f]"
+                                : "text-amber-600"
+                            }`}
+                          >
+                            {formatPercentage(
+                              edition.percent
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-300">
+                            —
+                          </span>
+                        )}
+                      </Link>
+                    );
+                  }
+                )}
+              </div>
+            ) : (
+              <p className="mt-8 text-sm text-slate-400">
+                Nenhuma edição publicada em{" "}
+                {
+                  MONTH_LABELS_FULL[
+                    selectedMonth - 1
+                  ]
+                }{" "}
+                de {year}.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* TABELA DE EDIÇÕES */}
 
