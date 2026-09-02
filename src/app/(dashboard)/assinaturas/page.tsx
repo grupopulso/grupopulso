@@ -547,15 +547,27 @@ function getFirst<T>(
 }
 
 function formatDate(
-  date: string
+  date: string | null
 ) {
+  if (!date) {
+    return "—";
+  }
+
+  const parsed = new Date(
+    `${date}T12:00:00`
+  );
+
+  if (
+    Number.isNaN(
+      parsed.getTime()
+    )
+  ) {
+    return "—";
+  }
+
   return new Intl.DateTimeFormat(
     "pt-BR"
-  ).format(
-    new Date(
-      `${date}T12:00:00`
-    )
-  );
+  ).format(parsed);
 }
 
 function formatCurrency(
