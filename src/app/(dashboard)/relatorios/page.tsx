@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   ArrowRight,
   BarChart3,
+  Building2,
   CircleDollarSign,
   FileText,
   Newspaper,
@@ -431,6 +432,13 @@ const routes =
             title="Edições e Publicidade"
             description="Meta comercial x publicidade vendida, por mês e no ano, em gráficos."
             href="/relatorios/edicoes"
+          />
+
+          <ReportCard
+            icon={Building2}
+            title="Metas e Faturamento"
+            description="Meta x faturado por mês e no ano, consolidado e por empresa, em gráficos."
+            href="/relatorios/metas"
           />
 
           <ReportCard

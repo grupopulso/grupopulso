@@ -346,6 +346,29 @@ export default async function RelatorioFinanceiroPage({
       validEntries
     );
 
+  /*
+   * =====================================================
+   * RECEITAS x DESPESAS POR MÊS (dentro do período filtrado)
+   * =====================================================
+   */
+
+  const monthlyBuckets =
+    createMonthlyBuckets(
+      validEntries
+    );
+
+  const monthlyMaxScale =
+    Math.max(
+      ...monthlyBuckets.map(
+        (bucket) =>
+          Math.max(
+            bucket.income,
+            bucket.expense
+          )
+      ),
+      1
+    ) * 1.15;
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-[1500px]">
@@ -514,6 +537,139 @@ export default async function RelatorioFinanceiroPage({
             </p>
           </div>
         </div>
+
+        {/* GRÁFICO: RECEITAS x DESPESAS POR MÊS */}
+
+        {monthlyBuckets.length > 1 && (
+          <div className="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <h2 className="font-semibold text-slate-900">
+                  Receitas x Despesas por mês
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Lançamentos do período filtrado, agrupados por mês de vencimento.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                <LegendItem
+                  swatchClass="bg-emerald-500"
+                  label="Receitas"
+                />
+
+                <LegendItem
+                  swatchClass="bg-red-400"
+                  label="Despesas"
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-end gap-2 overflow-x-auto pb-2 sm:gap-4">
+              {monthlyBuckets.map(
+                (bucket) => {
+                  const incomeHeight =
+                    monthlyMaxScale >
+                    0
+                      ? (bucket.income /
+                          monthlyMaxScale) *
+                        100
+                      : 0;
+
+                  const expenseHeight =
+                    monthlyMaxScale >
+                    0
+                      ? (bucket.expense /
+                          monthlyMaxScale) *
+                        100
+                      : 0;
+
+                  const bucketResult =
+                    roundMoney(
+                      bucket.income -
+                        bucket.expense
+                    );
+
+                  return (
+                    <div
+                      key={
+                        bucket.key
+                      }
+                      className="flex min-w-[52px] flex-1 flex-col items-center gap-2"
+                    >
+                      <div className="group relative flex h-48 items-end gap-1">
+                        {/* TOOLTIP */}
+
+                        <div className="pointer-events-none absolute -top-2 left-1/2 z-10 w-max -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                          <p className="font-semibold">
+                            {
+                              bucket.label
+                            }
+                          </p>
+
+                          <p className="mt-1 text-slate-300">
+                            Receitas:{" "}
+                            <span className="font-medium text-white">
+                              {formatCurrency(
+                                bucket.income
+                              )}
+                            </span>
+                          </p>
+
+                          <p className="text-slate-300">
+                            Despesas:{" "}
+                            <span className="font-medium text-white">
+                              {formatCurrency(
+                                bucket.expense
+                              )}
+                            </span>
+                          </p>
+
+                          <p
+                            className={`mt-1 font-semibold ${
+                              bucketResult >=
+                              0
+                                ? "text-emerald-300"
+                                : "text-red-300"
+                            }`}
+                          >
+                            Resultado:{" "}
+                            {formatCurrency(
+                              bucketResult
+                            )}
+                          </p>
+
+                          <div className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-900" />
+                        </div>
+
+                        <div
+                          className="w-3.5 rounded-t bg-emerald-500"
+                          style={{
+                            height: `${incomeHeight}%`,
+                          }}
+                        />
+
+                        <div
+                          className="w-3.5 rounded-t bg-red-400"
+                          style={{
+                            height: `${expenseHeight}%`,
+                          }}
+                        />
+                      </div>
+
+                      <span className="text-xs font-medium text-slate-600">
+                        {
+                          bucket.label
+                        }
+                      </span>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="mt-7 grid grid-cols-1 gap-6 xl:grid-cols-3">
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white xl:col-span-2">
@@ -789,6 +945,129 @@ function createCategoryStats(
   ).sort(
     (a, b) =>
       b.total - a.total
+  );
+}
+
+const MONTH_LABELS_SHORT = [
+  "Jan",
+  "Fev",
+  "Mar",
+  "Abr",
+  "Mai",
+  "Jun",
+  "Jul",
+  "Ago",
+  "Set",
+  "Out",
+  "Nov",
+  "Dez",
+];
+
+function createMonthlyBuckets(
+  entries: (
+    Entry & {
+      calculatedStatus: string;
+    }
+  )[]
+) {
+  const map = new Map<
+    string,
+    {
+      key: string;
+      label: string;
+      income: number;
+      expense: number;
+    }
+  >();
+
+  for (const entry of entries) {
+    const key = (
+      entry.due_date ?? ""
+    ).slice(0, 7);
+
+    const monthIndex =
+      Number(
+        (entry.due_date ?? "").slice(
+          5,
+          7
+        )
+      ) - 1;
+
+    if (
+      !key ||
+      monthIndex < 0 ||
+      monthIndex > 11
+    ) {
+      continue;
+    }
+
+    const yearLabel = (
+      entry.due_date ?? ""
+    ).slice(0, 4);
+
+    const label = `${MONTH_LABELS_SHORT[monthIndex]}/${yearLabel.slice(2)}`;
+
+    const current =
+      map.get(key) ??
+      {
+        key,
+        label,
+        income: 0,
+        expense: 0,
+      };
+
+    if (entry.type === "income") {
+      current.income += calculateTotal(
+        entry
+      );
+    } else {
+      current.expense += calculateTotal(
+        entry
+      );
+    }
+
+    map.set(key, current);
+  }
+
+  return Array.from(map.values())
+    .sort((a, b) =>
+      a.key.localeCompare(b.key)
+    )
+    .map((bucket) => ({
+      ...bucket,
+      income: roundMoney(
+        bucket.income
+      ),
+      expense: roundMoney(
+        bucket.expense
+      ),
+    }));
+}
+
+function roundMoney(value: number) {
+  return (
+    Math.round(
+      (Number(value) +
+        Number.EPSILON) *
+        100
+    ) / 100
+  );
+}
+
+function LegendItem({
+  swatchClass,
+  label,
+}: {
+  swatchClass: string;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className={`h-2.5 w-2.5 rounded-full ${swatchClass}`}
+      />
+      {label}
+    </span>
   );
 }
 
