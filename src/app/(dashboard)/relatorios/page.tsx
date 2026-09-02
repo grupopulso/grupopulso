@@ -5,6 +5,7 @@ import {
   BarChart3,
   CircleDollarSign,
   FileText,
+  Newspaper,
   Route,
   TrendingDown,
   TrendingUp,
@@ -423,6 +424,13 @@ const routes =
             title="Financeiro"
             description="Receitas, despesas, contas em aberto, vencidos e fluxo."
             href="/relatorios/financeiro"
+          />
+
+          <ReportCard
+            icon={Newspaper}
+            title="Edições e Publicidade"
+            description="Meta comercial x publicidade vendida, por mês e no ano, em gráficos."
+            href="/relatorios/edicoes"
           />
 
           <ReportCard
