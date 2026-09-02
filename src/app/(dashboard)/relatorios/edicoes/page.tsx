@@ -28,6 +28,21 @@ const MONTH_LABELS_SHORT = [
   "Dez",
 ];
 
+const MONTH_LABELS_FULL = [
+  "Janeiro",
+  "Fevereiro",
+  "Março",
+  "Abril",
+  "Maio",
+  "Junho",
+  "Julho",
+  "Agosto",
+  "Setembro",
+  "Outubro",
+  "Novembro",
+  "Dezembro",
+];
+
 type EditionSale = {
   id: string;
   total_amount: number | string | null;
@@ -47,6 +62,7 @@ type EditionRow = {
 type PageProps = {
   searchParams: Promise<{
     ano?: string;
+    mes?: string;
   }>;
 };
 
@@ -56,7 +72,8 @@ export default async function RelatorioEdicoesPage({
   const access =
     await requireEstafetaAccess();
 
-  const { ano } = await searchParams;
+  const { ano, mes } =
+    await searchParams;
 
   const supabase =
     await createClient();
@@ -71,6 +88,15 @@ export default async function RelatorioEdicoesPage({
     parsedYear <= 2100
       ? parsedYear
       : realNow.getFullYear();
+
+  const parsedMonth = Number(mes);
+
+  const selectedMonth =
+    Number.isInteger(parsedMonth) &&
+    parsedMonth >= 1 &&
+    parsedMonth <= 12
+      ? parsedMonth
+      : null;
 
   const yearStart = `${year}-01-01`;
   const yearEnd = `${year}-12-31`;
@@ -324,6 +350,52 @@ export default async function RelatorioEdicoesPage({
       1
     ) * 1.15;
 
+  /*
+   * =====================================================
+   * MÊS SELECIONADO (drill-down)
+   * =====================================================
+   */
+
+  const selectedMonthSummary =
+    selectedMonth !== null
+      ? monthly[selectedMonth - 1]
+      : null;
+
+  const selectedMonthPercent =
+    selectedMonthSummary &&
+    selectedMonthSummary.goal > 0
+      ? (selectedMonthSummary.sold /
+          selectedMonthSummary.goal) *
+        100
+      : null;
+
+  const visibleEditionSummaries =
+    selectedMonth !== null
+      ? editionSummaries.filter(
+          (edition) =>
+            edition.month ===
+            selectedMonth
+        )
+      : editionSummaries;
+
+  function monthHref(
+    monthNumber: number | null
+  ) {
+    const query =
+      new URLSearchParams();
+
+    query.set("ano", String(year));
+
+    if (monthNumber !== null) {
+      query.set(
+        "mes",
+        String(monthNumber)
+      );
+    }
+
+    return `/relatorios/edicoes?${query.toString()}`;
+  }
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-[1500px]">
@@ -377,62 +449,158 @@ export default async function RelatorioEdicoesPage({
           </div>
         </div>
 
-        {/* RESUMO ANUAL */}
+        {/* RESUMO — ANO OU MÊS SELECIONADO */}
 
-        <div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-3">
-          <MetricCard
-            icon={Target}
-            label={`Meta ${year}`}
-            value={formatCurrency(
-              annualGoal
-            )}
-            description="Soma das metas das edições do ano"
-          />
+        {selectedMonth !== null &&
+        selectedMonthSummary ? (
+          <>
+            <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Detalhe do mês
+                </p>
 
-          <MetricCard
-            icon={TrendingUp}
-            label={`Vendido ${year}`}
-            value={formatCurrency(
-              annualSold
-            )}
-            description="Publicidade confirmada no ano"
-            tone={
-              annualPercent === null
-                ? "default"
-                : annualPercent >= 100
-                  ? "green"
-                  : "amber"
-            }
-          />
+                <h2 className="mt-1 text-lg font-semibold text-slate-900">
+                  {
+                    MONTH_LABELS_FULL[
+                      selectedMonth -
+                        1
+                    ]
+                  }{" "}
+                  de {year}
+                </h2>
+              </div>
 
-          <MetricCard
-            icon={BarChart3}
-            label="Atingimento da meta"
-            value={
-              annualPercent !== null
-                ? formatPercentage(
-                    annualPercent
-                  )
-                : "—"
-            }
-            description={
-              annualGoal > 0
-                ? annualSold >=
-                  annualGoal
-                  ? "Meta anual atingida"
-                  : "Abaixo da meta anual"
-                : "Nenhuma meta cadastrada no ano"
-            }
-            tone={
-              annualGoal === 0
-                ? "default"
-                : annualSold >=
+              <Link
+                href={monthHref(
+                  null
+                )}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-[#15704f] hover:underline"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Ver o ano todo
+              </Link>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-3">
+              <MetricCard
+                icon={Target}
+                label={`Meta de ${selectedMonthSummary.label}`}
+                value={formatCurrency(
+                  selectedMonthSummary.goal
+                )}
+                description="Soma das metas das edições do mês"
+              />
+
+              <MetricCard
+                icon={TrendingUp}
+                label={`Vendido em ${selectedMonthSummary.label}`}
+                value={formatCurrency(
+                  selectedMonthSummary.sold
+                )}
+                description="Publicidade confirmada no mês"
+                tone={
+                  selectedMonthPercent ===
+                  null
+                    ? "default"
+                    : selectedMonthPercent >=
+                        100
+                      ? "green"
+                      : "amber"
+                }
+              />
+
+              <MetricCard
+                icon={BarChart3}
+                label="Atingimento da meta"
+                value={
+                  selectedMonthPercent !==
+                  null
+                    ? formatPercentage(
+                        selectedMonthPercent
+                      )
+                    : "—"
+                }
+                description={
+                  selectedMonthSummary.goal >
+                  0
+                    ? selectedMonthSummary.sold >=
+                      selectedMonthSummary.goal
+                      ? "Meta do mês atingida"
+                      : "Abaixo da meta do mês"
+                    : "Nenhuma meta cadastrada no mês"
+                }
+                tone={
+                  selectedMonthSummary.goal ===
+                  0
+                    ? "default"
+                    : selectedMonthSummary.sold >=
+                        selectedMonthSummary.goal
+                      ? "green"
+                      : "amber"
+                }
+              />
+            </div>
+          </>
+        ) : (
+          <div className="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-3">
+            <MetricCard
+              icon={Target}
+              label={`Meta ${year}`}
+              value={formatCurrency(
+                annualGoal
+              )}
+              description="Soma das metas das edições do ano"
+            />
+
+            <MetricCard
+              icon={TrendingUp}
+              label={`Vendido ${year}`}
+              value={formatCurrency(
+                annualSold
+              )}
+              description="Publicidade confirmada no ano"
+              tone={
+                annualPercent ===
+                null
+                  ? "default"
+                  : annualPercent >=
+                      100
+                    ? "green"
+                    : "amber"
+              }
+            />
+
+            <MetricCard
+              icon={BarChart3}
+              label="Atingimento da meta"
+              value={
+                annualPercent !==
+                null
+                  ? formatPercentage(
+                      annualPercent
+                    )
+                  : "—"
+              }
+              description={
+                annualGoal > 0
+                  ? annualSold >=
                     annualGoal
-                  ? "green"
-                  : "amber"
-            }
-          />
-        </div>
+                    ? "Meta anual atingida"
+                    : "Abaixo da meta anual"
+                  : "Nenhuma meta cadastrada no ano"
+              }
+              tone={
+                annualGoal === 0
+                  ? "default"
+                  : annualSold >=
+                      annualGoal
+                    ? "green"
+                    : "amber"
+              }
+            />
+          </div>
+        )}
 
         {/* GRÁFICO MENSAL */}
 
@@ -444,7 +612,7 @@ export default async function RelatorioEdicoesPage({
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Publicidade vendida em cada edição do mês, comparada à meta comercial do período.
+                Publicidade vendida em cada edição do mês, comparada à meta comercial do período. Clique em um mês para ver o detalhe.
               </p>
             </div>
 
@@ -497,12 +665,25 @@ export default async function RelatorioEdicoesPage({
                     100
                   : null;
 
+              const isSelected =
+                selectedMonth ===
+                month.monthNumber;
+
               return (
-                <div
+                <Link
                   key={
                     month.monthNumber
                   }
-                  className="flex min-w-[48px] flex-1 flex-col items-center gap-2"
+                  href={monthHref(
+                    isSelected
+                      ? null
+                      : month.monthNumber
+                  )}
+                  className={`flex min-w-[48px] flex-1 flex-col items-center gap-2 rounded-lg py-1 transition ${
+                    isSelected
+                      ? "bg-[#15704f]/5 ring-1 ring-[#15704f]/30"
+                      : "hover:bg-slate-50"
+                  }`}
                 >
                   <div className="group relative flex h-48 items-end gap-1">
                     {/* TOOLTIP */}
@@ -566,7 +747,13 @@ export default async function RelatorioEdicoesPage({
                     />
                   </div>
 
-                  <span className="text-xs font-medium text-slate-600">
+                  <span
+                    className={`text-xs font-medium ${
+                      isSelected
+                        ? "text-[#15704f]"
+                        : "text-slate-600"
+                    }`}
+                  >
                     {month.label}
                   </span>
 
@@ -587,7 +774,7 @@ export default async function RelatorioEdicoesPage({
                       —
                     </span>
                   )}
-                </div>
+                </Link>
               );
             })}
           </div>
@@ -598,7 +785,9 @@ export default async function RelatorioEdicoesPage({
         <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-6 py-5">
             <h2 className="font-semibold text-slate-900">
-              Edições de {year}
+              {selectedMonth !== null
+                ? `Edições de ${MONTH_LABELS_FULL[selectedMonth - 1]} de ${year}`
+                : `Edições de ${year}`}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -637,7 +826,7 @@ export default async function RelatorioEdicoesPage({
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {editionSummaries.map(
+                {visibleEditionSummaries.map(
                   (edition) => (
                     <tr
                       key={edition.id}
@@ -702,13 +891,16 @@ export default async function RelatorioEdicoesPage({
                   )
                 )}
 
-                {!editionSummaries.length && (
+                {!visibleEditionSummaries.length && (
                   <tr>
                     <td
                       colSpan={6}
                       className="px-5 py-12 text-center text-sm text-slate-400"
                     >
-                      Nenhuma edição cadastrada em {year}.
+                      {selectedMonth !==
+                      null
+                        ? `Nenhuma edição cadastrada em ${MONTH_LABELS_FULL[selectedMonth - 1]} de ${year}.`
+                        : `Nenhuma edição cadastrada em ${year}.`}
                     </td>
                   </tr>
                 )}
