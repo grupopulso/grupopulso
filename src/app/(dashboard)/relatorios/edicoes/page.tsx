@@ -504,15 +504,58 @@ export default async function RelatorioEdicoesPage({
                   }
                   className="flex min-w-[48px] flex-1 flex-col items-center gap-2"
                 >
-                  <div className="flex h-48 items-end gap-1">
+                  <div className="group relative flex h-48 items-end gap-1">
+                    {/* TOOLTIP */}
+
+                    <div className="pointer-events-none absolute -top-2 left-1/2 z-10 w-max -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-lg bg-slate-900 px-3 py-2 text-xs text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100">
+                      <p className="font-semibold">
+                        {month.label}{" "}
+                        {year}
+                      </p>
+
+                      <p className="mt-1 text-slate-300">
+                        Meta:{" "}
+                        <span className="font-medium text-white">
+                          {formatCurrency(
+                            month.goal
+                          )}
+                        </span>
+                      </p>
+
+                      <p className="text-slate-300">
+                        Vendido:{" "}
+                        <span className="font-medium text-white">
+                          {formatCurrency(
+                            month.sold
+                          )}
+                        </span>
+                      </p>
+
+                      {percent !==
+                        null && (
+                        <p
+                          className={`mt-1 font-semibold ${
+                            percent >=
+                            100
+                              ? "text-emerald-300"
+                              : "text-amber-300"
+                          }`}
+                        >
+                          {formatPercentage(
+                            percent
+                          )}{" "}
+                          da meta
+                        </p>
+                      )}
+
+                      <div className="absolute left-1/2 top-full h-2 w-2 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-slate-900" />
+                    </div>
+
                     <div
                       className="w-3.5 rounded-t bg-slate-200"
                       style={{
                         height: `${goalHeight}%`,
                       }}
-                      title={`Meta de ${month.label}: ${formatCurrency(
-                        month.goal
-                      )}`}
                     />
 
                     <div
@@ -520,9 +563,6 @@ export default async function RelatorioEdicoesPage({
                       style={{
                         height: `${soldHeight}%`,
                       }}
-                      title={`Vendido em ${month.label}: ${formatCurrency(
-                        month.sold
-                      )}`}
                     />
                   </div>
 
