@@ -211,20 +211,27 @@ export default async function RelatorioMetasPage({
   >();
 
   if (companyIds.length > 0) {
+    /*
+     * Lançamentos antigos podem não ter issue_date
+     * preenchido — nesse caso caem de volta pro
+     * vencimento (due_date), pra não sumir da conta.
+     */
     const { data: entriesData } =
       await supabase
         .from("financial_entries")
         .select(`
           company_id,
           issue_date,
+          due_date,
           amount,
           status,
           type
         `)
         .eq("type", "income")
         .neq("status", "cancelled")
-        .gte("issue_date", yearStart)
-        .lte("issue_date", yearEnd)
+        .or(
+          `and(issue_date.gte.${yearStart},issue_date.lte.${yearEnd}),and(issue_date.is.null,due_date.gte.${yearStart},due_date.lte.${yearEnd})`
+        )
         .in(
           "company_id",
           companyIds
@@ -232,10 +239,13 @@ export default async function RelatorioMetasPage({
 
     for (const entry of entriesData ??
       []) {
+      const referenceDate =
+        entry.issue_date ??
+        entry.due_date ??
+        "";
+
       const month = Number(
-        (
-          entry.issue_date ?? ""
-        ).slice(5, 7)
+        referenceDate.slice(5, 7)
       );
 
       if (

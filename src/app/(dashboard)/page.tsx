@@ -37,6 +37,7 @@ type FinancialEntry = {
   company_id: string;
   type: string;
   due_date: string;
+  issue_date: string | null;
   amount: number | string;
   amount_paid: number | string;
   interest: number | string;
@@ -358,6 +359,7 @@ export default async function HomePage({
         company_id,
         type,
         due_date,
+        issue_date,
         amount,
         amount_paid,
         interest,
@@ -571,6 +573,14 @@ export default async function HomePage({
 
     goalsByCompany = companies.map(
       (company) => {
+        /*
+         * Faturado = valor emitido/faturado (issue_date),
+         * não o vencimento da cobrança (due_date). Um
+         * contrato de várias parcelas fechado num mês
+         * conta o valor total como faturado naquele mês,
+         * mesmo que as parcelas vençam depois. Mesmo
+         * critério de /relatorios/metas.
+         */
         const billed = entries
           .filter(
             (entry) =>
@@ -579,9 +589,14 @@ export default async function HomePage({
               entry.type === "income" &&
               entry.status !==
                 "cancelled" &&
-              entry.due_date >=
-                monthStart &&
-              entry.due_date <= monthEnd
+              (
+                entry.issue_date ??
+                entry.due_date
+              ) >= monthStart &&
+              (
+                entry.issue_date ??
+                entry.due_date
+              ) <= monthEnd
           )
           .reduce(
             (total, entry) =>
