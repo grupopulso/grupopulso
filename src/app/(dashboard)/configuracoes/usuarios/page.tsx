@@ -15,6 +15,9 @@ import { createClient } from "@/app/lib/supabase/server";
 import {
   requireAdmin,
 } from "@/app/lib/permissions";
+import {
+  isSellerOnlyEmail,
+} from "@/app/lib/seller-only";
 
 async function fetchEmailsById(): Promise<
   Map<string, string>
@@ -214,6 +217,16 @@ export default async function UsuariosPage() {
               <tbody className="divide-y divide-slate-100">
                 {profiles?.map(
                   (profile) => {
+                    const email =
+                      emailsById.get(
+                        profile.id
+                      ) ?? null;
+
+                    const sellerOnly =
+                      isSellerOnlyEmail(
+                        email
+                      );
+
                     const companies =
                       (
                         profile.user_companies ??
@@ -257,20 +270,27 @@ export default async function UsuariosPage() {
                               </p>
 
                               <p className="mt-1 text-xs text-slate-500">
-                                {emailsById.get(
-                                  profile.id
-                                ) ?? "—"}
+                                {sellerOnly
+                                  ? "Sem acesso ao sistema"
+                                  : (email ??
+                                    "—")}
                               </p>
                             </div>
                           </Link>
                         </td>
 
                         <td className="px-5 py-4">
-                          <RoleBadge
-                            role={
-                              profile.role
-                            }
-                          />
+                          {sellerOnly ? (
+                            <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                              Vendedor (sem acesso)
+                            </span>
+                          ) : (
+                            <RoleBadge
+                              role={
+                                profile.role
+                              }
+                            />
+                          )}
                         </td>
 
                         <td className="px-5 py-4">

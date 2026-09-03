@@ -19,6 +19,9 @@ import DeleteUserButton from "./delete-user-button";
 import {
   requireAdmin,
 } from "@/app/lib/permissions";
+import {
+  isSellerOnlyEmail,
+} from "@/app/lib/seller-only";
 
 async function fetchUserEmail(
   userId: string
@@ -281,8 +284,12 @@ export default async function UsuarioPage({
               </h1>
 
               <p className="mt-1 text-sm text-slate-600">
-                {userEmail ??
-                  "E-mail não disponível"}
+                {isSellerOnlyEmail(
+                  userEmail
+                )
+                  ? "Vendedor sem acesso ao sistema (sem login)"
+                  : (userEmail ??
+                    "E-mail não disponível")}
               </p>
 
               <p className="mt-1 text-sm text-slate-500">

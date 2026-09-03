@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import {
+  createSellerOnlyUser,
   saveSellerSettings,
 } from "./actions";
 
@@ -47,6 +48,18 @@ export default function SellerForm({
   editingSeller = null,
   onCancelEdit,
 }: Props) {
+  const [
+    mode,
+    setMode,
+  ] = useState<
+    "existing" | "new"
+  >("existing");
+
+  const [
+    newSellerName,
+    setNewSellerName,
+  ] = useState("");
+
   const [
     userId,
     setUserId,
@@ -124,6 +137,7 @@ export default function SellerForm({
 
   function resetForm() {
     setUserId("");
+    setNewSellerName("");
     setCompanyId("");
     setCommission("10");
     setActive(true);
@@ -154,7 +168,27 @@ export default function SellerForm({
           )
       );
 
-    if (!userId) {
+    const creatingNewSeller =
+      mode === "new" &&
+      !isEditing;
+
+    if (
+      creatingNewSeller &&
+      !newSellerName.trim()
+    ) {
+      setMessage({
+        type: "error",
+        text:
+          "Informe o nome do vendedor.",
+      });
+
+      return;
+    }
+
+    if (
+      !creatingNewSeller &&
+      !userId
+    ) {
       setMessage({
         type: "error",
         text:
@@ -193,17 +227,27 @@ export default function SellerForm({
     startTransition(
       async () => {
         const result =
-          await saveSellerSettings(
-            {
-              userId,
-              companyId,
+          creatingNewSeller
+            ? await createSellerOnlyUser(
+                {
+                  name: newSellerName.trim(),
+                  companyId,
 
-              commissionPercentage:
-                commissionValue,
+                  commissionPercentage:
+                    commissionValue,
+                }
+              )
+            : await saveSellerSettings(
+                {
+                  userId,
+                  companyId,
 
-              active,
-            }
-          );
+                  commissionPercentage:
+                    commissionValue,
+
+                  active,
+                }
+              );
 
         if (
           !result.success
@@ -220,8 +264,9 @@ export default function SellerForm({
 
         setMessage({
           type: "success",
-          text:
-            isEditing
+          text: creatingNewSeller
+            ? `Vendedor "${newSellerName.trim()}" cadastrado com sucesso — sem acesso ao sistema.`
+            : isEditing
               ? "Vendedor atualizado com sucesso."
               : "Vendedor configurado com sucesso.",
         });
@@ -286,6 +331,50 @@ export default function SellerForm({
         )}
       </div>
 
+      {!isEditing && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={() => {
+              setMode(
+                "existing"
+              );
+
+              setMessage(null);
+            }}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              mode === "existing"
+                ? "bg-[#15704f] text-white"
+                : "border border-slate-200 text-slate-600 hover:border-[#15704f]/40"
+            }`}
+          >
+            Usuário existente
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setMode("new");
+              setUserId("");
+              setMessage(null);
+            }}
+            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+              mode === "new"
+                ? "bg-[#15704f] text-white"
+                : "border border-slate-200 text-slate-600 hover:border-[#15704f]/40"
+            }`}
+          >
+            Novo vendedor sem acesso ao sistema
+          </button>
+
+          {mode === "new" && (
+            <p className="mt-2 w-full text-xs text-slate-400">
+              Cria um cadastro só pra atribuir vendas e calcular comissão — a pessoa não recebe login nem senha, não consegue entrar no sistema.
+            </p>
+          )}
+        </div>
+      )}
+
       <form
         onSubmit={
           handleSubmit
@@ -294,8 +383,33 @@ export default function SellerForm({
       >
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
 
-          {/* USUÁRIO */}
+          {/* USUÁRIO OU NOME DO NOVO VENDEDOR */}
 
+          {mode === "new" &&
+          !isEditing ? (
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                Nome do vendedor
+              </label>
+
+              <input
+                type="text"
+                value={
+                  newSellerName
+                }
+                onChange={(
+                  event
+                ) =>
+                  setNewSellerName(
+                    event.target
+                      .value
+                  )
+                }
+                placeholder="Nome completo"
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
+              />
+            </div>
+          ) : (
           <div>
             <label className="text-sm font-medium text-slate-700">
               Usuário
@@ -347,6 +461,7 @@ export default function SellerForm({
               </p>
             )}
           </div>
+          )}
 
           {/* EMPRESA */}
 
@@ -441,35 +556,40 @@ export default function SellerForm({
 
           {/* SITUAÇÃO */}
 
-          <div>
-            <label className="text-sm font-medium text-slate-700">
-              Situação
-            </label>
+          {!(
+            mode === "new" &&
+            !isEditing
+          ) && (
+            <div>
+              <label className="text-sm font-medium text-slate-700">
+                Situação
+              </label>
 
-            <label className="mt-2 flex h-11 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3">
-              <input
-                type="checkbox"
-                checked={
-                  active
-                }
-                onChange={(
-                  event
-                ) =>
-                  setActive(
-                    event.target
-                      .checked
-                  )
-                }
-                className="h-4 w-4 rounded border-slate-300 accent-[#15704f]"
-              />
+              <label className="mt-2 flex h-11 cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3">
+                <input
+                  type="checkbox"
+                  checked={
+                    active
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setActive(
+                      event.target
+                        .checked
+                    )
+                  }
+                  className="h-4 w-4 rounded border-slate-300 accent-[#15704f]"
+                />
 
-              <span className="text-sm text-slate-700">
-                {active
-                  ? "Vendedor ativo"
-                  : "Vendedor inativo"}
-              </span>
-            </label>
-          </div>
+                <span className="text-sm text-slate-700">
+                  {active
+                    ? "Vendedor ativo"
+                    : "Vendedor inativo"}
+                </span>
+              </label>
+            </div>
+          )}
         </div>
 
         {/* MENSAGEM */}
@@ -520,7 +640,9 @@ export default function SellerForm({
               ? "Salvando..."
               : isEditing
                 ? "Salvar alterações"
-                : "Salvar vendedor"}
+                : mode === "new"
+                  ? "Cadastrar vendedor"
+                  : "Salvar vendedor"}
           </button>
         </div>
       </form>
