@@ -15,6 +15,10 @@ import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
+import {
+  competenceQueryRangeForYear,
+  getCompetenceMonth,
+} from "@/app/lib/competence-date";
 
 const MONTH_LABELS_SHORT = [
   "Jan",
@@ -96,9 +100,6 @@ export default async function RelatorioMetasPage({
     parsedMonth <= 12
       ? parsedMonth
       : null;
-
-  const yearStart = `${year}-01-01`;
-  const yearEnd = `${year}-12-31`;
 
   /*
    * =====================================================
@@ -197,12 +198,14 @@ export default async function RelatorioMetasPage({
    * FATURADO DO ANO (receita por empresa/mês)
    * =====================================================
    *
-   * Faturamento = valor emitido/faturado (issue_date), não
-   * o valor recebido (amount_paid) nem o vencimento
-   * (due_date, que é quando a cobrança vence, não quando
-   * ela foi faturada). Um contrato de 12 parcelas criado em
-   * janeiro conta o valor total como faturado em janeiro,
-   * mesmo que as parcelas vençam nos meses seguintes.
+   * Faturamento conta mês a mês pela COMPETÊNCIA, não pelo
+   * valor cheio do contrato de uma vez (issue_date) nem pelo
+   * mês do vencimento (due_date). A competência de uma
+   * parcela é sempre o mês ANTERIOR ao vencimento dela — ex.:
+   * parcela de R$1.000 vencendo em 10/10 conta como
+   * faturamento de setembro. Um contrato de R$12.000 em 12x
+   * conta R$1.000 em cada um dos 12 meses de competência, não
+   * o valor cheio de uma vez.
    */
 
   const billedByCompanyMonth = new Map<
@@ -211,17 +214,16 @@ export default async function RelatorioMetasPage({
   >();
 
   if (companyIds.length > 0) {
-    /*
-     * Lançamentos antigos podem não ter issue_date
-     * preenchido — nesse caso caem de volta pro
-     * vencimento (due_date), pra não sumir da conta.
-     */
+    const dueRange =
+      competenceQueryRangeForYear(
+        year
+      );
+
     const { data: entriesData } =
       await supabase
         .from("financial_entries")
         .select(`
           company_id,
-          issue_date,
           due_date,
           amount,
           status,
@@ -229,8 +231,13 @@ export default async function RelatorioMetasPage({
         `)
         .eq("type", "income")
         .neq("status", "cancelled")
-        .or(
-          `and(issue_date.gte.${yearStart},issue_date.lte.${yearEnd}),and(issue_date.is.null,due_date.gte.${yearStart},due_date.lte.${yearEnd})`
+        .gte(
+          "due_date",
+          dueRange.start
+        )
+        .lte(
+          "due_date",
+          dueRange.end
         )
         .in(
           "company_id",
@@ -239,24 +246,19 @@ export default async function RelatorioMetasPage({
 
     for (const entry of entriesData ??
       []) {
-      const referenceDate =
-        entry.issue_date ??
-        entry.due_date ??
-        "";
-
-      const month = Number(
-        referenceDate.slice(5, 7)
-      );
+      const competence =
+        getCompetenceMonth(
+          entry.due_date
+        );
 
       if (
-        !Number.isInteger(month) ||
-        month < 1 ||
-        month > 12
+        !competence ||
+        competence.year !== year
       ) {
         continue;
       }
 
-      const key = `${entry.company_id}-${month}`;
+      const key = `${entry.company_id}-${competence.month}`;
 
       billedByCompanyMonth.set(
         key,
@@ -560,7 +562,7 @@ export default async function RelatorioMetasPage({
                 value={formatCurrency(
                   selectedMonthSummary.billed
                 )}
-                description="Receita lançada no mês"
+                description="Faturamento por competência no mês"
                 tone={
                   selectedMonthPercent ===
                   null
@@ -621,7 +623,7 @@ export default async function RelatorioMetasPage({
               value={formatCurrency(
                 annualBilled
               )}
-              description="Receita lançada no ano"
+              description="Faturamento por competência no ano"
               tone={
                 annualPercent ===
                 null

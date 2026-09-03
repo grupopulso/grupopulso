@@ -11,6 +11,10 @@ import {
   normalizeStoredStatus,
 } from "@/app/lib/contract-status";
 
+import {
+  getCompetenceMonth,
+} from "@/app/lib/competence-date";
+
 type Company = {
   id: string;
   name: string;
@@ -37,7 +41,6 @@ type FinancialEntry = {
   company_id: string;
   type: string;
   due_date: string;
-  issue_date: string | null;
   amount: number | string;
   amount_paid: number | string;
   interest: number | string;
@@ -359,7 +362,6 @@ export default async function HomePage({
         company_id,
         type,
         due_date,
-        issue_date,
         amount,
         amount_paid,
         interest,
@@ -574,30 +576,49 @@ export default async function HomePage({
     goalsByCompany = companies.map(
       (company) => {
         /*
-         * Faturado = valor emitido/faturado (issue_date),
-         * não o vencimento da cobrança (due_date). Um
-         * contrato de várias parcelas fechado num mês
-         * conta o valor total como faturado naquele mês,
-         * mesmo que as parcelas vençam depois. Mesmo
+         * Faturado conta pela COMPETÊNCIA de cada parcela
+         * (o mês ANTERIOR ao vencimento dela), não pelo
+         * valor cheio do contrato de uma vez nem pelo mês
+         * do vencimento. Um contrato de R$12.000 em 12x
+         * conta R$1.000 em cada mês de competência. Mesmo
          * critério de /relatorios/metas.
          */
         const billed = entries
-          .filter(
-            (entry) =>
-              entry.company_id ===
-                company.id &&
-              entry.type === "income" &&
-              entry.status !==
-                "cancelled" &&
-              (
-                entry.issue_date ??
+          .filter((entry) => {
+            if (
+              entry.company_id !==
+                company.id ||
+              entry.type !==
+                "income" ||
+              entry.status ===
+                "cancelled"
+            ) {
+              return false;
+            }
+
+            const competence =
+              getCompetenceMonth(
                 entry.due_date
-              ) >= monthStart &&
-              (
-                entry.issue_date ??
-                entry.due_date
-              ) <= monthEnd
-          )
+              );
+
+            if (!competence) {
+              return false;
+            }
+
+            if (isAnnual) {
+              return (
+                competence.year ===
+                year
+              );
+            }
+
+            return (
+              competence.year ===
+                year &&
+              competence.month ===
+                month
+            );
+          })
           .reduce(
             (total, entry) =>
               total +
