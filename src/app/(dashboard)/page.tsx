@@ -12,7 +12,7 @@ import {
 } from "@/app/lib/contract-status";
 
 import {
-  getCompetenceMonth,
+  getEntryCompetenceMonth,
 } from "@/app/lib/competence-date";
 
 type Company = {
@@ -47,6 +47,22 @@ type FinancialEntry = {
   fine: number | string;
   discount: number | string;
   status: string;
+  contract_id: string | null;
+
+  contract:
+    | {
+        billing_frequency:
+          | string
+          | null;
+        start_date: string | null;
+      }
+    | {
+        billing_frequency:
+          | string
+          | null;
+        start_date: string | null;
+      }[]
+    | null;
 };
 
 type Transaction = {
@@ -367,7 +383,13 @@ export default async function HomePage({
         interest,
         fine,
         discount,
-        status
+        status,
+        contract_id,
+
+        contract:contracts (
+          billing_frequency,
+          start_date
+        )
       `);
 
   if (
@@ -576,11 +598,14 @@ export default async function HomePage({
     goalsByCompany = companies.map(
       (company) => {
         /*
-         * Faturado conta pela COMPETÊNCIA de cada parcela
-         * (o mês ANTERIOR ao vencimento dela), não pelo
-         * valor cheio do contrato de uma vez nem pelo mês
-         * do vencimento. Um contrato de R$12.000 em 12x
-         * conta R$1.000 em cada mês de competência. Mesmo
+         * Faturado conta pela COMPETÊNCIA — e a regra depende
+         * do tipo de venda. Serviço recorrente (contrato com
+         * billing_frequency diferente de "one_time"): cada
+         * parcela conta no mês ANTERIOR ao vencimento dela.
+         * Item único (contrato "one_time", ou lançamento sem
+         * contrato — ex.: comissão): o valor total conta de
+         * uma vez no mês da venda (start_date do contrato),
+         * não importa em quantas parcelas foi dividido. Mesmo
          * critério de /relatorios/metas.
          */
         const billed = entries
@@ -596,9 +621,23 @@ export default async function HomePage({
               return false;
             }
 
+            const contract =
+              getFirst(
+                entry.contract
+              );
+
             const competence =
-              getCompetenceMonth(
-                entry.due_date
+              getEntryCompetenceMonth(
+                {
+                  dueDate:
+                    entry.due_date,
+                  billingFrequency:
+                    contract?.billing_frequency ??
+                    null,
+                  contractStartDate:
+                    contract?.start_date ??
+                    null,
+                }
               );
 
             if (!competence) {

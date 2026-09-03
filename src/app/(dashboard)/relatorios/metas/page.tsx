@@ -17,7 +17,7 @@ import {
 } from "@/app/lib/permissions";
 import {
   competenceQueryRangeForYear,
-  getCompetenceMonth,
+  getEntryCompetenceMonth,
 } from "@/app/lib/competence-date";
 
 const MONTH_LABELS_SHORT = [
@@ -198,14 +198,19 @@ export default async function RelatorioMetasPage({
    * FATURADO DO ANO (receita por empresa/mês)
    * =====================================================
    *
-   * Faturamento conta mês a mês pela COMPETÊNCIA, não pelo
-   * valor cheio do contrato de uma vez (issue_date) nem pelo
-   * mês do vencimento (due_date). A competência de uma
-   * parcela é sempre o mês ANTERIOR ao vencimento dela — ex.:
-   * parcela de R$1.000 vencendo em 10/10 conta como
-   * faturamento de setembro. Um contrato de R$12.000 em 12x
-   * conta R$1.000 em cada um dos 12 meses de competência, não
-   * o valor cheio de uma vez.
+   * Faturamento conta pela COMPETÊNCIA, e a regra depende do
+   * tipo de venda:
+   *
+   * - Serviço recorrente (contrato com billing_frequency
+   *   diferente de "one_time"): cada parcela conta no mês
+   *   ANTERIOR ao vencimento dela (um contrato de R$12.000
+   *   em 12x soma R$1.000 por mês).
+   *
+   * - Item único (contrato "one_time", ou lançamento sem
+   *   contrato vinculado): o valor TOTAL conta de uma vez no
+   *   mês da venda (data de início do contrato), não importa
+   *   em quantas parcelas foi dividido pra pagamento (um
+   *   anúncio de R$5.000 em 4x conta R$5.000 no mês da venda).
    */
 
   const billedByCompanyMonth = new Map<
@@ -227,7 +232,13 @@ export default async function RelatorioMetasPage({
           due_date,
           amount,
           status,
-          type
+          type,
+          contract_id,
+
+          contract:contracts (
+            billing_frequency,
+            start_date
+          )
         `)
         .eq("type", "income")
         .neq("status", "cancelled")
@@ -246,10 +257,20 @@ export default async function RelatorioMetasPage({
 
     for (const entry of entriesData ??
       []) {
+      const contract = getFirst(
+        entry.contract
+      );
+
       const competence =
-        getCompetenceMonth(
-          entry.due_date
-        );
+        getEntryCompetenceMonth({
+          dueDate: entry.due_date,
+          billingFrequency:
+            contract?.billing_frequency ??
+            null,
+          contractStartDate:
+            contract?.start_date ??
+            null,
+        });
 
       if (
         !competence ||
@@ -1048,6 +1069,22 @@ function LegendItem({
       {label}
     </span>
   );
+}
+
+function getFirst<T>(
+  value:
+    | T
+    | T[]
+    | null
+    | undefined
+): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value)
+    ? (value[0] ?? null)
+    : value;
 }
 
 function roundMoney(value: number) {
