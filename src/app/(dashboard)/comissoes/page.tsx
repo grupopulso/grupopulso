@@ -21,6 +21,10 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
@@ -182,6 +186,19 @@ export default async function CommissionsPage({
 
   const supabase =
     await createClient();
+
+  /*
+   * Leitura de user_profiles de OUTRAS pessoas (beneficiários
+   * de comissão) via service role — a RLS de user_profiles
+   * pode não liberar certos perfis (ex.: vendedores sem acesso
+   * ao sistema) pra leitura via client comum, mesmo sendo o
+   * admin quem está olhando. Essa é a mesma tela que já é
+   * restrita a admin (redirect acima), então não perdemos
+   * nenhuma checagem de permissão ao usar o client de service
+   * role aqui.
+   */
+  const adminDb =
+    createAdminClient();
 
   /*
    * O papel "seller" não existe mais na constraint de
@@ -684,7 +701,7 @@ export default async function CommissionsPage({
       error:
         profilesError,
     } =
-      await supabase
+      await adminDb
         .from(
           "user_profiles"
         )
