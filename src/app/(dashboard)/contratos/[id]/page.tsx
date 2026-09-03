@@ -27,6 +27,10 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
   requireCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -62,6 +66,15 @@ export default async function ContractDetailPage({
 
   const supabase =
     await createClient();
+
+  /*
+   * Leitura de user_profiles de OUTRAS pessoas (responsável,
+   * beneficiários de comissão, opções pra reatribuir) via
+   * service role — a RLS de user_profiles só libera o próprio
+   * perfil pra quem não é admin, então o nome do responsável
+   * sumia pra quem não fosse admin.
+   */
+  const adminDb = createAdminClient();
 
   /*
    * =========================
@@ -475,7 +488,7 @@ export default async function ContractDetailPage({
       error:
         profileError,
     } =
-      await supabase
+      await adminDb
         .from(
           "user_profiles"
         )
@@ -513,7 +526,7 @@ export default async function ContractDetailPage({
 
   if (canReassignResponsible) {
     const { data: activeUsers } =
-      await supabase
+      await adminDb
         .from("user_profiles")
         .select("id, name")
         .eq("active", true)
@@ -792,7 +805,7 @@ if (
     error:
       profileRowsError,
   } =
-    await supabase
+    await adminDb
       .from(
         "user_profiles"
       )
