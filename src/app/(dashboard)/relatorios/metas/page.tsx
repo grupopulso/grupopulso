@@ -54,6 +54,7 @@ type Company = {
   id: string;
   name: string;
   color: string | null;
+  slug: string;
 };
 
 type PageProps = {
@@ -117,7 +118,8 @@ export default async function RelatorioMetasPage({
     .select(`
       id,
       name,
-      color
+      color,
+      slug
     `)
     .eq("active", true);
 
@@ -149,6 +151,13 @@ export default async function RelatorioMetasPage({
 
   const companyIds = companies.map(
     (company) => company.id
+  );
+
+  const companySlugById = new Map(
+    companies.map((company) => [
+      company.id,
+      company.slug,
+    ])
   );
 
   /*
@@ -199,19 +208,15 @@ export default async function RelatorioMetasPage({
    * =====================================================
    *
    * Faturamento conta pela COMPETÊNCIA, e a regra depende do
-   * tipo de venda:
+   * tipo de venda E da empresa (ver src/app/lib/competence-date.ts):
    *
-   * - Serviço recorrente (contrato com billing_frequency
-   *   diferente de "one_time"): cada parcela conta no mês de
-   *   início do contrato + o número de parcelas já decorridas
-   *   até o vencimento dela (um contrato de R$12.000 em 12x
-   *   soma R$1.000 por mês a partir do início do contrato).
+   * - O Estafeta: parcela recorrente conta no mês de início do
+   *   contrato + parcelas decorridas (bate com as edições);
+   *   item único lump-sum no mês da venda.
    *
-   * - Item único (contrato "one_time", ou lançamento sem
-   *   contrato vinculado): o valor TOTAL conta de uma vez no
-   *   mês da venda (data de início do contrato), não importa
-   *   em quantas parcelas foi dividido pra pagamento (um
-   *   anúncio de R$5.000 em 4x conta R$5.000 no mês da venda).
+   * - Atthus / Pottencializa: parcela recorrente conta no mês
+   *   ANTERIOR ao vencimento (faturamento em atraso); item
+   *   único conta no próprio mês do vencimento de cada parcela.
    */
 
   const billedByCompanyMonth = new Map<
@@ -274,6 +279,10 @@ export default async function RelatorioMetasPage({
           contractStartDate:
             contract?.start_date ??
             null,
+          companySlug:
+            companySlugById.get(
+              entry.company_id
+            ) ?? null,
         });
 
       if (

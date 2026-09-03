@@ -647,6 +647,8 @@ export default async function HomePage({
                   contractStartDate:
                     contract?.start_date ??
                     null,
+                  companySlug:
+                    company.slug,
                 }
               );
 

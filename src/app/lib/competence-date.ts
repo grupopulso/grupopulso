@@ -3,35 +3,50 @@
  * COMPETÊNCIA DE FATURAMENTO
  * =====================================================
  *
- * Regra do negócio (O Estafeta / Grupo Pulso):
+ * A regra muda pra O Estafeta (jornal) porque seus contratos
+ * recorrentes são majoritariamente anúncios vinculados a
+ * edições (contract_edition_publications): a parcela cobra o
+ * MESMO mês em que o anúncio é publicado, não o mês seguinte.
+ * Nas outras empresas (Atthus, Pottencializa), os serviços
+ * recorrentes seguem faturamento em atraso — a parcela cobra
+ * o mês ANTERIOR ao vencimento.
  *
  * - SERVIÇO RECORRENTE (contrato com billing_frequency
- *   diferente de "one_time" — mensal, trimestral, semestral,
- *   anual, personalizado): cada parcela é a cobrança de UM
- *   mês de serviço prestado. A competência dela é o mês de
- *   início do contrato deslocado pelo número de parcelas já
- *   decorridas até o vencimento dessa parcela (1ª parcela =
- *   mês de início, 2ª = mês seguinte, e assim por diante).
- *   Um contrato de R$12.000 em 12x soma R$1.000 em cada um
- *   dos 12 meses a partir do início do contrato.
+ *   diferente de "one_time"):
  *
- *   Isso substitui a regra antiga de "sempre o mês anterior
- *   ao vencimento": na prática os contratos de anúncio (ex.:
- *   anúncio semanal com início em 01/09 e 1ª parcela vencendo
- *   em 10/09) cobram no mesmo mês em que o serviço é prestado,
- *   não um mês depois — usar due_date - 1 mês jogava parcelas
- *   pra ANTES do contrato existir e destoava muito do valor
- *   vinculado às edições (contract_edition_publications).
+ *   - O Estafeta: cada parcela conta no mês de início do
+ *     contrato + o número de parcelas já decorridas até o
+ *     vencimento dela (1ª parcela = mês de início). Um
+ *     contrato de anúncio semanal iniciado em 01/09 com 1ª
+ *     parcela vencendo em 10/09 conta como faturamento de
+ *     setembro, batendo com o valor vinculado às edições que
+ *     de fato saíram naquele mês.
+ *
+ *   - Atthus / Pottencializa: cada parcela conta no mês
+ *     ANTERIOR ao vencimento (regra de faturamento em atraso).
+ *     Um contrato de R$12.000 em 12x soma R$1.000 no mês
+ *     anterior ao vencimento de cada parcela.
  *
  * - ITEM ÚNICO (contrato com billing_frequency "one_time",
  *   ou lançamento sem contrato vinculado — ex.: comissão):
- *   foi vendido como uma coisa só, parcelado só pra facilitar
- *   o pagamento. TODO o valor conta no mês da venda (a data
- *   de início do contrato), não importa em quantas vezes foi
- *   parcelado nem quando cada parcela vence. Um anúncio de
- *   R$5.000 vendido em janeiro e pago em 4x conta R$5.000 de
- *   faturamento em janeiro, não R$1.250 espalhado por 4 meses.
+ *
+ *   - O Estafeta: foi vendido como uma coisa só, parcelado só
+ *     pra facilitar o pagamento — TODO o valor conta de uma
+ *     vez no mês da venda (financial_entries.competence_date,
+ *     gravada na criação = início do contrato ou publicação
+ *     da edição). Um anúncio de R$5.000 vendido em janeiro e
+ *     pago em 4x conta R$5.000 em janeiro, não R$1.250
+ *     espalhado por 4 meses.
+ *
+ *   - Atthus / Pottencializa: cada parcela conta no próprio
+ *     mês do SEU vencimento — sem lump-sum e sem deslocamento.
+ *     Uma identidade visual de R$4.000 vendida em janeiro e
+ *     paga em 4x conta R$1.000 em cada um dos 4 meses em que
+ *     as parcelas vencem.
  */
+
+const ESTAFETA_COMPANY_SLUG =
+  "o-estafeta";
 
 function monthYearFromDate(
   date: string | null | undefined
@@ -61,6 +76,37 @@ function monthYearFromDate(
   }
 
   return { year, month };
+}
+
+/*
+ * Desloca o mês do vencimento pra trás em 1 (com rollover de
+ * ano em janeiro) — competência de faturamento em atraso,
+ * usada pras empresas que não são O Estafeta.
+ */
+function shiftMonthBack(
+  dueDate: string | null
+): {
+  year: number;
+  month: number;
+} | null {
+  const parsed =
+    monthYearFromDate(dueDate);
+
+  if (!parsed) {
+    return null;
+  }
+
+  if (parsed.month === 1) {
+    return {
+      year: parsed.year - 1,
+      month: 12,
+    };
+  }
+
+  return {
+    year: parsed.year,
+    month: parsed.month - 1,
+  };
 }
 
 /*
@@ -101,11 +147,11 @@ function monthsElapsed(
 }
 
 /*
- * Competência de uma parcela de serviço recorrente: mês de
- * início do contrato + quantidade de meses decorridos até o
- * vencimento dessa parcela.
+ * Competência de uma parcela de serviço recorrente do O
+ * Estafeta: mês de início do contrato + quantidade de meses
+ * decorridos até o vencimento dessa parcela.
  */
-export function getRecurringCompetenceMonth(
+function getServiceStartCompetenceMonth(
   startDate: string | null,
   dueDate: string | null
 ): {
@@ -139,23 +185,14 @@ export function getRecurringCompetenceMonth(
 }
 
 /*
- * Competência de um lançamento financeiro, já decidindo
- * entre a regra de serviço recorrente e a de item único.
+ * Competência de um lançamento financeiro, já decidindo entre
+ * a regra de serviço recorrente e a de item único — e entre a
+ * regra do O Estafeta e a das outras empresas.
  *
- * `billingFrequency` e `contractStartDate` vêm do contrato
- * vinculado ao lançamento (financial_entries.contract_id) —
- * decidem qual regra aplicar e, pra recorrente, a partir de
- * quando contar os meses.
- *
- * Pra item único, a competência é a própria coluna
- * `financial_entries.competence_date` — ela já é gravada
- * corretamente na criação pra cobrir os dois casos:
- *   - parcela de contrato: competence_date = data de início
- *     do contrato (mesma pra todas as parcelas);
- *   - venda avulsa de publicidade numa edição: competence_date
- *     = data de publicação da edição.
- * Só cai pro due_date se por algum motivo competence_date
- * estiver vazio.
+ * `companySlug` vem de `companies.slug` — só o O Estafeta
+ * ("o-estafeta") usa a regra nova (competência = início do
+ * serviço). Qualquer outro valor (ou ausência dele) cai na
+ * regra de faturamento em atraso.
  */
 export function getEntryCompetenceMonth(
   params: {
@@ -169,6 +206,9 @@ export function getEntryCompetenceMonth(
     contractStartDate?:
       | string
       | null;
+    companySlug?:
+      | string
+      | null;
   }
 ): {
   year: number;
@@ -180,22 +220,38 @@ export function getEntryCompetenceMonth(
         "one_time"
   );
 
+  const isEstafeta =
+    params.companySlug ===
+    ESTAFETA_COMPANY_SLUG;
+
   if (isRecurring) {
-    return (
-      getRecurringCompetenceMonth(
-        params.contractStartDate ??
-          null,
+    if (isEstafeta) {
+      return (
+        getServiceStartCompetenceMonth(
+          params.contractStartDate ??
+            null,
+          params.dueDate
+        ) ??
+        monthYearFromDate(
+          params.dueDate
+        )
+      );
+    }
+
+    return shiftMonthBack(
+      params.dueDate
+    );
+  }
+
+  if (isEstafeta) {
+    return monthYearFromDate(
+      params.competenceDate ??
         params.dueDate
-      ) ??
-      monthYearFromDate(
-        params.dueDate
-      )
     );
   }
 
   return monthYearFromDate(
-    params.competenceDate ??
-      params.dueDate
+    params.dueDate
   );
 }
 

@@ -23,6 +23,7 @@ type Company = {
   id: string;
   name: string;
   color: string | null;
+  slug: string;
 };
 
 type PageProps = {
@@ -98,7 +99,7 @@ export default async function MetasPage({
   if (isAdmin) {
     const { data } = await supabase
       .from("companies")
-      .select("id, name, color")
+      .select("id, name, color, slug")
       .eq("active", true)
       .order("name");
 
@@ -111,6 +112,7 @@ export default async function MetasPage({
           id,
           name,
           color,
+          slug,
           active
         )
       `)
@@ -129,6 +131,7 @@ export default async function MetasPage({
         id: company.id,
         name: company.name,
         color: company.color,
+        slug: company.slug,
       }))
       .sort((a, b) =>
         a.name.localeCompare(b.name, "pt-BR")
@@ -137,6 +140,13 @@ export default async function MetasPage({
 
   const companyIds = companies.map(
     (company) => company.id
+  );
+
+  const companySlugById = new Map(
+    companies.map((company) => [
+      company.id,
+      company.slug,
+    ])
   );
 
   /*
@@ -264,6 +274,10 @@ export default async function MetasPage({
           contractStartDate:
             contract?.start_date ??
             null,
+          companySlug:
+            companySlugById.get(
+              entry.company_id
+            ) ?? null,
         });
 
       if (!competence) {
