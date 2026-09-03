@@ -12,6 +12,11 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
+import {
+  competenceQueryRangeForYear,
+  getEntryCompetenceMonth,
+} from "@/app/lib/competence-date";
+
 import GoalEditor from "./goal-editor";
 
 type Company = {
@@ -78,22 +83,6 @@ export default async function MetasPage({
     parsedMonth <= 12
       ? parsedMonth
       : now.getMonth() + 1;
-
-  /*
-   * Coluna `month` em company_goals:
-   * 1–12 = meta mensal, 0 = meta anual.
-   */
-  const monthStart = isAnnual
-    ? dateStr(year, 1, 1)
-    : dateStr(year, month, 1);
-
-  const monthEnd = isAnnual
-    ? dateStr(year + 1, 1, 1)
-    : dateStr(
-        month === 12 ? year + 1 : year,
-        month === 12 ? 1 : month + 1,
-        1
-      );
 
   const supabase =
     await createClient();
@@ -207,10 +196,14 @@ export default async function MetasPage({
    * FATURAMENTO DO MÊS
    * =========================
    *
-   * Soma das contas a receber (income) não canceladas
-   * com vencimento dentro do mês, por empresa. Cobre
-   * parcelas de contrato, parcelas de venda de edição
-   * e lançamentos avulsos de receita.
+   * Conta por COMPETÊNCIA, não pelo vencimento — e a regra
+   * depende do tipo de venda. Serviço recorrente (contrato
+   * com billing_frequency diferente de "one_time"): cada
+   * parcela conta no mês ANTERIOR ao vencimento dela. Item
+   * único (contrato "one_time", ou lançamento sem contrato
+   * vinculado — ex.: comissão): o valor total conta de uma
+   * vez no mês da venda (start_date do contrato). Mesmo
+   * critério de /relatorios/metas e do dashboard.
    */
 
   const billedByCompany = new Map<
@@ -219,18 +212,30 @@ export default async function MetasPage({
   >();
 
   if (companyIds.length > 0) {
+    const dueRange =
+      competenceQueryRangeForYear(
+        year
+      );
+
     const { data: entries, error } =
       await supabase
         .from("financial_entries")
         .select(`
           company_id,
+          due_date,
           amount,
-          status
+          status,
+          contract_id,
+
+          contract:contracts (
+            billing_frequency,
+            start_date
+          )
         `)
         .eq("type", "income")
         .neq("status", "cancelled")
-        .gte("due_date", monthStart)
-        .lt("due_date", monthEnd)
+        .gte("due_date", dueRange.start)
+        .lte("due_date", dueRange.end)
         .in("company_id", companyIds);
 
     if (error) {
@@ -241,6 +246,34 @@ export default async function MetasPage({
     }
 
     for (const entry of entries ?? []) {
+      const contract = getFirst(
+        entry.contract
+      );
+
+      const competence =
+        getEntryCompetenceMonth({
+          dueDate: entry.due_date,
+          billingFrequency:
+            contract?.billing_frequency ??
+            null,
+          contractStartDate:
+            contract?.start_date ??
+            null,
+        });
+
+      if (!competence) {
+        continue;
+      }
+
+      const inPeriod = isAnnual
+        ? competence.year === year
+        : competence.year === year &&
+          competence.month === month;
+
+      if (!inPeriod) {
+        continue;
+      }
+
       billedByCompany.set(
         entry.company_id,
         (billedByCompany.get(
@@ -742,16 +775,20 @@ function SummaryCard({
  * =========================
  */
 
-function dateStr(
-  year: number,
-  month: number,
-  day: number
-) {
-  return [
-    String(year).padStart(4, "0"),
-    String(month).padStart(2, "0"),
-    String(day).padStart(2, "0"),
-  ].join("-");
+function getFirst<T>(
+  value:
+    | T
+    | T[]
+    | null
+    | undefined
+): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return Array.isArray(value)
+    ? (value[0] ?? null)
+    : value;
 }
 
 function formatCurrency(value: number) {
