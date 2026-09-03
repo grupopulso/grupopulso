@@ -199,11 +199,13 @@ export default async function MetasPage({
    * Conta por COMPETÊNCIA, não pelo vencimento — e a regra
    * depende do tipo de venda. Serviço recorrente (contrato
    * com billing_frequency diferente de "one_time"): cada
-   * parcela conta no mês ANTERIOR ao vencimento dela. Item
-   * único (contrato "one_time", ou lançamento sem contrato
-   * vinculado — ex.: comissão): o valor total conta de uma
-   * vez no mês da venda (start_date do contrato). Mesmo
-   * critério de /relatorios/metas e do dashboard.
+   * parcela conta no mês de início do contrato + o número
+   * de parcelas já decorridas até o vencimento dela (1ª
+   * parcela = mês de início). Item único (contrato
+   * "one_time", ou lançamento sem contrato vinculado — ex.:
+   * comissão): o valor total conta de uma vez no mês da
+   * venda (start_date do contrato). Mesmo critério de
+   * /relatorios/metas e do dashboard.
    */
 
   const billedByCompany = new Map<
@@ -229,7 +231,8 @@ export default async function MetasPage({
           contract_id,
 
           contract:contracts (
-            billing_frequency
+            billing_frequency,
+            start_date
           )
         `)
         .eq("type", "income")
@@ -257,6 +260,9 @@ export default async function MetasPage({
             entry.competence_date,
           billingFrequency:
             contract?.billing_frequency ??
+            null,
+          contractStartDate:
+            contract?.start_date ??
             null,
         });
 

@@ -55,9 +55,15 @@ type FinancialEntry = {
         billing_frequency:
           | string
           | null;
+        start_date:
+          | string
+          | null;
       }
     | {
         billing_frequency:
+          | string
+          | null;
+        start_date:
           | string
           | null;
       }[]
@@ -387,7 +393,8 @@ export default async function HomePage({
         contract_id,
 
         contract:contracts (
-          billing_frequency
+          billing_frequency,
+          start_date
         )
       `);
 
@@ -600,12 +607,14 @@ export default async function HomePage({
          * Faturado conta pela COMPETÊNCIA — e a regra depende
          * do tipo de venda. Serviço recorrente (contrato com
          * billing_frequency diferente de "one_time"): cada
-         * parcela conta no mês ANTERIOR ao vencimento dela.
-         * Item único (contrato "one_time", ou lançamento sem
-         * contrato — ex.: comissão): o valor total conta de
-         * uma vez no mês da venda (start_date do contrato),
-         * não importa em quantas parcelas foi dividido. Mesmo
-         * critério de /relatorios/metas.
+         * parcela conta no mês de início do contrato + o
+         * número de parcelas já decorridas até o vencimento
+         * dela (1ª parcela = mês de início). Item único
+         * (contrato "one_time", ou lançamento sem contrato —
+         * ex.: comissão): o valor total conta de uma vez no
+         * mês da venda (start_date do contrato), não importa
+         * em quantas parcelas foi dividido. Mesmo critério de
+         * /relatorios/metas.
          */
         const billed = entries
           .filter((entry) => {
@@ -634,6 +643,9 @@ export default async function HomePage({
                     entry.competence_date,
                   billingFrequency:
                     contract?.billing_frequency ??
+                    null,
+                  contractStartDate:
+                    contract?.start_date ??
                     null,
                 }
               );

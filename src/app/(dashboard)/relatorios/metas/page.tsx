@@ -202,9 +202,10 @@ export default async function RelatorioMetasPage({
    * tipo de venda:
    *
    * - Serviço recorrente (contrato com billing_frequency
-   *   diferente de "one_time"): cada parcela conta no mês
-   *   ANTERIOR ao vencimento dela (um contrato de R$12.000
-   *   em 12x soma R$1.000 por mês).
+   *   diferente de "one_time"): cada parcela conta no mês de
+   *   início do contrato + o número de parcelas já decorridas
+   *   até o vencimento dela (um contrato de R$12.000 em 12x
+   *   soma R$1.000 por mês a partir do início do contrato).
    *
    * - Item único (contrato "one_time", ou lançamento sem
    *   contrato vinculado): o valor TOTAL conta de uma vez no
@@ -237,7 +238,8 @@ export default async function RelatorioMetasPage({
           contract_id,
 
           contract:contracts (
-            billing_frequency
+            billing_frequency,
+            start_date
           )
         `)
         .eq("type", "income")
@@ -268,6 +270,9 @@ export default async function RelatorioMetasPage({
             entry.competence_date,
           billingFrequency:
             contract?.billing_frequency ??
+            null,
+          contractStartDate:
+            contract?.start_date ??
             null,
         });
 
