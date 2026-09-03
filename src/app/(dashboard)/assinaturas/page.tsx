@@ -587,7 +587,7 @@ function getBillingLabel(
 ) {
   const labels: Record<string, string> = {
     one_time:
-      "Pagamento único",
+      "Único",
     monthly:
       "Mensal",
     quarterly:

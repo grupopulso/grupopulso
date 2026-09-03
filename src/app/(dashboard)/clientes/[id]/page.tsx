@@ -1535,7 +1535,7 @@ function formatBillingLabel(
     string
   > = {
     one_time:
-      "Pagamento único",
+      "Único",
 
     monthly:
       "Mensal",

@@ -667,7 +667,7 @@ function getBillingLabel(
   frequency: string | null
 ) {
   const labels: Record<string, string> = {
-    one_time: "Pagamento único",
+    one_time: "Único",
     monthly: "Mensal",
     quarterly: "Trimestral",
     semiannual: "Semestral",

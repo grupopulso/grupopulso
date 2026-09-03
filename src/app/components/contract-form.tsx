@@ -2293,7 +2293,7 @@ export default function ContractForm({
                 className="input"
               >
                 <option value="one_time">
-                  Pagamento único
+                  Único
                 </option>
 
                 <option value="monthly">

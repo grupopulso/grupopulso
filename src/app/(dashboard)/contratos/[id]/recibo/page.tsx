@@ -904,7 +904,7 @@ function getBillingLabel(
     string
   > = {
     one_time:
-      "Pagamento único",
+      "Único",
 
     monthly:
       "Mensal",

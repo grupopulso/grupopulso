@@ -606,7 +606,7 @@ export default function ProductForm({
                 className="input"
               >
                 <option value="one_time">
-                  Pagamento único
+                  Único
                 </option>
 
                 <option value="monthly">

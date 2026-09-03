@@ -37,7 +37,7 @@ function formatCurrency(value: number) {
 
 const BILLING_LABELS: Record<string, string> =
   {
-    one_time: "pagamento único",
+    one_time: "único",
     monthly: "mensal",
     quarterly: "trimestral",
     semiannual: "semestral",

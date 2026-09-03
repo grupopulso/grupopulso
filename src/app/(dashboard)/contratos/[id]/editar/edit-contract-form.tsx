@@ -1133,7 +1133,7 @@ export default function EditContractForm({
                 className="input"
               >
                 <option value="one_time">
-                  Pagamento único
+                  Único
                 </option>
 
                 <option value="monthly">
