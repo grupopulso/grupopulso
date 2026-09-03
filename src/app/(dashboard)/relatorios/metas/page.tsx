@@ -197,8 +197,12 @@ export default async function RelatorioMetasPage({
    * FATURADO DO ANO (receita por empresa/mês)
    * =====================================================
    *
-   * Mesmo critério do dashboard: financial_entries do tipo
-   * receita, não cancelados, pelo vencimento.
+   * Faturamento = valor emitido/faturado (issue_date), não
+   * o valor recebido (amount_paid) nem o vencimento
+   * (due_date, que é quando a cobrança vence, não quando
+   * ela foi faturada). Um contrato de 12 parcelas criado em
+   * janeiro conta o valor total como faturado em janeiro,
+   * mesmo que as parcelas vençam nos meses seguintes.
    */
 
   const billedByCompanyMonth = new Map<
@@ -212,15 +216,15 @@ export default async function RelatorioMetasPage({
         .from("financial_entries")
         .select(`
           company_id,
-          due_date,
+          issue_date,
           amount,
           status,
           type
         `)
         .eq("type", "income")
         .neq("status", "cancelled")
-        .gte("due_date", yearStart)
-        .lte("due_date", yearEnd)
+        .gte("issue_date", yearStart)
+        .lte("issue_date", yearEnd)
         .in(
           "company_id",
           companyIds
@@ -229,10 +233,9 @@ export default async function RelatorioMetasPage({
     for (const entry of entriesData ??
       []) {
       const month = Number(
-        (entry.due_date ?? "").slice(
-          5,
-          7
-        )
+        (
+          entry.issue_date ?? ""
+        ).slice(5, 7)
       );
 
       if (
