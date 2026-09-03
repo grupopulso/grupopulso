@@ -88,19 +88,31 @@ export function getCompetenceMonth(
  * Competência de um lançamento financeiro, já decidindo
  * entre a regra de serviço recorrente e a de item único.
  *
- * `billingFrequency` / `contractStartDate` vêm do contrato
- * vinculado ao lançamento (financial_entries.contract_id).
- * Sem contrato vinculado (ex.: pagamento de comissão), o
- * lançamento é tratado como item único, usando a própria data
- * de vencimento como mês de competência (sem deslocar).
+ * `billingFrequency` vem do contrato vinculado ao lançamento
+ * (financial_entries.contract_id) — decide qual das duas
+ * regras aplicar.
+ *
+ * Pra item único, a competência é a própria coluna
+ * `financial_entries.competence_date` — ela já é gravada
+ * corretamente na criação pra cobrir os dois casos:
+ *   - parcela de contrato: competence_date = data de início
+ *     do contrato (mesma pra todas as parcelas);
+ *   - venda avulsa de publicidade numa edição: competence_date
+ *     = data de publicação da edição.
+ * Só cai pro due_date se por algum motivo competence_date
+ * estiver vazio.
+ *
+ * Pra serviço recorrente, IGNORA a competence_date gravada
+ * (ela é fixa = início do contrato pra toda parcela, não
+ * serve pra isso) e desloca o vencimento pra trás em 1 mês.
  */
 export function getEntryCompetenceMonth(
   params: {
     dueDate: string | null;
-    billingFrequency?:
+    competenceDate?:
       | string
       | null;
-    contractStartDate?:
+    billingFrequency?:
       | string
       | null;
   }
@@ -121,7 +133,7 @@ export function getEntryCompetenceMonth(
   }
 
   return monthYearFromDate(
-    params.contractStartDate ??
+    params.competenceDate ??
       params.dueDate
   );
 }

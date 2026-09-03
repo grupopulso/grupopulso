@@ -41,6 +41,7 @@ type FinancialEntry = {
   company_id: string;
   type: string;
   due_date: string;
+  competence_date: string | null;
   amount: number | string;
   amount_paid: number | string;
   interest: number | string;
@@ -54,13 +55,11 @@ type FinancialEntry = {
         billing_frequency:
           | string
           | null;
-        start_date: string | null;
       }
     | {
         billing_frequency:
           | string
           | null;
-        start_date: string | null;
       }[]
     | null;
 };
@@ -378,6 +377,7 @@ export default async function HomePage({
         company_id,
         type,
         due_date,
+        competence_date,
         amount,
         amount_paid,
         interest,
@@ -387,8 +387,7 @@ export default async function HomePage({
         contract_id,
 
         contract:contracts (
-          billing_frequency,
-          start_date
+          billing_frequency
         )
       `);
 
@@ -631,11 +630,10 @@ export default async function HomePage({
                 {
                   dueDate:
                     entry.due_date,
+                  competenceDate:
+                    entry.competence_date,
                   billingFrequency:
                     contract?.billing_frequency ??
-                    null,
-                  contractStartDate:
-                    contract?.start_date ??
                     null,
                 }
               );

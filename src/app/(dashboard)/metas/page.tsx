@@ -223,13 +223,13 @@ export default async function MetasPage({
         .select(`
           company_id,
           due_date,
+          competence_date,
           amount,
           status,
           contract_id,
 
           contract:contracts (
-            billing_frequency,
-            start_date
+            billing_frequency
           )
         `)
         .eq("type", "income")
@@ -253,11 +253,10 @@ export default async function MetasPage({
       const competence =
         getEntryCompetenceMonth({
           dueDate: entry.due_date,
+          competenceDate:
+            entry.competence_date,
           billingFrequency:
             contract?.billing_frequency ??
-            null,
-          contractStartDate:
-            contract?.start_date ??
             null,
         });
 
