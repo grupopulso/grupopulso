@@ -9,7 +9,7 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
-  requireModulePermission,
+  requireFinancialEntryAccess,
 } from "@/app/lib/permissions";
 
 type Input = {
@@ -34,8 +34,16 @@ export async function updateFinancialDocumentStatus(
   entryId: string,
   input: Input
 ) {
-  await requireModulePermission(
-    "financial",
+  /*
+   * Nota fiscal e cobrança só existem em lançamentos de
+   * receita (checado abaixo) — usa o mesmo critério de acesso
+   * da página (financial OU accounts_receivable/receipts),
+   * não só o módulo geral "financial". Quem só tem "Contas a
+   * Receber" (sem o módulo financeiro geral) já consegue ver
+   * esse formulário e precisa também conseguir salvá-lo.
+   */
+  await requireFinancialEntryAccess(
+    "income",
     "edit"
   );
 
