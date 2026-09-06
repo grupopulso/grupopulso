@@ -1777,6 +1777,20 @@ export default async function EditionPage({
       0
     );
 
+  const editionExceeded =
+    Math.max(
+      roundMoney(
+        totalSales -
+          editionSalesGoal
+      ),
+      0
+    );
+
+  const hasReachedEditionGoal =
+    editionSalesGoal > 0 &&
+    totalSales >=
+      editionSalesGoal;
+
   const editionProgress =
     editionSalesGoal >
     0
@@ -2123,11 +2137,18 @@ export default async function EditionPage({
               />
 
               <CommercialValueCard
-                label="Falta"
-                value={
-                  formatCurrency(
-                    editionRemaining
-                  )
+                label={
+                  hasReachedEditionGoal
+                    ? "Passou da meta"
+                    : "Falta"
+                }
+                value={formatCurrency(
+                  hasReachedEditionGoal
+                    ? editionExceeded
+                    : editionRemaining
+                )}
+                highlighted={
+                  hasReachedEditionGoal
                 }
               />
 
@@ -2187,7 +2208,9 @@ export default async function EditionPage({
 
                 <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
                   <div
-                    className="h-full rounded-full bg-[#15704f]"
+                    className={`h-full rounded-full ${goalProgressColor(
+                      editionProgress
+                    )}`}
                     style={{
                       width:
                         `${editionProgressBar}%`,
@@ -3073,6 +3096,24 @@ function getFirst<T>(
     ? value[0] ??
         null
     : value;
+}
+
+/*
+ * Cor da barra de progresso da meta: abaixo de 70% vermelha,
+ * entre 70% e 90% amarela, acima disso verde.
+ */
+function goalProgressColor(
+  percent: number
+) {
+  if (percent < 70) {
+    return "bg-red-500";
+  }
+
+  if (percent < 90) {
+    return "bg-amber-500";
+  }
+
+  return "bg-[#15704f]";
 }
 
 function roundMoney(

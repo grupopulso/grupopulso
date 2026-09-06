@@ -612,6 +612,25 @@ export default async function EditionsPage() {
                       100
                     : 0;
 
+                const hasReachedGoal =
+                  salesGoal > 0 &&
+                  totalLinkedAmount >=
+                    salesGoal;
+
+                const amountToGoal =
+                  hasReachedGoal
+                    ? roundMoney(
+                        totalLinkedAmount -
+                          salesGoal
+                      )
+                    : Math.max(
+                        roundMoney(
+                          salesGoal -
+                            totalLinkedAmount
+                        ),
+                        0
+                      );
+
                 /*
                  * =========================================
                  * METAS DOS CADERNOS
@@ -836,7 +855,9 @@ export default async function EditionsPage() {
                                 <>
                                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
                                     <div
-                                      className="h-full rounded-full bg-[#15704f]"
+                                      className={`h-full rounded-full ${goalProgressColor(
+                                        progress
+                                      )}`}
                                       style={{
                                         width: `${Math.min(
                                           Math.max(
@@ -854,6 +875,22 @@ export default async function EditionsPage() {
                                       progress
                                     )}{" "}
                                     vendido
+                                  </p>
+
+                                  <p
+                                    className={`mt-0.5 text-xs font-medium ${
+                                      hasReachedGoal
+                                        ? "text-[#15704f]"
+                                        : "text-slate-500"
+                                    }`}
+                                  >
+                                    {hasReachedGoal
+                                      ? `${formatCurrency(
+                                          amountToGoal
+                                        )} acima da meta`
+                                      : `Faltam ${formatCurrency(
+                                          amountToGoal
+                                        )}`}
                                   </p>
                                 </>
                               )}
@@ -1073,6 +1110,24 @@ function getFirst<T>(
       ] ??
         null
     : value;
+}
+
+/*
+ * Cor da barra de progresso da meta: abaixo de 70% vermelha,
+ * entre 70% e 90% amarela, acima disso verde.
+ */
+function goalProgressColor(
+  percent: number
+) {
+  if (percent < 70) {
+    return "bg-red-500";
+  }
+
+  if (percent < 90) {
+    return "bg-amber-500";
+  }
+
+  return "bg-[#15704f]";
 }
 
 function roundMoney(
