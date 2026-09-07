@@ -80,6 +80,11 @@ export async function saveSellerGoal(
   const supabase =
     await createClient();
 
+  /*
+   * user_profiles é buscado separado (não dá pra fazer embed
+   * de seller_settings.user_id -> user_profiles.id: não existe
+   * FK entre as duas pro PostgREST descobrir a relação).
+   */
   const {
     data: setting,
     error: settingError,
@@ -87,10 +92,6 @@ export async function saveSellerGoal(
     .from("seller_settings")
     .select(`
       user_id,
-
-      profile:user_profiles (
-        name
-      ),
 
       company:companies (
         name
@@ -107,6 +108,13 @@ export async function saveSellerGoal(
         "Vendedor não encontrado nesta empresa.",
     };
   }
+
+  const { data: profile } =
+    await supabase
+      .from("user_profiles")
+      .select("name")
+      .eq("id", userId)
+      .maybeSingle();
 
   const target =
     Math.round(targetAmount * 100) /
@@ -141,10 +149,6 @@ export async function saveSellerGoal(
       error: error.message,
     };
   }
-
-  const profile = getFirst(
-    setting.profile
-  );
 
   const company = getFirst(
     setting.company

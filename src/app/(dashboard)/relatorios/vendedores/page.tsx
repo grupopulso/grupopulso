@@ -10,7 +10,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireAdmin,
 } from "@/app/lib/permissions";
@@ -84,27 +84,29 @@ export default async function RelatorioVendedoresPage({
       ? parsedMonth
       : null;
 
-  const supabase =
-    await createClient();
+  /*
+   * Leitura via service role: esta página já é restrita a
+   * admin (requireAdmin acima).
+   */
+  const adminDb = createAdminClient();
 
   /*
    * =====================================================
    * VENDEDORES ATIVOS
    * =====================================================
+   *
+   * user_profiles é buscado separado (não dá pra fazer embed
+   * de seller_settings.user_id -> user_profiles.id: não existe
+   * FK entre as duas pro PostgREST descobrir a relação).
    */
 
   const {
     data: settings,
-  } = await supabase
+  } = await adminDb
     .from("seller_settings")
     .select(`
       user_id,
       company_id,
-
-      profile:user_profiles (
-        id,
-        name
-      ),
 
       company:companies (
         id,
@@ -115,15 +117,41 @@ export default async function RelatorioVendedoresPage({
     .eq("active", true)
     .order("created_at");
 
+  const sellerUserIds = [
+    ...new Set(
+      (settings ?? []).map(
+        (setting) => setting.user_id
+      )
+    ),
+  ];
+
+  const { data: profiles } =
+    sellerUserIds.length > 0
+      ? await adminDb
+          .from("user_profiles")
+          .select("id, name")
+          .in("id", sellerUserIds)
+      : { data: [] };
+
+  const profileById = new Map(
+    (profiles ?? []).map(
+      (profile) => [
+        profile.id,
+        profile,
+      ]
+    )
+  );
+
   const sellerRows = (
     settings ?? []
   )
     .map((setting) => ({
       userId: setting.user_id,
       companyId: setting.company_id,
-      profile: getFirst(
-        setting.profile
-      ),
+      profile:
+        profileById.get(
+          setting.user_id
+        ) ?? null,
       company: getFirst(
         setting.company
       ),
@@ -165,7 +193,7 @@ export default async function RelatorioVendedoresPage({
     companyIds.length > 0
   ) {
     const { data: goals } =
-      await supabase
+      await adminDb
         .from("seller_goals")
         .select(`
           user_id,
@@ -203,7 +231,7 @@ export default async function RelatorioVendedoresPage({
 
   const records =
     await fetchSellerSaleRecords(
-      supabase,
+      adminDb,
       {
         userIds,
         companyIds,
