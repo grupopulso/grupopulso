@@ -441,6 +441,16 @@ const routes =
             href="/relatorios/metas"
           />
 
+          {access.profile.role ===
+            "admin" && (
+            <ReportCard
+              icon={Users}
+              title="Desempenho dos vendedores"
+              description="Meta x vendido de cada vendedor, mês a mês, em gráficos."
+              href="/relatorios/vendedores"
+            />
+          )}
+
           <ReportCard
             icon={Route}
             title="Rotas e Entregas"

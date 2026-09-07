@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import {
   ArrowLeft,
+  Target,
   Users,
 } from "lucide-react";
 
@@ -251,6 +252,14 @@ export default async function SellersSettingsPage() {
               </p>
             </div>
           </div>
+
+          <Link
+            href="/configuracoes/vendedores/metas"
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-[#15704f] hover:text-[#15704f]"
+          >
+            <Target className="h-4 w-4" />
+            Metas dos vendedores
+          </Link>
         </div>
 
         {/* GERENCIAMENTO */}

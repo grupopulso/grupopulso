@@ -27,6 +27,9 @@ import {
   calculateEntryOpenAmount,
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
+import {
+  fetchSellerSaleRecords,
+} from "@/app/lib/seller-performance";
 
 import SellerPicker from "./seller-picker";
 
@@ -731,6 +734,147 @@ export default async function MeuPainelPage({
     { total: 0, pending: 0, paid: 0 }
   );
 
+  /*
+   * =========================
+   * MINHA META
+   * =========================
+   *
+   * Uma por empresa em que o vendedor está ativo (ele pode
+   * vender em mais de uma). Anual = soma das 12 metas
+   * mensais daquela empresa, igual ao critério de /metas.
+   */
+
+  const { data: myActiveSettings } =
+    await supabase
+      .from("seller_settings")
+      .select(`
+        company_id,
+
+        company:companies (
+          id,
+          name,
+          color
+        )
+      `)
+      .eq("user_id", userId)
+      .eq("active", true);
+
+  const myCompanies = (
+    myActiveSettings ?? []
+  )
+    .map((setting) =>
+      getFirst<{
+        id: string;
+        name: string;
+        color: string | null;
+      }>(setting.company)
+    )
+    .filter(
+      (
+        company
+      ): company is {
+        id: string;
+        name: string;
+        color: string | null;
+      } => Boolean(company)
+    );
+
+  const myCompanyIds = myCompanies.map(
+    (company) => company.id
+  );
+
+  const myGoalByCompany = new Map<
+    string,
+    number
+  >();
+
+  if (myCompanyIds.length > 0) {
+    let goalsQuery = supabase
+      .from("seller_goals")
+      .select(`
+        company_id,
+        month,
+        target_amount
+      `)
+      .eq("user_id", userId)
+      .eq("year", year)
+      .in("company_id", myCompanyIds);
+
+    goalsQuery = isAnnual
+      ? goalsQuery
+          .gte("month", 1)
+          .lte("month", 12)
+      : goalsQuery.eq("month", month);
+
+    const { data: myGoals } =
+      await goalsQuery;
+
+    for (const goal of myGoals ?? []) {
+      myGoalByCompany.set(
+        goal.company_id,
+        (myGoalByCompany.get(
+          goal.company_id
+        ) ?? 0) +
+          Number(
+            goal.target_amount ?? 0
+          )
+      );
+    }
+  }
+
+  const mySoldByCompany = new Map<
+    string,
+    number
+  >();
+
+  if (myCompanyIds.length > 0) {
+    const myRecords =
+      await fetchSellerSaleRecords(
+        adminDb,
+        {
+          userIds: [userId],
+          companyIds: myCompanyIds,
+          periodStart,
+          periodEndExclusive,
+        }
+      );
+
+    for (const record of myRecords) {
+      mySoldByCompany.set(
+        record.companyId,
+        (mySoldByCompany.get(
+          record.companyId
+        ) ?? 0) + record.amount
+      );
+    }
+  }
+
+  const myGoalRows = myCompanies.map(
+    (company) => {
+      const target =
+        myGoalByCompany.get(
+          company.id
+        ) ?? null;
+
+      const sold =
+        mySoldByCompany.get(
+          company.id
+        ) ?? 0;
+
+      const progress =
+        target && target > 0
+          ? sold / target
+          : null;
+
+      return {
+        company,
+        target,
+        sold,
+        progress,
+      };
+    }
+  );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
@@ -900,6 +1044,38 @@ export default async function MeuPainelPage({
             )} já pago`}
           />
         </div>
+
+        {/* MINHA META */}
+
+        {myGoalRows.length > 0 && (
+          <Panel
+            title="Minha meta"
+            subtitle={
+              period.isAnnual
+                ? "Quanto você vendeu no ano contra a meta definida pelo administrador."
+                : "Quanto você vendeu no mês contra a meta definida pelo administrador."
+            }
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {myGoalRows.map((row) => (
+                <SellerGoalSummaryCard
+                  key={row.company.id}
+                  companyName={
+                    row.company.name
+                  }
+                  companyColor={
+                    row.company.color
+                  }
+                  target={row.target}
+                  sold={row.sold}
+                  progress={
+                    row.progress
+                  }
+                />
+              ))}
+            </div>
+          </Panel>
+        )}
 
         {/* RENOVAÇÕES / A VENCER */}
 
@@ -1318,6 +1494,110 @@ function SummaryCard({
           <Icon className="h-5 w-5" />
         </div>
       </div>
+    </div>
+  );
+}
+
+function SellerGoalSummaryCard({
+  companyName,
+  companyColor,
+  target,
+  sold,
+  progress,
+}: {
+  companyName: string;
+  companyColor: string | null;
+  target: number | null;
+  sold: number;
+  progress: number | null;
+}) {
+  const percent =
+    progress !== null
+      ? Math.round(progress * 1000) / 10
+      : null;
+
+  const clampedPercent =
+    percent !== null
+      ? Math.min(Math.max(percent, 0), 100)
+      : 0;
+
+  const remaining =
+    target !== null
+      ? Math.max(target - sold, 0)
+      : null;
+
+  const barClass =
+    progress === null
+      ? "bg-slate-300"
+      : progress >= 1
+        ? "bg-emerald-500"
+        : progress >= 0.7
+          ? "bg-amber-400"
+          : "bg-red-400";
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div className="flex items-center gap-1.5">
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{
+            backgroundColor:
+              companyColor ?? "#94a3b8",
+          }}
+        />
+
+        <p className="text-xs font-medium text-slate-500">
+          {companyName}
+        </p>
+      </div>
+
+      {target === null ? (
+        <p className="mt-2 text-sm font-medium text-slate-500">
+          Meta não definida
+        </p>
+      ) : (
+        <>
+          <div className="mt-2 flex items-end justify-between">
+            <p className="text-lg font-semibold text-slate-900">
+              {formatCurrency(sold)}
+            </p>
+
+            <p className="text-xs text-slate-400">
+              de {formatCurrency(target)}
+            </p>
+          </div>
+
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+            <div
+              className={`h-full rounded-full ${barClass}`}
+              style={{
+                width: `${clampedPercent}%`,
+              }}
+            />
+          </div>
+
+          <div className="mt-1.5 flex items-center justify-between text-xs">
+            <span className="font-semibold text-slate-700">
+              {percent !== null
+                ? `${new Intl.NumberFormat(
+                    "pt-BR",
+                    {
+                      maximumFractionDigits: 1,
+                    }
+                  ).format(percent)}%`
+                : "—"}
+            </span>
+
+            <span className="text-slate-400">
+              {remaining && remaining > 0
+                ? `faltam ${formatCurrency(
+                    remaining
+                  )}`
+                : "meta atingida"}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
