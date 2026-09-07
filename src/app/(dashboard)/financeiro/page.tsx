@@ -672,6 +672,11 @@ export default async function FinanceiroPage({
             href="/financeiro/configuracoes"
             label="Cadastros financeiros"
           />
+
+          <FinanceShortcut
+            href="/financeiro/notas-fiscais"
+            label="Notas fiscais"
+          />
         </div>
 
         {/* CONTEÚDO */}
