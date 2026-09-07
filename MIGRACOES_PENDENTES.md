@@ -1,8 +1,11 @@
 # Migrações de banco pendentes
 
+Nenhuma pendente no momento. Migrações concluídas ficam abaixo, marcadas,
+como histórico.
+
 ---
 
-## [ ] Posições de capa/contracapa/sobrecapa sem limite nas edições ABERTAS
+## [x] Posições de capa/contracapa/sobrecapa sem limite nas edições ABERTAS
 
 As edições novas já nascem com todas as posições ilimitadas (a "esgotada"
 agora é manual, pelo botão Esgotar). Para as edições **abertas** que já
@@ -24,7 +27,7 @@ aparecem como "Esgotada" automaticamente após a 1ª venda.
 
 ---
 
-## [ ] Tabela `seller_goals` (metas mensais por vendedor)
+## [x] Tabela `seller_goals` (metas mensais por vendedor)
 
 Necessária para a funcionalidade de metas por vendedor (cadastro em
 Configurações → Vendedores → Metas, exibição em Meu Painel e relatório
