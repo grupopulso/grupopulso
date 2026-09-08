@@ -28,7 +28,7 @@ import {
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
 import {
-  fetchSellerSaleRecords,
+  fetchSellerCompetenceRecords,
 } from "@/app/lib/seller-performance";
 
 import SellerPicker from "./seller-picker";
@@ -797,19 +797,21 @@ export default async function MeuPainelPage({
     }
 
     const myRecords =
-      await fetchSellerSaleRecords(
+      await fetchSellerCompetenceRecords(
         adminDb,
         {
           userIds: [userId],
           companyIds: myCompanyIds,
-          periodStart,
-          periodEndExclusive,
+          year,
         }
       );
 
     mySold = myRecords.reduce(
       (total, record) =>
-        total + record.amount,
+        isAnnual ||
+        record.month === month
+          ? total + record.amount
+          : total,
       0
     );
   }

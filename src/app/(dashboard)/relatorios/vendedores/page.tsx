@@ -16,7 +16,7 @@ import {
 } from "@/app/lib/permissions";
 
 import {
-  fetchSellerSaleRecords,
+  fetchSellerCompetenceRecords,
 } from "@/app/lib/seller-performance";
 
 const MONTH_LABELS_SHORT = [
@@ -253,24 +253,17 @@ export default async function RelatorioVendedoresPage({
   >();
 
   const records =
-    await fetchSellerSaleRecords(
+    await fetchSellerCompetenceRecords(
       adminDb,
       {
         userIds,
         companyIds,
-        periodStart: `${year}-01-01`,
-        periodEndExclusive: `${
-          year + 1
-        }-01-01`,
+        year,
       }
     );
 
   for (const record of records) {
-    const recordMonth = Number(
-      record.createdAt.slice(5, 7)
-    );
-
-    const key = `${record.userId}:${recordMonth}`;
+    const key = `${record.userId}:${record.month}`;
 
     soldByUserMonth.set(
       key,

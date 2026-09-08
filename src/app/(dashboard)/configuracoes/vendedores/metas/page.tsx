@@ -13,7 +13,7 @@ import {
 } from "@/app/lib/permissions";
 
 import {
-  fetchSellerSaleRecords,
+  fetchSellerCompetenceRecords,
 } from "@/app/lib/seller-performance";
 
 import SellerGoalEditor from "./seller-goal-editor";
@@ -66,20 +66,6 @@ export default async function SellerGoalsPage({
     parsedMonth <= 12
       ? parsedMonth
       : now.getMonth() + 1;
-
-  const periodStart = `${year}-${String(
-    month
-  ).padStart(2, "0")}-01`;
-
-  const nextPeriodMonth =
-    month === 12 ? 1 : month + 1;
-
-  const nextPeriodYear =
-    month === 12 ? year + 1 : year;
-
-  const periodEndExclusive = `${nextPeriodYear}-${String(
-    nextPeriodMonth
-  ).padStart(2, "0")}-01`;
 
   /*
    * Leitura via service role: esta página já é restrita a
@@ -266,7 +252,8 @@ export default async function SellerGoalsPage({
    * VENDIDO NO PERÍODO
    * =========================
    *
-   * Soma as 3 empresas — a meta é única por vendedor.
+   * Mesma competência do faturamento das empresas — soma as
+   * 3 empresas, já que a meta é única por vendedor.
    */
 
   const soldByUser = new Map<
@@ -275,17 +262,20 @@ export default async function SellerGoalsPage({
   >();
 
   const records =
-    await fetchSellerSaleRecords(
+    await fetchSellerCompetenceRecords(
       adminDb,
       {
         userIds,
         companyIds,
-        periodStart,
-        periodEndExclusive,
+        year,
       }
     );
 
   for (const record of records) {
+    if (record.month !== month) {
+      continue;
+    }
+
     soldByUser.set(
       record.userId,
       (soldByUser.get(
