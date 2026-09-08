@@ -92,9 +92,12 @@ export default async function SellerGoalsPage({
    * VENDEDORES ATIVOS
    * =========================
    *
-   * user_profiles é buscado separado (não dá pra fazer embed
-   * de seller_settings.user_id -> user_profiles.id: não existe
-   * FK entre as duas pro PostgREST descobrir a relação).
+   * A meta é só mensal por vendedor — não por empresa. Ele
+   * pode vender em mais de uma empresa; todas contam pra
+   * mesma meta. user_profiles é buscado separado (não dá
+   * pra fazer embed de seller_settings.user_id ->
+   * user_profiles.id: não existe FK entre as duas pro
+   * PostgREST descobrir a relação).
    */
 
   const {
@@ -147,23 +150,55 @@ export default async function SellerGoalsPage({
     )
   );
 
-  const sellerRows = (
-    settings ?? []
-  )
-    .map((setting) => ({
-      userId: setting.user_id,
-      companyId: setting.company_id,
+  type SellerCompany = {
+    id: string;
+    name: string;
+    color: string | null;
+  };
+
+  const companiesByUser = new Map<
+    string,
+    SellerCompany[]
+  >();
+
+  for (const setting of settings ??
+    []) {
+    const company = getFirst(
+      setting.company
+    );
+
+    if (!company) {
+      continue;
+    }
+
+    const current =
+      companiesByUser.get(
+        setting.user_id
+      ) ?? [];
+
+    current.push(company);
+
+    companiesByUser.set(
+      setting.user_id,
+      current
+    );
+  }
+
+  const sellers = sellerUserIds
+    .map((userId) => ({
+      userId,
       profile:
-        profileById.get(
-          setting.user_id
-        ) ?? null,
-      company: getFirst(
-        setting.company
-      ),
+        profileById.get(userId) ??
+        null,
+      companies:
+        companiesByUser.get(
+          userId
+        ) ?? [],
     }))
     .filter(
-      (row) =>
-        row.profile && row.company
+      (seller) =>
+        seller.profile &&
+        seller.companies.length > 0
     )
     .sort((a, b) =>
       (a.profile?.name ?? "").localeCompare(
@@ -172,18 +207,16 @@ export default async function SellerGoalsPage({
       )
     );
 
-  const userIds = [
-    ...new Set(
-      sellerRows.map(
-        (row) => row.userId
-      )
-    ),
-  ];
+  const userIds = sellers.map(
+    (seller) => seller.userId
+  );
 
   const companyIds = [
     ...new Set(
-      sellerRows.map(
-        (row) => row.companyId
+      sellers.flatMap((seller) =>
+        seller.companies.map(
+          (company) => company.id
+        )
       )
     ),
   ];
@@ -194,30 +227,22 @@ export default async function SellerGoalsPage({
    * =========================
    */
 
-  const goalByKey = new Map<
+  const goalByUser = new Map<
     string,
     number
   >();
 
-  if (
-    userIds.length > 0 &&
-    companyIds.length > 0
-  ) {
+  if (userIds.length > 0) {
     const { data: goals, error } =
       await adminDb
         .from("seller_goals")
         .select(`
           user_id,
-          company_id,
           target_amount
         `)
         .eq("year", year)
         .eq("month", month)
-        .in("user_id", userIds)
-        .in(
-          "company_id",
-          companyIds
-        );
+        .in("user_id", userIds);
 
     if (error) {
       console.error(
@@ -227,8 +252,8 @@ export default async function SellerGoalsPage({
     }
 
     for (const goal of goals ?? []) {
-      goalByKey.set(
-        `${goal.user_id}:${goal.company_id}`,
+      goalByUser.set(
+        goal.user_id,
         Number(
           goal.target_amount ?? 0
         )
@@ -240,9 +265,11 @@ export default async function SellerGoalsPage({
    * =========================
    * VENDIDO NO PERÍODO
    * =========================
+   *
+   * Soma as 3 empresas — a meta é única por vendedor.
    */
 
-  const soldByKey = new Map<
+  const soldByUser = new Map<
     string,
     number
   >();
@@ -259,12 +286,11 @@ export default async function SellerGoalsPage({
     );
 
   for (const record of records) {
-    const key = `${record.userId}:${record.companyId}`;
-
-    soldByKey.set(
-      key,
-      (soldByKey.get(key) ?? 0) +
-        record.amount
+    soldByUser.set(
+      record.userId,
+      (soldByUser.get(
+        record.userId
+      ) ?? 0) + record.amount
     );
   }
 
@@ -274,15 +300,17 @@ export default async function SellerGoalsPage({
    * =========================
    */
 
-  const rows = sellerRows.map(
-    (row) => {
-      const key = `${row.userId}:${row.companyId}`;
-
+  const rows = sellers.map(
+    (seller) => {
       const target =
-        goalByKey.get(key) ?? null;
+        goalByUser.get(
+          seller.userId
+        ) ?? null;
 
       const sold =
-        soldByKey.get(key) ?? 0;
+        soldByUser.get(
+          seller.userId
+        ) ?? 0;
 
       const progress =
         target && target > 0
@@ -290,7 +318,7 @@ export default async function SellerGoalsPage({
           : null;
 
       return {
-        ...row,
+        ...seller,
         target,
         sold,
         progress,
@@ -360,7 +388,7 @@ export default async function SellerGoalsPage({
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Defina a meta mensal de cada vendedor e acompanhe o quanto já venderam.
+                Meta única por mês — vale a soma das vendas em qualquer uma das empresas em que o vendedor atua.
               </p>
             </div>
           </div>
@@ -432,23 +460,15 @@ export default async function SellerGoalsPage({
           <div className="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {rows.map((row) => (
               <SellerGoalCard
-                key={`${row.userId}:${row.companyId}`}
+                key={row.userId}
                 name={
                   row.profile?.name ??
                   "Vendedor"
                 }
-                companyName={
-                  row.company?.name ??
-                  "—"
-                }
-                companyColor={
-                  row.company?.color ??
-                  null
+                companies={
+                  row.companies
                 }
                 userId={row.userId}
-                companyId={
-                  row.companyId
-                }
                 target={row.target}
                 sold={row.sold}
                 progress={
@@ -473,10 +493,8 @@ export default async function SellerGoalsPage({
 
 function SellerGoalCard({
   name,
-  companyName,
-  companyColor,
+  companies,
   userId,
-  companyId,
   target,
   sold,
   progress,
@@ -484,10 +502,12 @@ function SellerGoalCard({
   month,
 }: {
   name: string;
-  companyName: string;
-  companyColor: string | null;
+  companies: {
+    id: string;
+    name: string;
+    color: string | null;
+  }[];
   userId: string;
-  companyId: string;
   target: number | null;
   sold: number;
   progress: number | null;
@@ -519,19 +539,25 @@ function SellerGoalCard({
             {name}
           </p>
 
-          <div className="mt-1 flex items-center gap-1.5">
-            <span
-              className="h-2 w-2 rounded-full"
-              style={{
-                backgroundColor:
-                  companyColor ??
-                  "#94a3b8",
-              }}
-            />
-
-            <p className="text-xs text-slate-500">
-              {companyName}
-            </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+            {companies.map(
+              (company) => (
+                <span
+                  key={company.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] text-slate-500"
+                >
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{
+                      backgroundColor:
+                        company.color ??
+                        "#94a3b8",
+                    }}
+                  />
+                  {company.name}
+                </span>
+              )
+            )}
           </div>
         </div>
 
@@ -552,7 +578,6 @@ function SellerGoalCard({
           <div className="mt-3 flex justify-center">
             <SellerGoalEditor
               userId={userId}
-              companyId={companyId}
               year={year}
               month={month}
               currentTarget={null}
@@ -613,7 +638,6 @@ function SellerGoalCard({
           <div className="mt-4 border-t border-slate-100 pt-3">
             <SellerGoalEditor
               userId={userId}
-              companyId={companyId}
               year={year}
               month={month}
               currentTarget={target}

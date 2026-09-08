@@ -13,7 +13,6 @@ import {
 
 type SaveGoalInput = {
   userId: string;
-  companyId: string;
   year: number;
   month: number;
   targetAmount: number;
@@ -23,6 +22,11 @@ type SaveGoalResult =
   | { success: true }
   | { success: false; error: string };
 
+/*
+ * Meta é só mensal por vendedor — não por empresa. Ele pode
+ * usar vendas de qualquer uma das empresas em que atua pra
+ * bater essa única meta do mês.
+ */
 export async function saveSellerGoal(
   input: SaveGoalInput
 ): Promise<SaveGoalResult> {
@@ -30,17 +34,16 @@ export async function saveSellerGoal(
 
   const {
     userId,
-    companyId,
     year,
     month,
     targetAmount,
   } = input;
 
-  if (!userId || !companyId) {
+  if (!userId) {
     return {
       success: false,
       error:
-        "Vendedor ou empresa inválidos.",
+        "Vendedor inválido.",
     };
   }
 
@@ -80,32 +83,22 @@ export async function saveSellerGoal(
   const supabase =
     await createClient();
 
-  /*
-   * user_profiles é buscado separado (não dá pra fazer embed
-   * de seller_settings.user_id -> user_profiles.id: não existe
-   * FK entre as duas pro PostgREST descobrir a relação).
-   */
   const {
     data: setting,
     error: settingError,
   } = await supabase
     .from("seller_settings")
-    .select(`
-      user_id,
-
-      company:companies (
-        name
-      )
-    `)
+    .select("user_id")
     .eq("user_id", userId)
-    .eq("company_id", companyId)
+    .eq("active", true)
+    .limit(1)
     .maybeSingle();
 
   if (settingError || !setting) {
     return {
       success: false,
       error:
-        "Vendedor não encontrado nesta empresa.",
+        "Vendedor não encontrado ou inativo.",
     };
   }
 
@@ -125,7 +118,6 @@ export async function saveSellerGoal(
     .upsert(
       {
         user_id: userId,
-        company_id: companyId,
         year,
         month,
         target_amount: target,
@@ -134,7 +126,7 @@ export async function saveSellerGoal(
       },
       {
         onConflict:
-          "user_id,company_id,year,month",
+          "user_id,year,month",
       }
     );
 
@@ -150,24 +142,19 @@ export async function saveSellerGoal(
     };
   }
 
-  const company = getFirst(
-    setting.company
-  );
-
   await createAuditLog({
     module: "financial",
     action: "update",
     entityType: "seller_goal",
     entityId: userId,
     description:
-      `Meta de ${profile?.name ?? "vendedor"} em ${company?.name ?? "empresa"} para ${String(
+      `Meta de ${profile?.name ?? "vendedor"} para ${String(
         month
       ).padStart(2, "0")}/${year} definida em ${formatCurrency(
         target
       )}.`,
     newData: {
       user_id: userId,
-      company_id: companyId,
       year,
       month,
       target_amount: target,
@@ -185,18 +172,6 @@ export async function saveSellerGoal(
   );
 
   return { success: true };
-}
-
-function getFirst<T>(
-  value: T | T[] | null | undefined
-): T | null {
-  if (!value) {
-    return null;
-  }
-
-  return Array.isArray(value)
-    ? (value[0] ?? null)
-    : value;
 }
 
 function formatCurrency(value: number) {

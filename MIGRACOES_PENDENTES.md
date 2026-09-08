@@ -1,7 +1,28 @@
 # Migrações de banco pendentes
 
-Nenhuma pendente no momento. Migrações concluídas ficam abaixo, marcadas,
-como histórico.
+---
+
+## [ ] Meta de vendedor passa a ser só mensal (não mais por empresa)
+
+O vendedor agora tem UMA meta por mês, valendo pra soma das vendas nas
+3 empresas (antes era uma meta separada por empresa). A tabela está
+vazia ainda (nenhuma meta foi cadastrada), então dá pra simplificar
+sem perder nada:
+
+```sql
+alter table public.seller_goals
+  drop constraint if exists seller_goals_user_id_company_id_year_month_key;
+
+alter table public.seller_goals
+  drop column if exists company_id;
+
+alter table public.seller_goals
+  add constraint seller_goals_user_id_year_month_key
+  unique (user_id, year, month);
+```
+
+Sem isso, a tela de metas dos vendedores dá erro (o código já não usa
+mais `company_id`).
 
 ---
 

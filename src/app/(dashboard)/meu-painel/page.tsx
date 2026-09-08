@@ -739,66 +739,42 @@ export default async function MeuPainelPage({
    * MINHA META
    * =========================
    *
-   * Uma por empresa em que o vendedor está ativo (ele pode
-   * vender em mais de uma). Anual = soma das 12 metas
-   * mensais daquela empresa, igual ao critério de /metas.
+   * Meta única mensal por vendedor — não por empresa. Vendas
+   * em qualquer empresa em que ele esteja ativo contam pra
+   * mesma meta. Anual = soma das 12 metas mensais, igual ao
+   * critério de /metas.
    */
 
   const { data: myActiveSettings } =
     await supabase
       .from("seller_settings")
-      .select(`
-        company_id,
-
-        company:companies (
-          id,
-          name,
-          color
-        )
-      `)
+      .select("company_id")
       .eq("user_id", userId)
       .eq("active", true);
 
-  const myCompanies = (
-    myActiveSettings ?? []
-  )
-    .map((setting) =>
-      getFirst<{
-        id: string;
-        name: string;
-        color: string | null;
-      }>(setting.company)
-    )
-    .filter(
-      (
-        company
-      ): company is {
-        id: string;
-        name: string;
-        color: string | null;
-      } => Boolean(company)
-    );
+  const myCompanyIds = [
+    ...new Set(
+      (myActiveSettings ?? []).map(
+        (setting) => setting.company_id
+      )
+    ),
+  ];
 
-  const myCompanyIds = myCompanies.map(
-    (company) => company.id
-  );
+  const isSeller =
+    myCompanyIds.length > 0;
 
-  const myGoalByCompany = new Map<
-    string,
-    number
-  >();
+  let myGoal: number | null = null;
+  let mySold = 0;
 
-  if (myCompanyIds.length > 0) {
+  if (isSeller) {
     let goalsQuery = supabase
       .from("seller_goals")
       .select(`
-        company_id,
         month,
         target_amount
       `)
       .eq("user_id", userId)
-      .eq("year", year)
-      .in("company_id", myCompanyIds);
+      .eq("year", year);
 
     goalsQuery = isAnnual
       ? goalsQuery
@@ -809,25 +785,17 @@ export default async function MeuPainelPage({
     const { data: myGoals } =
       await goalsQuery;
 
-    for (const goal of myGoals ?? []) {
-      myGoalByCompany.set(
-        goal.company_id,
-        (myGoalByCompany.get(
-          goal.company_id
-        ) ?? 0) +
+    if (myGoals && myGoals.length > 0) {
+      myGoal = myGoals.reduce(
+        (total, goal) =>
+          total +
           Number(
             goal.target_amount ?? 0
-          )
+          ),
+        0
       );
     }
-  }
 
-  const mySoldByCompany = new Map<
-    string,
-    number
-  >();
-
-  if (myCompanyIds.length > 0) {
     const myRecords =
       await fetchSellerSaleRecords(
         adminDb,
@@ -839,41 +807,17 @@ export default async function MeuPainelPage({
         }
       );
 
-    for (const record of myRecords) {
-      mySoldByCompany.set(
-        record.companyId,
-        (mySoldByCompany.get(
-          record.companyId
-        ) ?? 0) + record.amount
-      );
-    }
+    mySold = myRecords.reduce(
+      (total, record) =>
+        total + record.amount,
+      0
+    );
   }
 
-  const myGoalRows = myCompanies.map(
-    (company) => {
-      const target =
-        myGoalByCompany.get(
-          company.id
-        ) ?? null;
-
-      const sold =
-        mySoldByCompany.get(
-          company.id
-        ) ?? 0;
-
-      const progress =
-        target && target > 0
-          ? sold / target
-          : null;
-
-      return {
-        company,
-        target,
-        sold,
-        progress,
-      };
-    }
-  );
+  const myGoalProgress =
+    myGoal && myGoal > 0
+      ? mySold / myGoal
+      : null;
 
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
@@ -1047,33 +991,22 @@ export default async function MeuPainelPage({
 
         {/* MINHA META */}
 
-        {myGoalRows.length > 0 && (
+        {isSeller && (
           <Panel
             title="Minha meta"
             subtitle={
               period.isAnnual
-                ? "Quanto você vendeu no ano contra a meta definida pelo administrador."
-                : "Quanto você vendeu no mês contra a meta definida pelo administrador."
+                ? "Quanto você vendeu no ano (nas empresas em que atua) contra a meta definida pelo administrador."
+                : "Quanto você vendeu no mês (nas empresas em que atua) contra a meta definida pelo administrador."
             }
           >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {myGoalRows.map((row) => (
-                <SellerGoalSummaryCard
-                  key={row.company.id}
-                  companyName={
-                    row.company.name
-                  }
-                  companyColor={
-                    row.company.color
-                  }
-                  target={row.target}
-                  sold={row.sold}
-                  progress={
-                    row.progress
-                  }
-                />
-              ))}
-            </div>
+            <SellerGoalSummaryCard
+              target={myGoal}
+              sold={mySold}
+              progress={
+                myGoalProgress
+              }
+            />
           </Panel>
         )}
 
@@ -1499,14 +1432,10 @@ function SummaryCard({
 }
 
 function SellerGoalSummaryCard({
-  companyName,
-  companyColor,
   target,
   sold,
   progress,
 }: {
-  companyName: string;
-  companyColor: string | null;
   target: number | null;
   sold: number;
   progress: number | null;
@@ -1537,28 +1466,14 @@ function SellerGoalSummaryCard({
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-      <div className="flex items-center gap-1.5">
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{
-            backgroundColor:
-              companyColor ?? "#94a3b8",
-          }}
-        />
-
-        <p className="text-xs font-medium text-slate-500">
-          {companyName}
-        </p>
-      </div>
-
       {target === null ? (
-        <p className="mt-2 text-sm font-medium text-slate-500">
-          Meta não definida
+        <p className="text-sm font-medium text-slate-500">
+          Meta não definida para este período
         </p>
       ) : (
         <>
-          <div className="mt-2 flex items-end justify-between">
-            <p className="text-lg font-semibold text-slate-900">
+          <div className="flex items-end justify-between">
+            <p className="text-2xl font-semibold text-slate-900">
               {formatCurrency(sold)}
             </p>
 

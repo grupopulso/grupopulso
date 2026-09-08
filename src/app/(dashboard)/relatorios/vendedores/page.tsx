@@ -95,6 +95,7 @@ export default async function RelatorioVendedoresPage({
    * VENDEDORES ATIVOS
    * =====================================================
    *
+   * A meta é só mensal por vendedor — não por empresa.
    * user_profiles é buscado separado (não dá pra fazer embed
    * de seller_settings.user_id -> user_profiles.id: não existe
    * FK entre as duas pro PostgREST descobrir a relação).
@@ -142,37 +143,67 @@ export default async function RelatorioVendedoresPage({
     )
   );
 
-  const sellerRows = (
-    settings ?? []
-  )
-    .map((setting) => ({
-      userId: setting.user_id,
-      companyId: setting.company_id,
-      profile:
-        profileById.get(
-          setting.user_id
-        ) ?? null,
-      company: getFirst(
-        setting.company
-      ),
-    }))
-    .filter(
-      (row) =>
-        row.profile && row.company
+  type SellerCompany = {
+    id: string;
+    name: string;
+    color: string | null;
+  };
+
+  const companiesByUser = new Map<
+    string,
+    SellerCompany[]
+  >();
+
+  for (const setting of settings ??
+    []) {
+    const company = getFirst(
+      setting.company
     );
 
-  const userIds = [
-    ...new Set(
-      sellerRows.map(
-        (row) => row.userId
-      )
-    ),
-  ];
+    if (!company) {
+      continue;
+    }
+
+    const current =
+      companiesByUser.get(
+        setting.user_id
+      ) ?? [];
+
+    current.push(company);
+
+    companiesByUser.set(
+      setting.user_id,
+      current
+    );
+  }
+
+  const sellers = sellerUserIds
+    .map((userId) => ({
+      userId,
+      profile:
+        profileById.get(userId) ??
+        null,
+      companies:
+        companiesByUser.get(
+          userId
+        ) ?? [],
+    }))
+    .filter(
+      (seller) =>
+        seller.profile &&
+        seller.companies.length > 0
+    );
+
+  const userIds = sellers.map(
+    (seller) => seller.userId
+  );
 
   const companyIds = [
     ...new Set(
-      sellerRows.map(
-        (row) => row.companyId
+      sellers.flatMap((seller) =>
+        seller.companies.map(
+          (company) => company.id
+        )
       )
     ),
   ];
@@ -183,34 +214,26 @@ export default async function RelatorioVendedoresPage({
    * =====================================================
    */
 
-  const goalByKeyMonth = new Map<
+  const goalByUserMonth = new Map<
     string,
     number
   >();
 
-  if (
-    userIds.length > 0 &&
-    companyIds.length > 0
-  ) {
+  if (userIds.length > 0) {
     const { data: goals } =
       await adminDb
         .from("seller_goals")
         .select(`
           user_id,
-          company_id,
           month,
           target_amount
         `)
         .eq("year", year)
-        .in("user_id", userIds)
-        .in(
-          "company_id",
-          companyIds
-        );
+        .in("user_id", userIds);
 
     for (const goal of goals ?? []) {
-      goalByKeyMonth.set(
-        `${goal.user_id}:${goal.company_id}:${goal.month}`,
+      goalByUserMonth.set(
+        `${goal.user_id}:${goal.month}`,
         Number(
           goal.target_amount ?? 0
         )
@@ -220,11 +243,11 @@ export default async function RelatorioVendedoresPage({
 
   /*
    * =====================================================
-   * VENDIDO NO ANO (por mês)
+   * VENDIDO NO ANO (por mês, somando as empresas)
    * =====================================================
    */
 
-  const soldByKeyMonth = new Map<
+  const soldByUserMonth = new Map<
     string,
     number
   >();
@@ -247,11 +270,11 @@ export default async function RelatorioVendedoresPage({
       record.createdAt.slice(5, 7)
     );
 
-    const key = `${record.userId}:${record.companyId}:${recordMonth}`;
+    const key = `${record.userId}:${recordMonth}`;
 
-    soldByKeyMonth.set(
+    soldByUserMonth.set(
       key,
-      (soldByKeyMonth.get(key) ??
+      (soldByUserMonth.get(key) ??
         0) + record.amount
     );
   }
@@ -270,15 +293,15 @@ export default async function RelatorioVendedoresPage({
       let goal = 0;
       let sold = 0;
 
-      for (const row of sellerRows) {
-        const key = `${row.userId}:${row.companyId}:${monthNumber}`;
+      for (const userId of userIds) {
+        const key = `${userId}:${monthNumber}`;
 
         goal +=
-          goalByKeyMonth.get(key) ??
+          goalByUserMonth.get(key) ??
           0;
 
         sold +=
-          soldByKeyMonth.get(key) ??
+          soldByUserMonth.get(key) ??
           0;
       }
 
@@ -314,14 +337,14 @@ export default async function RelatorioVendedoresPage({
           (_, index) => index + 1
         );
 
-  const bySeller = sellerRows
-    .map((row) => {
+  const bySeller = sellers
+    .map((seller) => {
       const goal = roundMoney(
         monthsToSum.reduce(
           (total, monthNumber) =>
             total +
-            (goalByKeyMonth.get(
-              `${row.userId}:${row.companyId}:${monthNumber}`
+            (goalByUserMonth.get(
+              `${seller.userId}:${monthNumber}`
             ) ?? 0),
           0
         )
@@ -331,24 +354,20 @@ export default async function RelatorioVendedoresPage({
         monthsToSum.reduce(
           (total, monthNumber) =>
             total +
-            (soldByKeyMonth.get(
-              `${row.userId}:${row.companyId}:${monthNumber}`
+            (soldByUserMonth.get(
+              `${seller.userId}:${monthNumber}`
             ) ?? 0),
           0
         )
       );
 
       return {
-        userId: row.userId,
-        companyId: row.companyId,
+        userId: seller.userId,
         name:
-          row.profile?.name ??
+          seller.profile?.name ??
           "Vendedor",
-        companyName:
-          row.company?.name ?? "—",
-        companyColor:
-          row.company?.color ??
-          null,
+        companies:
+          seller.companies,
         goal,
         sold,
       };
@@ -453,7 +472,7 @@ export default async function RelatorioVendedoresPage({
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Meta x vendido de cada vendedor, mês a mês.
+                Meta única mensal x vendido (soma das empresas), mês a mês.
               </p>
             </div>
           </div>
@@ -796,29 +815,39 @@ export default async function RelatorioVendedoresPage({
 
               return (
                 <div
-                  key={`${row.userId}:${row.companyId}`}
+                  key={row.userId}
                   className="rounded-xl border border-slate-100 bg-slate-50 p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{
-                          backgroundColor:
-                            row.companyColor ??
-                            "#94a3b8",
-                        }}
-                      />
-
+                    <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-slate-900">
                         {row.name}
                       </span>
 
-                      <span className="text-xs text-slate-400">
-                        {
-                          row.companyName
-                        }
-                      </span>
+                      {row.companies.map(
+                        (
+                          company
+                        ) => (
+                          <span
+                            key={
+                              company.id
+                            }
+                            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-500"
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  company.color ??
+                                  "#94a3b8",
+                              }}
+                            />
+                            {
+                              company.name
+                            }
+                          </span>
+                        )
+                      )}
                     </div>
 
                     <span className="text-xs text-slate-500">

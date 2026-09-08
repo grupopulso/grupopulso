@@ -12,7 +12,6 @@ import { saveSellerGoal } from "./actions";
 
 type Props = {
   userId: string;
-  companyId: string;
   year: number;
   month: number;
   currentTarget: number | null;
@@ -20,7 +19,6 @@ type Props = {
 
 export default function SellerGoalEditor({
   userId,
-  companyId,
   year,
   month,
   currentTarget,
@@ -60,7 +58,6 @@ export default function SellerGoalEditor({
       const result =
         await saveSellerGoal({
           userId,
-          companyId,
           year,
           month,
           targetAmount: parsed,
