@@ -15,6 +15,7 @@ import {
 import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
+  canAccessModule,
   requireModulePermission,
 } from "@/app/lib/permissions";
 import {
@@ -673,10 +674,16 @@ export default async function FinanceiroPage({
             label="Cadastros financeiros"
           />
 
-          <FinanceShortcut
-            href="/financeiro/notas-fiscais"
-            label="Notas fiscais"
-          />
+          {canAccessModule(
+            access,
+            "invoices",
+            "view"
+          ) && (
+            <FinanceShortcut
+              href="/financeiro/notas-fiscais"
+              label="Notas fiscais"
+            />
+          )}
         </div>
 
         {/* CONTEÚDO */}

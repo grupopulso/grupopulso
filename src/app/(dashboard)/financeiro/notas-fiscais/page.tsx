@@ -5,7 +5,7 @@ import { createClient } from "@/app/lib/supabase/server";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   canAccessModule,
-  requireFinancialEntryAccess,
+  requireModulePermission,
 } from "@/app/lib/permissions";
 import {
   FINANCIAL_ENTRY_STATUS_LABELS,
@@ -26,9 +26,14 @@ type PageProps = {
 export default async function NotasFiscaisPage({
   searchParams,
 }: PageProps) {
+  /*
+   * Módulo próprio ("Notas Fiscais" em Configurações →
+   * Usuários) — não depende de "Contas a Receber". Precisa
+   * ser habilitado explicitamente por usuário.
+   */
   const access =
-    await requireFinancialEntryAccess(
-      "income",
+    await requireModulePermission(
+      "invoices",
       "view"
     );
 

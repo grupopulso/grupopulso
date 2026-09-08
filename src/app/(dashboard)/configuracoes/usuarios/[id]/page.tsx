@@ -106,6 +106,10 @@ const MODULES = [
     name: "Contas a Receber",
   },
   {
+    key: "invoices",
+    name: "Notas Fiscais",
+  },
+  {
     key: "accounts_payable",
     name: "Contas a Pagar",
   },

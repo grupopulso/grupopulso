@@ -57,6 +57,10 @@ const MODULES = [
     label: "Contas a Receber",
   },
   {
+    module: "invoices",
+    label: "Notas Fiscais",
+  },
+  {
     module: "accounts_payable",
     label: "Contas a Pagar",
   },

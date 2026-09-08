@@ -29,6 +29,7 @@ const MODULES = [
   "editions",
   "financial",
   "accounts_receivable",
+  "invoices",
   "accounts_payable",
   "receipts",
   "payments",

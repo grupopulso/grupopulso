@@ -13,7 +13,6 @@ import {
   BarChart3,
   Building2,
   CircleDollarSign,
-  FileCheck2,
   FileText,
   HandCoins,
   LayoutDashboard,
@@ -159,13 +158,6 @@ const navigation: NavigationItem[] = [
     href: "/financeiro/recebimentos",
     icon: HandCoins,
     module: "receipts",
-    financialSubArea: true,
-  },
-  {
-    label: "Notas Fiscais",
-    href: "/financeiro/notas-fiscais",
-    icon: FileCheck2,
-    module: "accounts_receivable",
     financialSubArea: true,
   },
   {
