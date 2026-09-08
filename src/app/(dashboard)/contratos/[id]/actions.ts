@@ -247,6 +247,163 @@ export async function deleteContract(
 
 /*
  * =====================================================
+ * CANCELAR CONTRATO
+ * =====================================================
+ *
+ * Diferente de excluir: preserva todo o histórico
+ * financeiro (parcelas já pagas, comissões já pagas). Só
+ * marca o contrato como cancelado e para de cobrar o que
+ * ainda não foi pago — parcelas com saldo em aberto e a
+ * comissão do contrato (se ainda não paga) vão para
+ * "cancelled", igual a qualquer outro lançamento cancelado
+ * (não entram mais em nenhum relatório/meta).
+ */
+export async function cancelContract(
+  contractId: string
+) {
+  await requireModulePermission(
+    "contracts",
+    "edit"
+  );
+
+  const supabase =
+    await createClient();
+
+  if (!contractId) {
+    return {
+      success: false,
+      error:
+        "Contrato inválido.",
+    };
+  }
+
+  const {
+    data: contract,
+    error: contractError,
+  } = await supabase
+    .from("contracts")
+    .select(`
+      id,
+      company_id,
+      status,
+      title
+    `)
+    .eq("id", contractId)
+    .maybeSingle();
+
+  if (contractError || !contract) {
+    return {
+      success: false,
+      error:
+        "Contrato não encontrado.",
+    };
+  }
+
+  await requireCompanyAccess(
+    contract.company_id
+  );
+
+  if (contract.status === "cancelled") {
+    return {
+      success: false,
+      error:
+        "Este contrato já está cancelado.",
+    };
+  }
+
+  const { error: updateError } =
+    await supabase
+      .from("contracts")
+      .update({
+        status: "cancelled",
+        updated_at:
+          new Date().toISOString(),
+      })
+      .eq("id", contractId);
+
+  if (updateError) {
+    return {
+      success: false,
+      error: updateError.message,
+    };
+  }
+
+  /*
+   * Cancela as parcelas ainda não pagas por completo — o que
+   * já foi pago/recebido fica intacto no histórico.
+   */
+  const { data: entries } =
+    await supabase
+      .from("financial_entries")
+      .select(`
+        id,
+        amount,
+        amount_paid,
+        status
+      `)
+      .eq("contract_id", contractId);
+
+  const entryIdsToCancel = (
+    entries ?? []
+  )
+    .filter(
+      (entry) =>
+        entry.status !== "cancelled" &&
+        Number(entry.amount_paid ?? 0) <
+          Number(entry.amount ?? 0)
+    )
+    .map((entry) => entry.id);
+
+  if (entryIdsToCancel.length > 0) {
+    await supabase
+      .from("financial_entries")
+      .update({
+        status: "cancelled",
+        updated_at:
+          new Date().toISOString(),
+      })
+      .in("id", entryIdsToCancel);
+  }
+
+  /*
+   * Cancela a comissão do contrato se ainda não foi paga.
+   */
+  await supabase
+    .from("contract_commissions")
+    .update({
+      status: "cancelled",
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("contract_id", contractId)
+    .neq("status", "paid")
+    .neq("status", "cancelled");
+
+  await createAuditLog({
+    module: "contracts",
+    action: "update",
+    entityType: "contract",
+    entityId: contractId,
+    description:
+      `Contrato "${contract.title}" cancelado.`,
+    newData: {
+      status: "cancelled",
+    },
+  });
+
+  revalidatePath(
+    `/contratos/${contractId}`
+  );
+
+  revalidatePath("/contratos");
+
+  revalidatePath("/financeiro");
+
+  return { success: true };
+}
+
+/*
+ * =====================================================
  * RENOVAR CONTRATO
  * =====================================================
  *

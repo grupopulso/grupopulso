@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import DeleteContractButton from "./delete-contract-button";
+import CancelContractButton from "./cancel-contract-button";
 import RenewContractButton from "./renew-contract-button";
 import ContractResponsibleEditor from "./contract-responsible-editor";
 
@@ -999,6 +1000,18 @@ const commissionProfilesById =
             {displayStatus !==
               "cancelled" && (
               <RenewContractButton
+                contractId={
+                  contract.id
+                }
+                contractTitle={
+                  contract.title
+                }
+              />
+            )}
+
+            {displayStatus !==
+              "cancelled" && (
+              <CancelContractButton
                 contractId={
                   contract.id
                 }
