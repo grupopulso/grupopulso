@@ -368,12 +368,21 @@ export default async function ContractDetailPage({
    * =========================
    */
 
+  /*
+   * Via service role: a RLS de financial_entries só libera
+   * quem tem o módulo geral "financial" — quem só tem
+   * "Contratos" (ex.: Lely) recebia o join embutido sempre
+   * vazio, mesmo a parcela (contract_installments) aparecendo
+   * normal. Isso fazia o status de NF/cobrança sempre cair no
+   * "Não" (mascarado) na tabela e a nova seção de edição ficar
+   * vazia por completo.
+   */
   const {
     data: installments,
     error:
       installmentsError,
   } =
-    await supabase
+    await adminDb
       .from(
         "contract_installments"
       )
