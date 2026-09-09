@@ -22,6 +22,7 @@ import DeleteContractButton from "./delete-contract-button";
 import CancelContractButton from "./cancel-contract-button";
 import RenewContractButton from "./renew-contract-button";
 import ContractResponsibleEditor from "./contract-responsible-editor";
+import FinancialDocumentControls from "@/app/(dashboard)/financeiro/[id]/financial-document-controls";
 
 import {
   createClient,
@@ -1368,6 +1369,90 @@ const commissionProfilesById =
                 Este contrato ainda não foi publicado em nenhuma edição.
               </div>
             )}
+          </section>
+        )}
+
+                   {/* NOTA FISCAL E COBRANÇA */}
+
+        {(installments ?? []).some(
+          (installment) =>
+            Boolean(
+              installment.financial_entry_id
+            )
+        ) && (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#15704f]" />
+
+              <h2 className="font-semibold text-slate-900">
+                Nota fiscal e cobrança
+              </h2>
+            </div>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Registre a emissão da nota fiscal e o envio da cobrança de cada parcela, direto por aqui.
+            </p>
+
+            <div className="mt-5 space-y-4">
+              {(installments ?? [])
+                .filter(
+                  (installment) =>
+                    Boolean(
+                      installment.financial_entry_id
+                    )
+                )
+                .map((installment) => {
+                  const entry =
+                    getFirst(
+                      installment.financial_entry
+                    );
+
+                  if (!entry) {
+                    return null;
+                  }
+
+                  return (
+                    <div
+                      key={
+                        installment.id
+                      }
+                      className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+                    >
+                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">
+                        Parcela{" "}
+                        {
+                          installment.installment_number
+                        }{" "}
+                        · venc.{" "}
+                        {formatDate(
+                          installment.due_date
+                        )}
+                      </p>
+
+                      <FinancialDocumentControls
+                        entryId={
+                          entry.id
+                        }
+                        invoiceIssued={
+                          entry.invoice_issued
+                        }
+                        invoiceNumber={
+                          entry.invoice_number
+                        }
+                        invoiceIssuedAt={
+                          entry.invoice_issued_at
+                        }
+                        chargeSent={
+                          entry.charge_sent
+                        }
+                        chargeSentAt={
+                          entry.charge_sent_at
+                        }
+                      />
+                    </div>
+                  );
+                })}
+            </div>
           </section>
         )}
 
