@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 
 import RegisterTransactionForm from "@/app/components/register-transaction-form";
 
@@ -68,8 +69,19 @@ export default async function FinancialEntryPage({
 
   /*
    * LANÇAMENTO FINANCEIRO
+   *
+   * Via service role: a checagem de permissão certa
+   * (requireFinancialEntryAccess, que sabe distinguir receita
+   * de despesa) só rola DEPOIS de já ter o `entry.type` em
+   * mãos. Ler com o client comum antes disso expõe a leitura
+   * à RLS de financial_entries, que só libera quem tem o
+   * módulo geral "financial" — quem só tem "Contas a Receber"
+   * (ex.: Lely) recebia 0 linhas da RLS e caía no notFound()
+   * antes mesmo da checagem de permissão rodar.
    */
-  const { data: entry, error } = await supabase
+  const adminDb = createAdminClient();
+
+  const { data: entry, error } = await adminDb
     .from("financial_entries")
     .select(`
       id,
