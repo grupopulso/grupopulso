@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   canAccessModule,
@@ -72,6 +73,14 @@ export default async function ContasReceberPage({
 
   const supabase = await createClient();
 
+  /*
+   * Leitura via service role: RLS de financial_entries só
+   * libera quem tem o módulo geral "financial" — quem só tem
+   * "Contas a Receber" (ex.: Lely) recebia 0 linhas mesmo já
+   * tendo passado pela checagem de permissão certa acima.
+   */
+  const adminDb = createAdminClient();
+
   const selectedCompanyId =
     await getSelectedCompanyId();
 
@@ -97,7 +106,7 @@ export default async function ContasReceberPage({
       ? toParam
       : "";
 
-  let query = supabase
+  let query = adminDb
     .from("financial_entries")
     .select(`
       id,

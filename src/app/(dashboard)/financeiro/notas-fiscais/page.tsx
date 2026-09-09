@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, FileCheck2 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   canAccessModule,
@@ -60,10 +61,18 @@ export default async function NotasFiscaisPage({
   const supabase =
     await createClient();
 
+  /*
+   * Leitura via service role: RLS de financial_entries só
+   * libera quem tem o módulo geral "financial" — quem só tem
+   * "Notas Fiscais" recebia 0 linhas mesmo já tendo passado
+   * pela checagem de permissão certa acima.
+   */
+  const adminDb = createAdminClient();
+
   const selectedCompanyId =
     await getSelectedCompanyId();
 
-  let query = supabase
+  let query = adminDb
     .from("financial_entries")
     .select(`
       id,
