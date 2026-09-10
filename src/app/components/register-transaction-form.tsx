@@ -18,10 +18,7 @@ import {
 } from "lucide-react";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/client";
-
-import {
+  getRegisterTransactionFormData,
   registerFinancialTransaction,
 } from "@/app/(dashboard)/financeiro/[id]/actions";
 
@@ -66,13 +63,6 @@ export default function RegisterTransactionForm({
 }: Props) {
   const router =
     useRouter();
-
-  const supabase =
-    useMemo(
-      () =>
-        createClient(),
-      []
-    );
 
   const [
     open,
@@ -208,40 +198,14 @@ export default function RegisterTransactionForm({
         true
       );
 
-      /*
-       * Primeiro descobrimos
-       * qual é a empresa do
-       * lançamento.
-       */
-
-      const {
-        data: entry,
-        error: entryError,
-      } = await supabase
-        .from(
-          "financial_entries"
-        )
-        .select(`
-          id,
-          company_id
-        `)
-        .eq(
-          "id",
+      const result =
+        await getRegisterTransactionFormData(
           entryId
-        )
-        .maybeSingle();
-
-      if (
-        entryError ||
-        !entry
-      ) {
-        console.error(
-          "Erro ao carregar lançamento:",
-          entryError
         );
 
+      if (!result.success) {
         setError(
-          "Não foi possível identificar a empresa do lançamento."
+          result.error
         );
 
         setLoadingData(
@@ -251,111 +215,30 @@ export default function RegisterTransactionForm({
         return;
       }
 
-      const [
-        methodsResult,
-        accountsResult,
-      ] =
-        await Promise.all([
-          supabase
-            .from(
-              "financial_payment_methods"
-            )
-            .select(`
-              id,
-              name,
-              code,
-              usage_type,
-              active
-            `)
-            .eq(
-              "active",
-              true
-            )
-            .order(
-              "name"
-            ),
+      setPaymentMethods(
+        result.paymentMethods as PaymentMethod[]
+      );
 
-          supabase
-            .from(
-              "financial_accounts"
-            )
-            .select(`
-              id,
-              company_id,
-              name,
-              type,
-              current_balance,
-              active
-            `)
-            .eq(
-              "company_id",
-              entry.company_id
-            )
-            .eq(
-              "active",
-              true
-            )
-            .order(
-              "name"
-            ),
-        ]);
+      const accounts =
+        result.financialAccounts as FinancialAccount[];
+
+      setFinancialAccounts(
+        accounts
+      );
+
+      /*
+       * Se existe somente uma
+       * conta para a empresa,
+       * seleciona automaticamente.
+       */
 
       if (
-        methodsResult.error
+        accounts.length ===
+        1
       ) {
-        console.error(
-          "Erro ao carregar formas de pagamento:",
-          methodsResult.error
+        setFinancialAccountId(
+          accounts[0].id
         );
-
-        setPaymentMethods(
-          []
-        );
-      } else {
-        setPaymentMethods(
-          (
-            methodsResult.data ??
-            []
-          ) as PaymentMethod[]
-        );
-      }
-
-      if (
-        accountsResult.error
-      ) {
-        console.error(
-          "Erro ao carregar contas:",
-          accountsResult.error
-        );
-
-        setFinancialAccounts(
-          []
-        );
-      } else {
-        const accounts =
-          (
-            accountsResult.data ??
-            []
-          ) as FinancialAccount[];
-
-        setFinancialAccounts(
-          accounts
-        );
-
-        /*
-         * Se existe somente uma
-         * conta para a empresa,
-         * seleciona automaticamente.
-         */
-
-        if (
-          accounts.length ===
-          1
-        ) {
-          setFinancialAccountId(
-            accounts[0].id
-          );
-        }
       }
 
       setLoadingData(
@@ -365,7 +248,6 @@ export default function RegisterTransactionForm({
 
     loadData();
   }, [
-    supabase,
     entryId,
   ]);
 

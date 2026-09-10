@@ -9,6 +9,10 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
   requireAuthenticatedUser,
   requireCompanyAccess,
   requireFinancialEntryAccess,
@@ -17,6 +21,114 @@ import {
 import {
   createAuditLog,
 } from "@/app/lib/audit";
+
+/*
+ * =====================================================
+ * DADOS DO FORMULÁRIO DE MOVIMENTAÇÃO
+ * =====================================================
+ *
+ * O formulário (client component) buscava esses dados
+ * direto com o client do navegador — sujeito à mesma RLS
+ * de financial_entries que só libera quem tem o módulo
+ * geral "financial". Quem só tem "Contas a Receber" (ex.:
+ * Lely) recebia erro ao abrir o formulário. Centraliza a
+ * busca aqui, via service role, com a checagem de permissão
+ * certa.
+ */
+
+export async function getRegisterTransactionFormData(
+  entryId: string
+) {
+  const adminDb = createAdminClient();
+
+  const {
+    data: entry,
+    error: entryError,
+  } = await adminDb
+    .from("financial_entries")
+    .select(`
+      id,
+      company_id,
+      type
+    `)
+    .eq("id", entryId)
+    .maybeSingle();
+
+  if (entryError || !entry) {
+    return {
+      success: false as const,
+      error:
+        "Não foi possível identificar a empresa do lançamento.",
+    };
+  }
+
+  await requireFinancialEntryAccess(
+    entry.type === "expense"
+      ? "expense"
+      : "income",
+    "view"
+  );
+
+  await requireCompanyAccess(
+    entry.company_id
+  );
+
+  const [
+    methodsResult,
+    accountsResult,
+  ] = await Promise.all([
+    adminDb
+      .from("financial_payment_methods")
+      .select(`
+        id,
+        name,
+        code,
+        usage_type,
+        active
+      `)
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("financial_accounts")
+      .select(`
+        id,
+        company_id,
+        name,
+        type,
+        current_balance,
+        active
+      `)
+      .eq(
+        "company_id",
+        entry.company_id
+      )
+      .eq("active", true)
+      .order("name"),
+  ]);
+
+  if (methodsResult.error) {
+    console.error(
+      "Erro ao carregar formas de pagamento:",
+      methodsResult.error
+    );
+  }
+
+  if (accountsResult.error) {
+    console.error(
+      "Erro ao carregar contas:",
+      accountsResult.error
+    );
+  }
+
+  return {
+    success: true as const,
+    paymentMethods:
+      methodsResult.data ?? [],
+    financialAccounts:
+      accountsResult.data ?? [],
+  };
+}
 
 /*
  * =====================================================
