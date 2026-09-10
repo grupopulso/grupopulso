@@ -5,8 +5,8 @@ import {
 } from "next/cache";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireCompanyAccess,
@@ -210,8 +210,17 @@ export async function updateContract(
     "edit"
   );
 
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (contracts.edit + requireCompanyAccess mais abaixo). RLS
+   * de financial_entries/contract_installments só libera
+   * quem tem o módulo geral "financial" — quem só tem
+   * "Contratos" (ex.: Lely) recebia "viola a política de
+   * segurança em nível de linha" ao editar um contrato que
+   * precisa recriar as parcelas.
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   /*
    * =========================
