@@ -5,8 +5,8 @@ import {
 } from "next/cache";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireFinancialEntryAccess,
@@ -47,8 +47,15 @@ export async function updateFinancialDocumentStatus(
     "edit"
   );
 
+  /*
+   * Via service role: RLS de financial_entries só libera
+   * quem tem o módulo geral "financial" — a checagem de
+   * permissão acima já garante o acesso certo, mas a RLS
+   * bloqueia essa leitura/escrita de qualquer forma pra quem
+   * só tem "Contas a Receber" (ex.: Lely).
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   if (!entryId) {
     return {
