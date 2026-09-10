@@ -152,6 +152,17 @@ export async function registerFinancialTransaction(
     await createClient();
 
   /*
+   * Via service role: RLS de financial_entries só libera
+   * quem tem o módulo geral "financial" — quem só tem
+   * "Contas a Receber" (ex.: Lely) recebia "Lançamento não
+   * encontrado" mesmo com a permissão certa, porque essa
+   * leitura rodava antes da checagem de permissão valer de
+   * algo.
+   */
+  const adminDb =
+    createAdminClient();
+
+  /*
    * =====================================================
    * LANÇAMENTO
    * =====================================================
@@ -161,7 +172,7 @@ export async function registerFinancialTransaction(
     data: entry,
     error: entryError,
   } =
-    await supabase
+    await adminDb
       .from(
         "financial_entries"
       )
@@ -300,7 +311,7 @@ export async function registerFinancialTransaction(
     data: method,
     error: methodError,
   } =
-    await supabase
+    await adminDb
       .from(
         "financial_payment_methods"
       )
@@ -355,7 +366,7 @@ export async function registerFinancialTransaction(
     data: account,
     error: accountError,
   } =
-    await supabase
+    await adminDb
       .from(
         "financial_accounts"
       )
@@ -504,7 +515,7 @@ export async function registerFinancialTransaction(
 
     const saleSyncResult =
       await syncSaleCommissions(
-        supabase,
+        adminDb,
         entryId,
         input.date
       );
@@ -541,7 +552,7 @@ export async function registerFinancialTransaction(
 
     const contractSyncResult =
       await syncContractCommissions(
-        supabase,
+        adminDb,
         entryId,
         input.date
       );
@@ -604,7 +615,7 @@ export async function registerFinancialTransaction(
   ) {
     const paymentSyncResult =
       await syncCommissionPayment(
-        supabase,
+        adminDb,
         entryId
       );
 
