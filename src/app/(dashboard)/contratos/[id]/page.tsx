@@ -1383,87 +1383,71 @@ const commissionProfilesById =
 
                    {/* NOTA FISCAL E COBRANÇA */}
 
-        {(installments ?? []).some(
-          (installment) =>
+        {(() => {
+          /*
+           * Uma nota fiscal só, pro contrato inteiro — não
+           * uma por parcela (o contrato pode ter várias
+           * parcelas, mas a NF emitida é sempre uma única).
+           * Usa o lançamento da 1ª parcela como referência.
+           */
+          const firstInstallment = (
+            installments ?? []
+          ).find((installment) =>
             Boolean(
               installment.financial_entry_id
             )
-        ) && (
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-[#15704f]" />
+          );
 
-              <h2 className="font-semibold text-slate-900">
-                Nota fiscal e cobrança
-              </h2>
-            </div>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Registre a emissão da nota fiscal e o envio da cobrança de cada parcela, direto por aqui.
-            </p>
-
-            <div className="mt-5 space-y-4">
-              {(installments ?? [])
-                .filter(
-                  (installment) =>
-                    Boolean(
-                      installment.financial_entry_id
-                    )
+          const firstEntry =
+            firstInstallment
+              ? getFirst(
+                  firstInstallment.financial_entry
                 )
-                .map((installment) => {
-                  const entry =
-                    getFirst(
-                      installment.financial_entry
-                    );
+              : null;
 
-                  if (!entry) {
-                    return null;
+          if (!firstEntry) {
+            return null;
+          }
+
+          return (
+            <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[#15704f]" />
+
+                <h2 className="font-semibold text-slate-900">
+                  Nota fiscal e cobrança
+                </h2>
+              </div>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Registre a emissão da nota fiscal e o envio da cobrança deste contrato, direto por aqui.
+              </p>
+
+              <div className="mt-5">
+                <FinancialDocumentControls
+                  entryId={
+                    firstEntry.id
                   }
-
-                  return (
-                    <div
-                      key={
-                        installment.id
-                      }
-                      className="rounded-xl border border-slate-100 bg-slate-50 p-4"
-                    >
-                      <p className="mb-3 text-xs font-medium uppercase tracking-wide text-slate-400">
-                        Parcela{" "}
-                        {
-                          installment.installment_number
-                        }{" "}
-                        · venc.{" "}
-                        {formatDate(
-                          installment.due_date
-                        )}
-                      </p>
-
-                      <FinancialDocumentControls
-                        entryId={
-                          entry.id
-                        }
-                        invoiceIssued={
-                          entry.invoice_issued
-                        }
-                        invoiceNumber={
-                          entry.invoice_number
-                        }
-                        invoiceIssuedAt={
-                          entry.invoice_issued_at
-                        }
-                        chargeSent={
-                          entry.charge_sent
-                        }
-                        chargeSentAt={
-                          entry.charge_sent_at
-                        }
-                      />
-                    </div>
-                  );
-                })}
-            </div>
-          </section>
-        )}
+                  invoiceIssued={
+                    firstEntry.invoice_issued
+                  }
+                  invoiceNumber={
+                    firstEntry.invoice_number
+                  }
+                  invoiceIssuedAt={
+                    firstEntry.invoice_issued_at
+                  }
+                  chargeSent={
+                    firstEntry.charge_sent
+                  }
+                  chargeSentAt={
+                    firstEntry.charge_sent_at
+                  }
+                />
+              </div>
+            </section>
+          );
+        })()}
 
                    {/* COMISSÃO */}
 
