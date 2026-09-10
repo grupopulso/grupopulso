@@ -326,9 +326,6 @@ export async function closeEditionWithValidation(
       ),
     ];
 
-  let blockedPositions =
-    0;
-
   let inactivePositions =
     0;
 
@@ -347,8 +344,7 @@ export async function closeEditionWithValidation(
         )
         .select(`
           id,
-          active,
-          manually_blocked
+          active
         `)
         .eq(
           "edition_id",
@@ -369,18 +365,6 @@ export async function closeEditionWithValidation(
         issues: [],
       };
     }
-
-    blockedPositions =
-      (
-        positions ??
-        []
-      ).filter(
-        (
-          position
-        ) =>
-          position
-            .manually_blocked
-      ).length;
 
     inactivePositions =
       (
@@ -446,15 +430,6 @@ export async function closeEditionWithValidation(
   ) {
     issues.push(
       `${draftSales.length} venda(s) avulsa(s) ainda estão em rascunho.`
-    );
-  }
-
-  if (
-    blockedPositions >
-    0
-  ) {
-    issues.push(
-      `${blockedPositions} posição(ões) utilizadas estão bloqueadas.`
     );
   }
 
