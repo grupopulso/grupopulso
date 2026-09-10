@@ -1333,21 +1333,6 @@ export default async function EditionPage({
     }
   }
 
-  const blockedUsedPositions =
-    Array.from(
-      usedPositionIds
-    ).filter(
-      (
-        positionId
-      ) =>
-        Boolean(
-          positionsById.get(
-            positionId
-          )
-            ?.manually_blocked
-        )
-    ).length;
-
   const inactiveUsedPositions =
     Array.from(
       usedPositionIds
@@ -2023,9 +2008,6 @@ export default async function EditionPage({
                 }
                 draftSales={
                   draftSales.length
-                }
-                blockedUsedPositions={
-                  blockedUsedPositions
                 }
                 inactiveUsedPositions={
                   inactiveUsedPositions

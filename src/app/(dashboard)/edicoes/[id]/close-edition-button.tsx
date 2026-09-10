@@ -42,8 +42,6 @@ type Props = {
 
   draftSales: number;
 
-  blockedUsedPositions: number;
-
   inactiveUsedPositions: number;
 };
 
@@ -59,7 +57,6 @@ export function CloseEditionButton({
   pendingContractPublications,
   pendingStandalonePublications,
   draftSales,
-  blockedUsedPositions,
   inactiveUsedPositions,
 }: Props) {
   const router =
@@ -99,7 +96,6 @@ export function CloseEditionButton({
     pendingContractPublications +
     pendingStandalonePublications +
     draftSales +
-    blockedUsedPositions +
     inactiveUsedPositions;
 
   const canClose =
@@ -336,16 +332,6 @@ export function CloseEditionButton({
                                 draftSales
                               }{" "}
                               venda(s) avulsa(s) estão em rascunho.
-                            </Issue>
-                          )}
-
-                          {blockedUsedPositions >
-                            0 && (
-                            <Issue>
-                              {
-                                blockedUsedPositions
-                              }{" "}
-                              posição(ões) utilizadas estão bloqueadas.
                             </Issue>
                           )}
 
