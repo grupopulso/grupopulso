@@ -63,6 +63,15 @@ export default async function RenovarContratoPage({
                 Ver contrato renovado
               </Link>
             )}
+
+            {result.missingClientId && (
+              <Link
+                href={`/clientes/${result.missingClientId}/editar`}
+                className="mt-4 inline-flex h-10 items-center rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 transition hover:bg-amber-100"
+              >
+                Completar cadastro do cliente
+              </Link>
+            )}
           </div>
         </div>
       </main>

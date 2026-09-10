@@ -433,6 +433,7 @@ export async function getRenewalPrefill(
       success: false;
       error: string;
       alreadyRenewedId?: string;
+      missingClientId?: string;
     }
 > {
   await requireModulePermission(
@@ -538,6 +539,63 @@ export async function getRenewalPrefill(
     return {
       success: false,
       error: `A vigência deste contrato está inconsistente (fim ${oldContract.end_date} não é depois do início ${oldContract.start_date}). Corrija a data de término em "Editar contrato" antes de renovar.`,
+    };
+  }
+
+  /*
+   * Cadastro do cliente incompleto: não deixa renovar sem
+   * CPF/CNPJ e sem número do endereço.
+   */
+  const {
+    data: client,
+  } = await supabase
+    .from("clients")
+    .select(`
+      id,
+      cpf_cnpj
+    `)
+    .eq("id", oldContract.client_id)
+    .maybeSingle();
+
+  const { data: clientAddresses } =
+    await supabase
+      .from("client_addresses")
+      .select("number")
+      .eq(
+        "client_id",
+        oldContract.client_id
+      );
+
+  const hasDocument = Boolean(
+    client?.cpf_cnpj?.trim()
+  );
+
+  const hasAddressNumber = (
+    clientAddresses ?? []
+  ).some((address) =>
+    Boolean(
+      address.number?.trim()
+    )
+  );
+
+  if (!hasDocument || !hasAddressNumber) {
+    const missing = [
+      !hasDocument
+        ? "CPF/CNPJ"
+        : null,
+      !hasAddressNumber
+        ? "número do endereço"
+        : null,
+    ].filter(
+      (item): item is string =>
+        Boolean(item)
+    );
+
+    return {
+      success: false,
+      error: `Complete o cadastro do cliente antes de renovar (falta: ${missing.join(", ")}).`,
+      missingClientId:
+        oldContract.client_id,
     };
   }
 
