@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   FileText,
+  History,
   Newspaper,
   Plus,
   ShoppingCart,
@@ -54,9 +55,23 @@ type ContractRecord = {
   status: string;
 };
 
-export default async function EditionsPage() {
+type PageProps = {
+  searchParams: Promise<{
+    view?: string;
+  }>;
+};
+
+export default async function EditionsPage({
+  searchParams,
+}: PageProps) {
   const access =
     await requireEstafetaAccess();
+
+  const { view } =
+    await searchParams;
+
+  const showPast =
+    view === "passadas";
 
   const supabase =
     await createClient();
@@ -114,7 +129,9 @@ export default async function EditionsPage() {
           status,
 
           items:edition_sale_items (
-            id
+            id,
+            section_id,
+            total_amount
           )
         )
       `)
@@ -353,6 +370,22 @@ export default async function EditionsPage() {
     );
   }
 
+  /*
+   * =====================================================
+   * EDIÇÕES VISÍVEIS (ATUAIS x PASSADAS)
+   * =====================================================
+   *
+   * Por padrão só mostra as edições abertas — fechadas e
+   * canceladas ficam na aba "Edições passadas", pra não
+   * empilhar toda edição já fechada na lista principal.
+   */
+  const visibleEditions =
+    editionList.filter((edition) =>
+      showPast
+        ? edition.status !== "open"
+        : edition.status === "open"
+    );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
@@ -370,17 +403,41 @@ export default async function EditionsPage() {
 
               <div>
                 <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-                  Edições
+                  {showPast
+                    ? "Edições passadas"
+                    : "Edições"}
                 </h1>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Crie as edições e organize nelas as publicações já comercializadas.
+                  {showPast
+                    ? "Edições já fechadas ou canceladas — consulte informações de edições anteriores."
+                    : "Crie as edições e organize nelas as publicações já comercializadas."}
                 </p>
               </div>
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {showPast ? (
+              <Link
+                href="/edicoes"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f]"
+              >
+                <Newspaper className="h-4 w-4" />
+
+                Edições atuais
+              </Link>
+            ) : (
+              <Link
+                href="/edicoes?view=passadas"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f]"
+              >
+                <History className="h-4 w-4" />
+
+                Edições passadas
+              </Link>
+            )}
+
             <Link
               href="/edicoes/vendas"
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f]"
@@ -425,10 +482,10 @@ export default async function EditionsPage() {
             EDIÇÕES
            ================================================= */}
 
-        {editionList.length >
+        {visibleEditions.length >
         0 ? (
           <div className="mt-8 grid gap-5">
-            {editionList.map(
+            {visibleEditions.map(
               (
                 edition
               ) => {
@@ -633,6 +690,59 @@ export default async function EditionsPage() {
 
                 /*
                  * =========================================
+                 * VENDIDO POR CADERNO
+                 * =========================================
+                 */
+
+                const soldBySection =
+                  new Map<
+                    string,
+                    number
+                  >();
+
+                for (const sale of confirmedSales) {
+                  for (const item of sale.items ??
+                    []) {
+                    if (!item.section_id) {
+                      continue;
+                    }
+
+                    soldBySection.set(
+                      item.section_id,
+                      roundMoney(
+                        (soldBySection.get(
+                          item.section_id
+                        ) ?? 0) +
+                          Number(
+                            item.total_amount ??
+                              0
+                          )
+                      )
+                    );
+                  }
+                }
+
+                for (const publication of publications) {
+                  if (!publication.section_id) {
+                    continue;
+                  }
+
+                  soldBySection.set(
+                    publication.section_id,
+                    roundMoney(
+                      (soldBySection.get(
+                        publication.section_id
+                      ) ?? 0) +
+                        Number(
+                          publication.amount ??
+                            0
+                        )
+                    )
+                  );
+                }
+
+                /*
+                 * =========================================
                  * METAS DOS CADERNOS
                  * =========================================
                  */
@@ -651,6 +761,10 @@ export default async function EditionsPage() {
                         section.sales_goal ??
                           0
                       ),
+                      sold:
+                        soldBySection.get(
+                          section.id
+                        ) ?? 0,
                     }));
 
                 const sectionsGoalSum =
@@ -935,6 +1049,10 @@ export default async function EditionsPage() {
                                         }
                                         :{" "}
                                         {formatCurrency(
+                                          section.sold
+                                        )}
+                                        {" / "}
+                                        {formatCurrency(
                                           section.goal
                                         )}
                                       </span>
@@ -963,21 +1081,27 @@ export default async function EditionsPage() {
             </div>
 
             <h2 className="mt-4 text-base font-semibold text-slate-900">
-              Nenhuma edição cadastrada
+              {showPast
+                ? "Nenhuma edição passada"
+                : "Nenhuma edição cadastrada"}
             </h2>
 
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
-              Crie a edição para depois selecionar e organizar as publicações que farão parte dela.
+              {showPast
+                ? "Edições fechadas ou canceladas vão aparecer aqui."
+                : "Crie a edição para depois selecionar e organizar as publicações que farão parte dela."}
             </p>
 
-            <Link
-              href="/edicoes/nova"
-              className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41]"
-            >
-              <Plus className="h-4 w-4" />
+            {!showPast && (
+              <Link
+                href="/edicoes/nova"
+                className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41]"
+              >
+                <Plus className="h-4 w-4" />
 
-              Criar primeira edição
-            </Link>
+                Criar primeira edição
+              </Link>
+            )}
           </div>
         )}
       </div>
