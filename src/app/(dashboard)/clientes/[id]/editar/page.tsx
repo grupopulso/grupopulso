@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireAnyCompanyAccess,
   requireModulePermission,
@@ -45,11 +46,23 @@ export default async function EditarClientePage({
   const supabase =
     await createClient();
 
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (clients.edit). RLS de client_companies pode bloquear a
+   * leitura desse embed pra quem não tem acesso amplo - se
+   * isso acontece, os checkboxes de empresa carregam TODOS
+   * desmarcados mesmo o cliente já tendo vínculo, e salvar o
+   * formulário sem tocar nas empresas apaga o vínculo real
+   * (foi o que aconteceu com a Lely e o RESTAURANTE FARINA).
+   */
+  const adminDb =
+    createAdminClient();
+
   const [
     clientResult,
     companiesResult,
   ] = await Promise.all([
-    supabase
+    adminDb
       .from("clients")
       .select(`
         id,
@@ -82,7 +95,7 @@ export default async function EditarClientePage({
       .eq("id", id)
       .maybeSingle(),
 
-    supabase
+    adminDb
       .from("companies")
       .select(`
         id,
@@ -526,6 +539,9 @@ function ErrorMessage({
 
     empresas:
       "Não foi possível atualizar os vínculos com as empresas.",
+
+    "empresas-obrigatorio":
+      "Selecione ao menos uma empresa para o cliente. Sem isso, ele deixa de aparecer nas listas e relatórios.",
   };
 
   return (

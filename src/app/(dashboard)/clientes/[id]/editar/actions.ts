@@ -107,6 +107,20 @@ export async function updateClient(
       .filter(Boolean);
 
   /*
+   * Cliente precisa de pelo menos uma empresa vinculada — sem
+   * isso ele some das listas/relatórios (escopados por
+   * empresa) mesmo continuando existindo no banco. Foi o que
+   * aconteceu com o RESTAURANTE FARINA: o formulário salvou
+   * com 0 empresas marcadas e o vínculo antigo foi apagado
+   * sem aviso nenhum.
+   */
+  if (!companyIds.length) {
+    redirect(
+      `/clientes/${clientId}/editar?error=empresas-obrigatorio`
+    );
+  }
+
+  /*
    * O formulário lista todas as empresas do grupo. Um usuário
    * não-admin não pode vincular o cliente a uma empresa nova
    * fora do seu escopo — mas pode manter as que o cliente já
