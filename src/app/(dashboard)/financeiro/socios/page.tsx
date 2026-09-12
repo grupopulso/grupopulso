@@ -31,10 +31,9 @@ import DeletePartnerButton from "@/app/components/delete-partner-button";
 import TogglePartnerButton from "@/app/components/toggle-partner-button";
 
 /*
- * A divisão de lucro (25% caixa / 75% sócios) hoje só existe para
- * a Agência Atthus e a Pottencializa — regra combinada com o
- * cliente em 27/08. Os IDs foram confirmados por consulta direta
- * ao banco.
+ * Empresas com divisão de lucro entre sócios (25% caixa / 75%
+ * sócios). Os IDs foram confirmados por consulta direta ao
+ * banco.
  */
 const PARTNER_COMPANIES = [
   {
@@ -44,6 +43,10 @@ const PARTNER_COMPANIES = [
   {
     id: "9d08d74c-c5fe-48c9-b0c5-382cea273d99",
     name: "Pottencializa",
+  },
+  {
+    id: "ec5ed2f3-0052-4d6a-83ac-d60d768c7398",
+    name: "O Estafeta",
   },
 ];
 
@@ -363,7 +366,7 @@ export default async function SociosFinanceiroPage({
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Divisão de lucro (25% caixa / 75% sócios) e controle de adiantamentos — Agência Atthus e Pottencializa.
+                Divisão de lucro (25% caixa / 75% sócios) e controle de adiantamentos.
               </p>
             </div>
           </div>
@@ -407,7 +410,7 @@ export default async function SociosFinanceiroPage({
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              A empresa selecionada não trabalha com divisão de lucro entre sócios. Selecione a Agência Atthus ou a Pottencializa no topo.
+              A empresa selecionada não trabalha com divisão de lucro entre sócios.
             </p>
           </div>
         ) : (

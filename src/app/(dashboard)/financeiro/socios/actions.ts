@@ -10,14 +10,15 @@ import {
 } from "@/app/lib/permissions";
 
 /*
- * Divisão de lucro entre sócios existe hoje só para a Agência
- * Atthus e a Pottencializa (regra combinada com o cliente em
- * 27/08). Trava aqui evita que a funcionalidade seja usada, por
- * engano ou não, com outra empresa do grupo.
+ * Empresas com divisão de lucro entre sócios. Trava aqui evita
+ * que a funcionalidade seja usada, por engano ou não, com outra
+ * empresa do grupo. Precisa ficar em sincronia com
+ * PARTNER_COMPANIES em financeiro/socios/page.tsx.
  */
 const PARTNER_COMPANY_IDS = [
   "a500a41f-9d6b-4cd6-af06-5920a0631dc1", // Agência Atthus
   "9d08d74c-c5fe-48c9-b0c5-382cea273d99", // Pottencializa
+  "ec5ed2f3-0052-4d6a-83ac-d60d768c7398", // O Estafeta
 ];
 
 function isPartnerCompany(
