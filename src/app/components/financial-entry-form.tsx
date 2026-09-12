@@ -128,6 +128,9 @@ export default function FinancialEntryForm({
   const [companyIds, setCompanyIds] =
     useState<string[]>([]);
 
+  const [companyPercentages, setCompanyPercentages] =
+    useState<Record<string, string>>({});
+
   const [
   clientId,
   setClientId,
@@ -278,7 +281,13 @@ export default function FinancialEntryForm({
       setPaymentMethods(paymentMethodsResult.data ?? []);
 
       if (companiesResult.data?.length) {
-        setCompanyIds([companiesResult.data[0].id]);
+        const firstCompanyId =
+          companiesResult.data[0].id;
+
+        setCompanyIds([firstCompanyId]);
+        setCompanyPercentages({
+          [firstCompanyId]: "100",
+        });
       }
     }
 
@@ -324,6 +333,17 @@ export default function FinancialEntryForm({
     );
   }, [paymentMethods, entryType]);
 
+  const percentagesTotal = useMemo(() => {
+    return companyIds.reduce(
+      (sum, id) =>
+        sum +
+        parsePercentage(
+          companyPercentages[id] ?? "0"
+        ),
+      0
+    );
+  }, [companyIds, companyPercentages]);
+
   useEffect(() => {
     setCategoryId("");
   }, [entryType]);
@@ -365,13 +385,43 @@ export default function FinancialEntryForm({
   }, [companyIds, contractId]);
 
   function toggleCompany(id: string) {
-    setCompanyIds((current) =>
-      current.includes(id)
+    setCompanyIds((current) => {
+      const next = current.includes(id)
         ? current.filter(
             (companyId) => companyId !== id
           )
-        : [...current, id]
-    );
+        : [...current, id];
+
+      /*
+       * Ao mudar a seleção, reparte 100% igualmente entre as
+       * empresas escolhidas - o usuário pode ajustar o % de
+       * cada uma depois.
+       */
+      const equalShare = next.length
+        ? Number((100 / next.length).toFixed(2))
+        : 0;
+
+      const nextPercentages: Record<string, string> = {};
+
+      next.forEach((companyId) => {
+        nextPercentages[companyId] =
+          String(equalShare);
+      });
+
+      setCompanyPercentages(nextPercentages);
+
+      return next;
+    });
+  }
+
+  function handlePercentageChange(
+    id: string,
+    value: string
+  ) {
+    setCompanyPercentages((current) => ({
+      ...current,
+      [id]: value,
+    }));
   }
 
   function handleTypeChange(
@@ -408,6 +458,10 @@ export default function FinancialEntryForm({
     setCompanyIds([
       contract.company_id,
     ]);
+
+    setCompanyPercentages({
+      [contract.company_id]: "100",
+    });
 
     setDescription(
       contract.title
@@ -500,6 +554,29 @@ export default function FinancialEntryForm({
       return;
     }
 
+    const companyShares = companyIds.map(
+      (id) =>
+        parsePercentage(
+          companyPercentages[id] ?? "0"
+        )
+    );
+
+    if (companyIds.length > 1) {
+      const percentagesSum = companyShares.reduce(
+        (sum, percentage) => sum + percentage,
+        0
+      );
+
+      if (
+        Math.abs(percentagesSum - 100) > 0.01
+      ) {
+        setError(
+          "As porcentagens das empresas devem somar 100%."
+        );
+        return;
+      }
+    }
+
     setLoading(true);
 
     const selectedContract =
@@ -510,20 +587,40 @@ export default function FinancialEntryForm({
 
     /*
      * Com mais de uma empresa selecionada, o valor total é
-     * dividido igualmente entre elas e um lançamento é criado
-     * por empresa (cada uma com sua própria RLS/escopo).
+     * dividido conforme o % de cada uma e um lançamento é
+     * criado por empresa (cada uma com sua própria RLS/escopo).
      */
     const amountShares =
-      splitAmount(numericAmount, companyIds.length);
+      companyIds.length === 1
+        ? [numericAmount]
+        : splitAmountByPercentage(
+            numericAmount,
+            companyShares
+          );
 
     const interestShares =
-      splitAmount(numericInterest, companyIds.length);
+      companyIds.length === 1
+        ? [numericInterest]
+        : splitAmountByPercentage(
+            numericInterest,
+            companyShares
+          );
 
     const fineShares =
-      splitAmount(numericFine, companyIds.length);
+      companyIds.length === 1
+        ? [numericFine]
+        : splitAmountByPercentage(
+            numericFine,
+            companyShares
+          );
 
     const discountShares =
-      splitAmount(numericDiscount, companyIds.length);
+      companyIds.length === 1
+        ? [numericDiscount]
+        : splitAmountByPercentage(
+            numericDiscount,
+            companyShares
+          );
 
     const entriesToInsert =
       companyIds.map(
@@ -820,9 +917,73 @@ export default function FinancialEntryForm({
               </div>
 
               {companyIds.length > 1 && (
-                <p className="mt-2 text-xs text-slate-500">
-                  O valor será dividido igualmente entre as {companyIds.length} empresas selecionadas.
-                </p>
+                <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      % de cada empresa
+                    </p>
+
+                    <p
+                      className={`text-xs font-semibold ${
+                        Math.abs(
+                          percentagesTotal - 100
+                        ) < 0.01
+                          ? "text-emerald-600"
+                          : "text-red-600"
+                      }`}
+                    >
+                      Total: {percentagesTotal.toLocaleString(
+                        "pt-BR",
+                        {
+                          maximumFractionDigits: 2,
+                        }
+                      )}%
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {companyIds.map((id) => {
+                      const company = companies.find(
+                        (item) => item.id === id
+                      );
+
+                      return (
+                        <div
+                          key={id}
+                          className="flex items-center gap-3"
+                        >
+                          <span className="flex-1 text-sm text-slate-600">
+                            {company?.name ??
+                              "Empresa"}
+                          </span>
+
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={
+                                companyPercentages[
+                                  id
+                                ] ?? ""
+                              }
+                              onChange={(event) =>
+                                handlePercentageChange(
+                                  id,
+                                  event.target
+                                    .value
+                                )
+                              }
+                              className="input h-9 w-20 text-right"
+                            />
+
+                            <span className="text-sm text-slate-400">
+                              %
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -1138,7 +1299,7 @@ export default function FinancialEntryForm({
                 Divisão por empresa
               </p>
 
-              {splitAmount(
+              {splitAmountByPercentage(
                 Math.max(
                   parseMoney(amount) +
                     parseMoney(interest) +
@@ -1146,7 +1307,11 @@ export default function FinancialEntryForm({
                     parseMoney(discount),
                   0
                 ),
-                companyIds.length
+                companyIds.map((id) =>
+                  parsePercentage(
+                    companyPercentages[id] ?? "0"
+                  )
+                )
               ).map((share, index) => {
                 const company = companies.find(
                   (item) =>
@@ -1159,7 +1324,14 @@ export default function FinancialEntryForm({
                     className="flex items-center justify-between text-sm"
                   >
                     <span className="text-slate-600">
-                      {company?.name ?? "Empresa"}
+                      {company?.name ?? "Empresa"}{" "}
+                      <span className="text-slate-400">
+                        (
+                        {companyPercentages[
+                          companyIds[index]
+                        ] ?? "0"}
+                        %)
+                      </span>
                     </span>
 
                     <span className="font-semibold text-slate-800">
@@ -1345,11 +1517,23 @@ function parseMoney(
     : parsed;
 }
 
-function splitAmount(
-  total: number,
-  parts: number
+function parsePercentage(
+  value: string
 ) {
-  if (parts <= 1) {
+  const parsed = Number(
+    value.replace(",", ".")
+  );
+
+  return Number.isFinite(parsed)
+    ? parsed
+    : 0;
+}
+
+function splitAmountByPercentage(
+  total: number,
+  percentages: number[]
+) {
+  if (percentages.length <= 1) {
     return [total];
   }
 
@@ -1357,19 +1541,50 @@ function splitAmount(
     total * 100
   );
 
-  const baseCents = Math.floor(
-    totalCents / parts
+  const rawShares = percentages.map(
+    (percentage) =>
+      (totalCents * percentage) / 100
   );
 
-  const remainder =
-    totalCents - baseCents * parts;
+  const baseCents = rawShares.map(
+    (share) => Math.floor(share)
+  );
 
-  return Array.from(
-    { length: parts },
-    (_, index) =>
-      (baseCents +
-        (index < remainder ? 1 : 0)) /
-      100
+  const distributedCents = baseCents.reduce(
+    (sum, cents) => sum + cents,
+    0
+  );
+
+  let remainder =
+    totalCents - distributedCents;
+
+  /*
+   * Método dos maiores restos: sobra de centavos (por
+   * arredondamento) vai para quem tem a maior parte
+   * fracionária, mantendo a soma exata do total.
+   */
+  const order = rawShares
+    .map((share, index) => ({
+      index,
+      fraction: share - baseCents[index],
+    }))
+    .sort(
+      (a, b) => b.fraction - a.fraction
+    );
+
+  const finalCents = [...baseCents];
+
+  for (
+    let i = 0;
+    i < order.length && remainder > 0;
+    i += 1
+  ) {
+    finalCents[order[i].index] += 1;
+    remainder -= 1;
+  }
+
+  return finalCents.map(
+    (cents) => cents / 100
   );
 }
 
