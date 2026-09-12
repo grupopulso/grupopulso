@@ -125,8 +125,8 @@ export default function FinancialEntryForm({
   const [paymentMethods, setPaymentMethods] =
     useState<PaymentMethod[]>([]);
 
-  const [companyId, setCompanyId] =
-    useState("");
+  const [companyIds, setCompanyIds] =
+    useState<string[]>([]);
 
   const [
   clientId,
@@ -278,7 +278,7 @@ export default function FinancialEntryForm({
       setPaymentMethods(paymentMethodsResult.data ?? []);
 
       if (companiesResult.data?.length) {
-        setCompanyId(companiesResult.data[0].id);
+        setCompanyIds([companiesResult.data[0].id]);
       }
     }
 
@@ -288,9 +288,9 @@ export default function FinancialEntryForm({
   const availableContracts = useMemo(() => {
     return contracts.filter(
       (contract) =>
-        contract.company_id === companyId
+        companyIds.includes(contract.company_id)
     );
-  }, [contracts, companyId]);
+  }, [contracts, companyIds]);
 
   const availableCategories = useMemo(() => {
     return categories.filter(
@@ -304,17 +304,17 @@ export default function FinancialEntryForm({
     return costCenters.filter(
       (center) =>
         !center.company_id ||
-        center.company_id === companyId
+        companyIds.includes(center.company_id)
     );
-  }, [costCenters, companyId]);
+  }, [costCenters, companyIds]);
 
   const availableAccounts = useMemo(() => {
     return financialAccounts.filter(
       (account) =>
         !account.company_id ||
-        account.company_id === companyId
+        companyIds.includes(account.company_id)
     );
-  }, [financialAccounts, companyId]);
+  }, [financialAccounts, companyIds]);
 
   const availablePaymentMethods = useMemo(() => {
     return paymentMethods.filter(
@@ -354,6 +354,26 @@ export default function FinancialEntryForm({
     contractId,
   ]);
 
+  useEffect(() => {
+    /*
+     * Contrato pertence a uma única empresa - com mais de uma
+     * empresa selecionada não há como manter o vínculo.
+     */
+    if (companyIds.length > 1 && contractId) {
+      setContractId("");
+    }
+  }, [companyIds, contractId]);
+
+  function toggleCompany(id: string) {
+    setCompanyIds((current) =>
+      current.includes(id)
+        ? current.filter(
+            (companyId) => companyId !== id
+          )
+        : [...current, id]
+    );
+  }
+
   function handleTypeChange(
     type: "income" | "expense"
   ) {
@@ -385,9 +405,9 @@ export default function FinancialEntryForm({
       contract.client_id
     );
 
-    setCompanyId(
-      contract.company_id
-    );
+    setCompanyIds([
+      contract.company_id,
+    ]);
 
     setDescription(
       contract.title
@@ -417,9 +437,9 @@ export default function FinancialEntryForm({
       return;
     }
 
-    if (!companyId) {
+    if (!companyIds.length) {
       setError(
-        "Selecione uma empresa."
+        "Selecione ao menos uma empresa."
       );
       return;
     }
@@ -488,10 +508,26 @@ export default function FinancialEntryForm({
           contract.id === contractId
       );
 
-    const { error: insertError } =
-      await supabase
-        .from("financial_entries")
-        .insert({
+    /*
+     * Com mais de uma empresa selecionada, o valor total é
+     * dividido igualmente entre elas e um lançamento é criado
+     * por empresa (cada uma com sua própria RLS/escopo).
+     */
+    const amountShares =
+      splitAmount(numericAmount, companyIds.length);
+
+    const interestShares =
+      splitAmount(numericInterest, companyIds.length);
+
+    const fineShares =
+      splitAmount(numericFine, companyIds.length);
+
+    const discountShares =
+      splitAmount(numericDiscount, companyIds.length);
+
+    const entriesToInsert =
+      companyIds.map(
+        (companyId, index) => ({
           company_id: companyId,
 
           type: entryType,
@@ -507,12 +543,14 @@ export default function FinancialEntryForm({
               : null,
 
           contract_id:
-            entryType === "income"
+            entryType === "income" &&
+            companyIds.length === 1
               ? contractId || null
               : null,
 
           product_id:
-            entryType === "income"
+            entryType === "income" &&
+            companyIds.length === 1
               ? selectedContract?.product_id ??
                 null
               : null,
@@ -546,18 +584,18 @@ export default function FinancialEntryForm({
             dueDate,
 
           amount:
-            numericAmount,
+            amountShares[index],
 
           amount_paid: 0,
 
           interest:
-            numericInterest,
+            interestShares[index],
 
           fine:
-            numericFine,
+            fineShares[index],
 
           discount:
-            numericDiscount,
+            discountShares[index],
 
           status:
             "pending",
@@ -571,7 +609,13 @@ export default function FinancialEntryForm({
 
           notes:
             notes || null,
-        });
+        })
+      );
+
+    const { error: insertError } =
+      await supabase
+        .from("financial_entries")
+        .insert(entriesToInsert);
 
     if (insertError) {
       setError(
@@ -740,29 +784,47 @@ export default function FinancialEntryForm({
           </h2>
 
           <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-            <Field label="Empresa">
-              <select
-                value={companyId}
-                onChange={(event) =>
-                  setCompanyId(
-                    event.target.value
-                  )
-                }
-                required
-                className="input"
-              >
+            <div className="md:col-span-2">
+              <span className="mb-2 block text-sm font-medium text-slate-700">
+                Empresa(s)
+              </span>
+
+              <div className="flex flex-wrap gap-2">
                 {companies.map(
-                  (company) => (
-                    <option
-                      key={company.id}
-                      value={company.id}
-                    >
-                      {company.name}
-                    </option>
-                  )
+                  (company) => {
+                    const selected =
+                      companyIds.includes(
+                        company.id
+                      );
+
+                    return (
+                      <button
+                        key={company.id}
+                        type="button"
+                        onClick={() =>
+                          toggleCompany(
+                            company.id
+                          )
+                        }
+                        className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                          selected
+                            ? "border-[#15704f] bg-[#15704f]/10 text-[#15704f]"
+                            : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                        }`}
+                      >
+                        {company.name}
+                      </button>
+                    );
+                  }
                 )}
-              </select>
-            </Field>
+              </div>
+
+              {companyIds.length > 1 && (
+                <p className="mt-2 text-xs text-slate-500">
+                  O valor será dividido igualmente entre as {companyIds.length} empresas selecionadas.
+                </p>
+              )}
+            </div>
 
             {entryType === "income" ? (
               <Field label="Cliente">
@@ -822,34 +884,35 @@ export default function FinancialEntryForm({
               </Field>
             )}
 
-            {entryType === "income" && (
-              <Field label="Contrato">
-                <select
-                  value={contractId}
-                  onChange={(event) =>
-                    handleContractChange(
-                      event.target.value
-                    )
-                  }
-                  className="input"
-                >
-                  <option value="">
-                    Sem contrato
-                  </option>
+            {entryType === "income" &&
+              companyIds.length === 1 && (
+                <Field label="Contrato">
+                  <select
+                    value={contractId}
+                    onChange={(event) =>
+                      handleContractChange(
+                        event.target.value
+                      )
+                    }
+                    className="input"
+                  >
+                    <option value="">
+                      Sem contrato
+                    </option>
 
-                  {availableContracts.map(
-                    (contract) => (
-                      <option
-                        key={contract.id}
-                        value={contract.id}
-                      >
-                        {contract.title}
-                      </option>
-                    )
-                  )}
-                </select>
-              </Field>
-            )}
+                    {availableContracts.map(
+                      (contract) => (
+                        <option
+                          key={contract.id}
+                          value={contract.id}
+                        >
+                          {contract.title}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+              )}
 
             <Field label="Categoria">
               <select
@@ -1068,6 +1131,45 @@ export default function FinancialEntryForm({
               )}
             </p>
           </div>
+
+          {companyIds.length > 1 && (
+            <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-white p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                Divisão por empresa
+              </p>
+
+              {splitAmount(
+                Math.max(
+                  parseMoney(amount) +
+                    parseMoney(interest) +
+                    parseMoney(fine) -
+                    parseMoney(discount),
+                  0
+                ),
+                companyIds.length
+              ).map((share, index) => {
+                const company = companies.find(
+                  (item) =>
+                    item.id === companyIds[index]
+                );
+
+                return (
+                  <div
+                    key={companyIds[index]}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <span className="text-slate-600">
+                      {company?.name ?? "Empresa"}
+                    </span>
+
+                    <span className="font-semibold text-slate-800">
+                      {formatCurrency(share)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         {/* DATAS */}
@@ -1241,6 +1343,34 @@ function parseMoney(
   return Number.isNaN(parsed)
     ? 0
     : parsed;
+}
+
+function splitAmount(
+  total: number,
+  parts: number
+) {
+  if (parts <= 1) {
+    return [total];
+  }
+
+  const totalCents = Math.round(
+    total * 100
+  );
+
+  const baseCents = Math.floor(
+    totalCents / parts
+  );
+
+  const remainder =
+    totalCents - baseCents * parts;
+
+  return Array.from(
+    { length: parts },
+    (_, index) =>
+      (baseCents +
+        (index < remainder ? 1 : 0)) /
+      100
+  );
 }
 
 function formatValueForInput(
