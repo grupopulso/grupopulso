@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/server";
@@ -16,7 +17,21 @@ export type UserPermission = {
   can_delete: boolean;
 };
 
-export async function getCurrentUserAccess() {
+/*
+ * Uma única página costuma checar permissão várias vezes
+ * (o layout do dashboard confere autenticação, a própria
+ * página confere o módulo, e ainda confere acesso à empresa)
+ * — sem cache, cada checagem repetia auth.getUser() (chamada
+ * de rede pro Supabase Auth) + 3 queries (perfil, permissões,
+ * empresas). `cache()` do React garante que, dentro da MESMA
+ * requisição, essas chamadas repetidas reaproveitam o mesmo
+ * resultado em vez de consultar tudo de novo — sem mudar o
+ * comportamento (nunca fica "preso" em dado antigo entre
+ * requisições diferentes, cada requisição tem seu próprio
+ * cache).
+ */
+export const getCurrentUserAccess = cache(
+  async function getCurrentUserAccess() {
   const supabase = await createClient();
 
   const {
@@ -88,7 +103,8 @@ export async function getCurrentUserAccess() {
           item.company_id
       ),
   };
-}
+  }
+);
 
 /*
  * Exige qualquer usuário autenticado,
