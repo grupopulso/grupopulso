@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireCompanyAccess,
   requireModulePermission,
@@ -162,10 +163,15 @@ export async function createCostCenter(
     };
   }
 
-  const supabase =
-    await createClient();
+  /*
+   * Escrita via cliente administrativo (service role): o
+   * acesso já foi validado acima (módulo financial + empresa).
+   * Evita bloqueio de RLS pra quem só tem permissão restrita
+   * (ex.: só contas a receber ou contratos).
+   */
+  const adminDb = createAdminClient();
 
-  const { error } = await supabase
+  const { error } = await adminDb
     .from("cost_centers")
     .insert({
       name,
@@ -179,6 +185,115 @@ export async function createCostCenter(
   if (error) {
     console.error(
       "Erro ao criar centro de custo:",
+      error
+    );
+
+    return {
+      success: false,
+      error: error.message,
+    };
+  }
+
+  revalidatePath(
+    "/financeiro/configuracoes/centros-custo"
+  );
+
+  return { success: true };
+}
+
+type UpdateCostCenterInput = {
+  id: string;
+  name: string;
+  companyId?: string | null;
+  description?: string | null;
+  active: boolean;
+};
+
+export async function updateCostCenter(
+  input: UpdateCostCenterInput
+): Promise<{ success: true } | Failure> {
+  const access =
+    await requireModulePermission(
+      "financial",
+      "edit"
+    );
+
+  const name = input.name.trim();
+
+  if (!name) {
+    return {
+      success: false,
+      error:
+        "Informe o nome do centro de custo.",
+    };
+  }
+
+  const companyId =
+    input.companyId?.trim() || null;
+
+  if (companyId) {
+    await requireCompanyAccess(companyId);
+  } else if (
+    access.profile.role !== "admin"
+  ) {
+    return {
+      success: false,
+      error:
+        "Selecione uma empresa para o centro de custo.",
+    };
+  }
+
+  const adminDb = createAdminClient();
+
+  const { data: current } = await adminDb
+    .from("cost_centers")
+    .select("id, company_id")
+    .eq("id", input.id)
+    .maybeSingle();
+
+  if (!current) {
+    return {
+      success: false,
+      error:
+        "Centro de custo não encontrado.",
+    };
+  }
+
+  /*
+   * Escopo de empresa: não-admin só edita um centro de custo
+   * que já pertença a uma empresa à qual tem acesso.
+   */
+  if (
+    access.profile.role !== "admin" &&
+    current.company_id &&
+    !access.companyIds.includes(
+      current.company_id
+    )
+  ) {
+    return {
+      success: false,
+      error:
+        "Você não tem acesso a este centro de custo.",
+    };
+  }
+
+  const { error } = await adminDb
+    .from("cost_centers")
+    .update({
+      name,
+      company_id: companyId,
+      description:
+        input.description?.trim() ||
+        null,
+      active: input.active,
+      updated_at:
+        new Date().toISOString(),
+    })
+    .eq("id", input.id);
+
+  if (error) {
+    console.error(
+      "Erro ao atualizar centro de custo:",
       error
     );
 
@@ -364,11 +479,14 @@ export async function createSupplier(
     };
   }
 
-  const supabase =
-    await createClient();
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (financial.edit). Evita bloqueio de RLS.
+   */
+  const adminDb = createAdminClient();
 
   const { data, error } =
-    await supabase
+    await adminDb
       .from("suppliers")
       .insert({
         name,
@@ -406,6 +524,123 @@ export async function createSupplier(
       error:
         error?.message ??
         "Não foi possível cadastrar o fornecedor.",
+    };
+  }
+
+  revalidatePath(
+    "/financeiro/configuracoes/fornecedores"
+  );
+
+  return {
+    success: true,
+    supplierId: data.id,
+  };
+}
+
+type UpdateSupplierInput = {
+  id: string;
+  name: string;
+  tradeName?: string | null;
+  cpfCnpj?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  whatsapp?: string | null;
+  notes?: string | null;
+  active?: boolean;
+};
+
+export async function updateSupplier(
+  input: UpdateSupplierInput
+): Promise<
+  | { success: true; supplierId: string }
+  | Failure
+> {
+  await requireModulePermission(
+    "financial",
+    "edit"
+  );
+
+  const name = input.name.trim();
+
+  if (!name) {
+    return {
+      success: false,
+      error:
+        "Informe o nome do fornecedor.",
+    };
+  }
+
+  const adminDb = createAdminClient();
+
+  /*
+   * Atualização parcial: um campo omitido (undefined) mantém o
+   * valor atual no banco. Isso permite que um formulário
+   * reduzido (ex.: o cadastro rápido dentro do lançamento
+   * financeiro, que não edita "notes"/"whatsapp"/"active") não
+   * apague dados que não estavam na tela.
+   */
+  const updatePayload: Record<
+    string,
+    unknown
+  > = {
+    name,
+    updated_at:
+      new Date().toISOString(),
+  };
+
+  if (input.tradeName !== undefined) {
+    updatePayload.trade_name =
+      input.tradeName?.trim() || null;
+  }
+
+  if (input.cpfCnpj !== undefined) {
+    updatePayload.cpf_cnpj =
+      input.cpfCnpj?.trim() || null;
+  }
+
+  if (input.email !== undefined) {
+    updatePayload.email =
+      input.email?.trim() || null;
+  }
+
+  if (input.phone !== undefined) {
+    updatePayload.phone =
+      input.phone?.trim() || null;
+  }
+
+  if (input.whatsapp !== undefined) {
+    updatePayload.whatsapp =
+      input.whatsapp?.trim() || null;
+  }
+
+  if (input.notes !== undefined) {
+    updatePayload.notes =
+      input.notes?.trim() || null;
+  }
+
+  if (input.active !== undefined) {
+    updatePayload.active = input.active;
+  }
+
+  const { data, error } =
+    await adminDb
+      .from("suppliers")
+      .update(updatePayload)
+      .eq("id", input.id)
+      .select("id")
+      .single();
+
+  if (error || !data) {
+    console.error(
+      "Erro ao atualizar fornecedor:",
+      error
+    );
+
+    return {
+      success: false,
+      error:
+        error?.message ??
+        "Não foi possível atualizar o fornecedor.",
     };
   }
 

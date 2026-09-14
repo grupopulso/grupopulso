@@ -4,18 +4,55 @@ import { FormEvent, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 
-import { createSupplier } from "@/app/(dashboard)/financeiro/configuracoes/actions";
+import {
+  createSupplier,
+  updateSupplier,
+} from "@/app/(dashboard)/financeiro/configuracoes/actions";
 
-export default function SupplierForm() {
+type SupplierData = {
+  id: string;
+  name: string;
+  trade_name: string | null;
+  cpf_cnpj: string | null;
+  email: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  notes: string | null;
+  active: boolean;
+};
+
+export default function SupplierForm({
+  supplier,
+}: {
+  supplier?: SupplierData;
+}) {
   const router = useRouter();
+  const isEdit = Boolean(supplier);
 
-  const [name, setName] = useState("");
-  const [tradeName, setTradeName] = useState("");
-  const [cpfCnpj, setCpfCnpj] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [notes, setNotes] = useState("");
+  const [name, setName] = useState(
+    supplier?.name ?? ""
+  );
+  const [tradeName, setTradeName] = useState(
+    supplier?.trade_name ?? ""
+  );
+  const [cpfCnpj, setCpfCnpj] = useState(
+    supplier?.cpf_cnpj ?? ""
+  );
+  const [email, setEmail] = useState(
+    supplier?.email ?? ""
+  );
+  const [phone, setPhone] = useState(
+    supplier?.phone ?? ""
+  );
+  const [whatsapp, setWhatsapp] = useState(
+    supplier?.whatsapp ?? ""
+  );
+  const [notes, setNotes] = useState(
+    supplier?.notes ?? ""
+  );
+  const [active, setActive] = useState(
+    supplier?.active ?? true
+  );
 
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState("");
@@ -27,15 +64,27 @@ export default function SupplierForm() {
     setError("");
 
     startTransition(async () => {
-      const result = await createSupplier({
-        name,
-        tradeName: tradeName || null,
-        cpfCnpj: cpfCnpj || null,
-        email: email || null,
-        phone: phone || null,
-        whatsapp: whatsapp || null,
-        notes: notes || null,
-      });
+      const result = isEdit
+        ? await updateSupplier({
+            id: supplier!.id,
+            name,
+            tradeName: tradeName || null,
+            cpfCnpj: cpfCnpj || null,
+            email: email || null,
+            phone: phone || null,
+            whatsapp: whatsapp || null,
+            notes: notes || null,
+            active,
+          })
+        : await createSupplier({
+            name,
+            tradeName: tradeName || null,
+            cpfCnpj: cpfCnpj || null,
+            email: email || null,
+            phone: phone || null,
+            whatsapp: whatsapp || null,
+            notes: notes || null,
+          });
 
       if (!result.success) {
         setError(result.error);
@@ -68,12 +117,15 @@ export default function SupplierForm() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900">
-              Novo fornecedor
+              {isEdit
+                ? "Editar fornecedor"
+                : "Novo fornecedor"}
             </h1>
 
             <p className="mt-1 text-sm text-slate-500">
-              Cadastre um fornecedor para utilização nas
-              despesas.
+              {isEdit
+                ? "Atualize os dados deste fornecedor."
+                : "Cadastre um fornecedor para utilização nas despesas."}
             </p>
           </div>
 
@@ -155,6 +207,20 @@ export default function SupplierForm() {
               />
             </Field>
           </div>
+
+          {isEdit && (
+            <label className="mt-5 flex cursor-pointer items-center gap-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={active}
+                onChange={(e) =>
+                  setActive(e.target.checked)
+                }
+                className="h-4 w-4"
+              />
+              Fornecedor ativo
+            </label>
+          )}
         </section>
       </form>
     </main>

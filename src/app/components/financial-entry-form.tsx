@@ -9,12 +9,18 @@ import {
 
 import {
   ArrowLeft,
+  Pencil,
+  Plus,
   Save,
 } from "lucide-react";
 
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/client";
+
+import SupplierQuickModal, {
+  QuickSupplier,
+} from "@/app/components/supplier-quick-modal";
 
 type Client = {
   id: string;
@@ -24,6 +30,10 @@ type Client = {
 type Supplier = {
   id: string;
   name: string;
+  trade_name: string | null;
+  cpf_cnpj: string | null;
+  email: string | null;
+  phone: string | null;
 };
 
 type Company = {
@@ -201,6 +211,9 @@ export default function FinancialEntryForm({
   const [error, setError] =
     useState("");
 
+  const [supplierModal, setSupplierModal] =
+    useState<"create" | "edit" | null>(null);
+
   useEffect(() => {
     async function loadData() {
       const [
@@ -221,7 +234,9 @@ export default function FinancialEntryForm({
 
         supabase
           .from("suppliers")
-          .select("id, name")
+          .select(
+            "id, name, trade_name, cpf_cnpj, email, phone"
+          )
           .eq("active", true)
           .order("name"),
 
@@ -425,6 +440,31 @@ export default function FinancialEntryForm({
         companyIds
       )
     );
+  }
+
+  function handleSupplierSaved(
+    saved: QuickSupplier
+  ) {
+    setSuppliers((current) => {
+      const exists = current.some(
+        (item) => item.id === saved.id
+      );
+
+      const next = exists
+        ? current.map((item) =>
+            item.id === saved.id
+              ? { ...item, ...saved }
+              : item
+          )
+        : [...current, saved];
+
+      return [...next].sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+    });
+
+    setSupplierId(saved.id);
+    setSupplierModal(null);
   }
 
   function handleTypeChange(
@@ -763,18 +803,50 @@ export default function FinancialEntryForm({
             </p>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:opacity-60"
-          >
-            <Save className="h-4 w-4" />
+          <div className="flex items-center gap-3">
+            {entryType === "expense" && (
+              <button
+                type="button"
+                onClick={() =>
+                  setSupplierModal("create")
+                }
+                className="flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
+                <Plus className="h-4 w-4" />
+                Cadastrar fornecedor
+              </button>
+            )}
 
-            {loading
-              ? "Salvando..."
-              : "Salvar lançamento"}
-          </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-5 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:opacity-60"
+            >
+              <Save className="h-4 w-4" />
+
+              {loading
+                ? "Salvando..."
+                : "Salvar lançamento"}
+            </button>
+          </div>
         </div>
+
+        {supplierModal && (
+          <SupplierQuickModal
+            supplier={
+              supplierModal === "edit"
+                ? suppliers.find(
+                    (item) =>
+                      item.id === supplierId
+                  )
+                : undefined
+            }
+            onClose={() =>
+              setSupplierModal(null)
+            }
+            onSaved={handleSupplierSaved}
+          />
+        )}
 
         {error && (
           <div className="mt-5 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -1036,7 +1108,26 @@ export default function FinancialEntryForm({
                 </select>
               </Field>
             ) : (
-              <Field label="Fornecedor">
+              <div className="block">
+                <span className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">
+                    Fornecedor
+                  </span>
+
+                  {supplierId && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSupplierModal("edit")
+                      }
+                      className="flex items-center gap-1 text-xs font-semibold text-[#15704f] hover:underline"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      Editar
+                    </button>
+                  )}
+                </span>
+
                 <select
                   value={supplierId}
                   onChange={(event) =>
@@ -1062,7 +1153,7 @@ export default function FinancialEntryForm({
                     )
                   )}
                 </select>
-              </Field>
+              </div>
             )}
 
             {entryType === "income" &&

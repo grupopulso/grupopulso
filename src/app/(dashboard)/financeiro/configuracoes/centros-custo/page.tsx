@@ -1,6 +1,6 @@
 import CostCenterManager from "@/app/components/cost-center-manager";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -12,7 +12,13 @@ export default async function CentrosCustoPage() {
       "edit"
     );
 
-  const supabase = await createClient();
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (financial.edit). RLS bloqueia leitura/escrita em
+   * cost_centers pra quem só tem permissão restrita (ex.: só
+   * contas a receber ou contratos).
+   */
+  const supabase = createAdminClient();
 
   let companiesQuery = supabase
     .from("companies")
@@ -42,6 +48,7 @@ export default async function CentrosCustoPage() {
           name,
           description,
           company_id,
+          active,
           company:companies (
             id,
             name

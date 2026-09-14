@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireModulePermission,
 } from "@/app/lib/permissions";
@@ -12,7 +12,11 @@ export default async function FornecedoresPage() {
     "edit"
   );
 
-  const supabase = await createClient();
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (financial.edit). Evita bloqueio de RLS.
+   */
+  const supabase = createAdminClient();
 
   const { data: suppliers } = await supabase
     .from("suppliers")
@@ -59,6 +63,7 @@ export default async function FornecedoresPage() {
                 <Header>Telefone</Header>
                 <Header>E-mail</Header>
                 <Header>Status</Header>
+                <Header>{""}</Header>
               </tr>
             </thead>
 
@@ -100,13 +105,23 @@ export default async function FornecedoresPage() {
                       {supplier.active ? "Ativo" : "Inativo"}
                     </span>
                   </td>
+
+                  <td className="px-5 py-4 text-right">
+                    <Link
+                      href={`/financeiro/configuracoes/fornecedores/${supplier.id}/editar`}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Editar
+                    </Link>
+                  </td>
                 </tr>
               ))}
 
               {!suppliers?.length && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-5 py-12 text-center text-sm text-slate-400"
                   >
                     Nenhum fornecedor cadastrado.
