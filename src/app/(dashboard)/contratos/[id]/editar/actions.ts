@@ -53,6 +53,10 @@ type UpdateContractInput = {
 
   paymentMethodId: string;
 
+  invoiceMode?:
+    | "single"
+    | "per_installment";
+
   installments: number;
 
   firstDueDate: string;
@@ -275,7 +279,7 @@ export async function updateContract(
     !Number.isFinite(
       input.value
     ) ||
-    input.value <= 0
+    input.value < 0
   ) {
     return {
       success: false,
@@ -537,7 +541,7 @@ export async function updateContract(
       input.installmentValues!.some(
         (amount) =>
           !Number.isFinite(amount) ||
-          amount <= 0
+          amount < 0
       );
 
     const sum =
@@ -615,6 +619,12 @@ export async function updateContract(
 
         payment_method_id:
           input.paymentMethodId,
+
+        invoice_mode:
+          input.invoiceMode ===
+          "per_installment"
+            ? "per_installment"
+            : "single",
 
         installments:
           input.installments,

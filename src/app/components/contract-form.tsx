@@ -421,6 +421,14 @@ export default function ContractForm({
     );
 
   const [
+    invoiceMode,
+    setInvoiceMode,
+  ] =
+    useState<
+      "single" | "per_installment"
+    >("single");
+
+  const [
     installments,
     setInstallments,
   ] =
@@ -1255,7 +1263,7 @@ export default function ContractForm({
         !Number.isFinite(
           numericValue
         ) ||
-        numericValue <=
+        numericValue <
           0 ||
         installments <
           1
@@ -1402,7 +1410,7 @@ export default function ContractForm({
     Number.isFinite(
       numericValue
     ) &&
-    numericValue >
+    numericValue >=
       0 &&
     Math.abs(
       installmentsDifference
@@ -1739,7 +1747,7 @@ export default function ContractForm({
         !Number.isFinite(
           numericValue
         ) ||
-        numericValue <=
+        numericValue <
           0
       )
     ) {
@@ -1789,7 +1797,7 @@ export default function ContractForm({
             !Number.isFinite(
               amount
             ) ||
-            amount <= 0
+            amount < 0
         )
       ) {
         setError(
@@ -1877,6 +1885,8 @@ export default function ContractForm({
           courtesy
             ? ""
             : paymentMethodId,
+
+        invoiceMode,
 
         installments:
           courtesy ? 1 : installments,
@@ -2769,6 +2779,29 @@ export default function ContractForm({
                 required
                 className="input"
               />
+            </Field>
+
+            <Field label="Nota fiscal">
+              <select
+                value={invoiceMode}
+                onChange={(event) =>
+                  setInvoiceMode(
+                    event.target
+                      .value as
+                      | "single"
+                      | "per_installment"
+                  )
+                }
+                className="input"
+              >
+                <option value="single">
+                  Única (uma para todo o contrato)
+                </option>
+
+                <option value="per_installment">
+                  Por parcela (uma para cada parcela)
+                </option>
+              </select>
             </Field>
 
             <Field label="1º vencimento">

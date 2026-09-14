@@ -73,6 +73,10 @@ type Props = {
     paymentMethodId:
       string;
 
+    invoiceMode?:
+      | "single"
+      | "per_installment";
+
     installments:
       number;
 
@@ -254,6 +258,17 @@ export default function EditContractForm({
     );
 
   const [
+    invoiceMode,
+    setInvoiceMode,
+  ] =
+    useState<
+      "single" | "per_installment"
+    >(
+      contract.invoiceMode ??
+        "single"
+    );
+
+  const [
     installments,
     setInstallments,
   ] =
@@ -390,7 +405,7 @@ export default function EditContractForm({
         Number.isFinite(
           numericValueForSchedule
         ) &&
-        numericValueForSchedule > 0
+        numericValueForSchedule >= 0
           ? distributeAmount(
               numericValueForSchedule,
               count
@@ -436,7 +451,7 @@ export default function EditContractForm({
     );
 
   const scheduleBalanced =
-    numericValueForSchedule > 0 &&
+    numericValueForSchedule >= 0 &&
     Math.abs(
       scheduleTotal -
         numericValueForSchedule
@@ -766,7 +781,7 @@ export default function EditContractForm({
       );
 
     if (
-      numericValue <=
+      numericValue <
       0
     ) {
       setError(
@@ -854,6 +869,8 @@ export default function EditContractForm({
         billingFrequency,
 
         paymentMethodId,
+
+        invoiceMode,
 
         installments,
 
@@ -1373,6 +1390,29 @@ export default function EditContractForm({
               </select>
             </Field>
 
+            <Field label="Nota fiscal">
+              <select
+                value={invoiceMode}
+                onChange={(event) =>
+                  setInvoiceMode(
+                    event.target
+                      .value as
+                      | "single"
+                      | "per_installment"
+                  )
+                }
+                className="input"
+              >
+                <option value="single">
+                  Única (uma para todo o contrato)
+                </option>
+
+                <option value="per_installment">
+                  Por parcela (uma para cada parcela)
+                </option>
+              </select>
+            </Field>
+
             <Field label="Parcelas">
               <input
                 type="number"
@@ -1439,7 +1479,7 @@ export default function EditContractForm({
             </Field>
           </div>
 
-          {numericValueForSchedule > 0 &&
+          {numericValueForSchedule >= 0 &&
             schedule.length > 0 && (
               <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
                 <div className="flex flex-col justify-between gap-1 sm:flex-row sm:items-center">

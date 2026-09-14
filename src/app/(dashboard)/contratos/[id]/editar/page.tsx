@@ -3,8 +3,8 @@ import {
 } from "next/navigation";
 
 import {
-  createClient,
-} from "@/app/lib/supabase/server";
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
 
 import {
   requireCompanyAccess,
@@ -31,8 +31,14 @@ export default async function EditContractPage({
     id,
   } = await params;
 
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (contracts.edit). Evita bloqueio de RLS pra quem só tem
+   * permissão restrita (ex.: só contratos, sem o módulo
+   * financial geral).
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   const [
     contractResult,
@@ -56,6 +62,7 @@ export default async function EditContractPage({
           billing_frequency,
           auto_renew,
           payment_method_id,
+          invoice_mode,
           installments,
           first_due_date,
           notes
@@ -185,6 +192,12 @@ export default async function EditContractPage({
         paymentMethodId:
           contract.payment_method_id ??
           "",
+
+        invoiceMode:
+          contract.invoice_mode ===
+          "per_installment"
+            ? "per_installment"
+            : "single",
 
         installments:
           contract.installments ??

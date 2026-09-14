@@ -88,7 +88,14 @@ export default async function ContractDetailPage({
     data: contract,
     error,
   } =
-    await supabase
+    /*
+     * Via service role: RLS de clients/client_addresses pode
+     * bloquear o embed abaixo pra quem só tem acesso restrito
+     * (ex.: só contratos) - sumindo CNPJ e endereço do cliente
+     * na tela do contrato mesmo com a permissão de módulo já
+     * validada acima.
+     */
+    await adminDb
       .from(
         "contracts"
       )
@@ -110,6 +117,7 @@ export default async function ContractDetailPage({
         auto_renew,
 
         payment_method_id,
+        invoice_mode,
         installments,
         first_due_date,
 
@@ -122,7 +130,23 @@ export default async function ContractDetailPage({
 
         client:clients (
           id,
-          name
+          name,
+          cpf_cnpj,
+          type,
+          email,
+          phone,
+          whatsapp,
+
+          client_addresses (
+            street,
+            number,
+            complement,
+            neighborhood,
+            city,
+            state,
+            postal_code,
+            is_primary
+          )
         ),
 
         company:companies (
@@ -677,6 +701,39 @@ export default async function ContractDetailPage({
       contract.client
     );
 
+  const clientAddresses =
+    client?.client_addresses ?? [];
+
+  const clientAddress =
+    clientAddresses.find(
+      (address) => address.is_primary
+    ) ??
+    clientAddresses[0] ??
+    null;
+
+  const clientAddressLabel =
+    clientAddress
+      ? [
+          [
+            clientAddress.street,
+            clientAddress.number,
+          ]
+            .filter(Boolean)
+            .join(", "),
+          clientAddress.complement,
+          clientAddress.neighborhood,
+          [
+            clientAddress.city,
+            clientAddress.state,
+          ]
+            .filter(Boolean)
+            .join(" - "),
+          clientAddress.postal_code,
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
+
   const company =
     getFirst(
       contract.company
@@ -1132,6 +1189,43 @@ const commissionProfilesById =
                 }
               />
 
+              <Info
+                label={
+                  client?.type === "company"
+                    ? "CNPJ"
+                    : "CPF / CNPJ"
+                }
+                value={
+                  client?.cpf_cnpj ??
+                  "—"
+                }
+              />
+
+              <Info
+                label="Telefone"
+                value={
+                  client?.whatsapp ??
+                  client?.phone ??
+                  "—"
+                }
+              />
+
+              <Info
+                label="E-mail"
+                value={
+                  client?.email ??
+                  "—"
+                }
+              />
+
+              <Info
+                label="Endereço do cliente"
+                value={
+                  clientAddressLabel ||
+                  "—"
+                }
+              />
+
               <div>
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
                   Responsável
@@ -1384,30 +1478,35 @@ const commissionProfilesById =
                    {/* NOTA FISCAL E COBRANÇA */}
 
         {(() => {
-          /*
-           * Uma nota fiscal só, pro contrato inteiro — não
-           * uma por parcela (o contrato pode ter várias
-           * parcelas, mas a NF emitida é sempre uma única).
-           * Usa o lançamento da 1ª parcela como referência.
-           */
-          const firstInstallment = (
+          const isPerInstallment =
+            contract.invoice_mode ===
+            "per_installment";
+
+          const installmentsWithEntry = (
             installments ?? []
-          ).find((installment) =>
+          ).filter((installment) =>
             Boolean(
               installment.financial_entry_id
             )
           );
 
-          const firstEntry =
-            firstInstallment
-              ? getFirst(
-                  firstInstallment.financial_entry
-                )
-              : null;
-
-          if (!firstEntry) {
+          if (!installmentsWithEntry.length) {
             return null;
           }
+
+          /*
+           * Modo "única": uma nota fiscal só, pro contrato
+           * inteiro — usa o lançamento da 1ª parcela como
+           * referência. Modo "por parcela": uma nota fiscal
+           * para cada parcela.
+           */
+          const relevantInstallments =
+            isPerInstallment
+              ? installmentsWithEntry
+              : installmentsWithEntry.slice(
+                  0,
+                  1
+                );
 
           return (
             <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
@@ -1420,30 +1519,61 @@ const commissionProfilesById =
               </div>
 
               <p className="mt-1 text-sm text-slate-500">
-                Registre a emissão da nota fiscal e o envio da cobrança deste contrato, direto por aqui.
+                {isPerInstallment
+                  ? "Registre a emissão da nota fiscal e o envio da cobrança de cada parcela deste contrato."
+                  : "Registre a emissão da nota fiscal e o envio da cobrança deste contrato, direto por aqui."}
               </p>
 
-              <div className="mt-5">
-                <FinancialDocumentControls
-                  entryId={
-                    firstEntry.id
+              <div className="mt-5 space-y-5">
+                {relevantInstallments.map(
+                  (installment) => {
+                    const entry = getFirst(
+                      installment.financial_entry
+                    );
+
+                    if (!entry) {
+                      return null;
+                    }
+
+                    return (
+                      <div key={installment.id}>
+                        {isPerInstallment && (
+                          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+                            Parcela{" "}
+                            {
+                              installment.installment_number
+                            }{" "}
+                            —{" "}
+                            {formatDate(
+                              installment.due_date
+                            )}
+                          </p>
+                        )}
+
+                        <FinancialDocumentControls
+                          entryId={
+                            entry.id
+                          }
+                          invoiceIssued={
+                            entry.invoice_issued
+                          }
+                          invoiceNumber={
+                            entry.invoice_number
+                          }
+                          invoiceIssuedAt={
+                            entry.invoice_issued_at
+                          }
+                          chargeSent={
+                            entry.charge_sent
+                          }
+                          chargeSentAt={
+                            entry.charge_sent_at
+                          }
+                        />
+                      </div>
+                    );
                   }
-                  invoiceIssued={
-                    firstEntry.invoice_issued
-                  }
-                  invoiceNumber={
-                    firstEntry.invoice_number
-                  }
-                  invoiceIssuedAt={
-                    firstEntry.invoice_issued_at
-                  }
-                  chargeSent={
-                    firstEntry.charge_sent
-                  }
-                  chargeSentAt={
-                    firstEntry.charge_sent_at
-                  }
-                />
+                )}
               </div>
             </section>
           );

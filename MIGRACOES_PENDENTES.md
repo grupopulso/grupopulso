@@ -2,6 +2,23 @@
 
 ---
 
+## [ ] Coluna `invoice_mode` em `contracts` (nota fiscal única ou por parcela)
+
+Contrato agora escolhe entre nota fiscal única (uma para o contrato
+inteiro) ou uma nota fiscal por parcela. Sem essa coluna, a tela de
+contrato (novo, editar e detalhe) dá erro ao gravar/ler esse campo.
+
+```sql
+alter table public.contracts
+  add column if not exists invoice_mode text not null default 'single'
+  check (invoice_mode in ('single', 'per_installment'));
+```
+
+Contratos já existentes ficam com `single`, que é o comportamento atual
+(uma NF só, usando a 1ª parcela como referência).
+
+---
+
 ## [ ] Meta de vendedor passa a ser só mensal (não mais por empresa)
 
 O vendedor agora tem UMA meta por mês, valendo pra soma das vendas nas

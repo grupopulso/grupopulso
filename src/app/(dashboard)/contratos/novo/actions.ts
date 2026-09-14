@@ -68,6 +68,14 @@ type CreateContractInput = {
 
   paymentMethodId: string;
 
+  /*
+   * Única = 1 nota fiscal para o contrato inteiro. Por
+   * parcela = 1 nota fiscal para cada parcela.
+   */
+  invoiceMode?:
+    | "single"
+    | "per_installment";
+
   installments: number;
 
   installmentValues?: number[];
@@ -326,7 +334,7 @@ export async function createContract(
       !Number.isFinite(
         input.value
       ) ||
-      input.value <=
+      input.value <
         0
     )
   ) {
@@ -392,7 +400,7 @@ export async function createContract(
           !Number.isFinite(
             amount
           ) ||
-          amount <=
+          amount <
             0
       );
 
@@ -403,7 +411,7 @@ export async function createContract(
         success: false,
 
         error:
-          "Todas as parcelas precisam possuir um valor maior que zero.",
+          "Todas as parcelas precisam possuir um valor válido (0 ou maior).",
       };
     }
 
@@ -986,6 +994,12 @@ export async function createContract(
           isCourtesy
             ? null
             : input.paymentMethodId,
+
+        invoice_mode:
+          input.invoiceMode ===
+          "per_installment"
+            ? "per_installment"
+            : "single",
 
         installments:
           isCourtesy
