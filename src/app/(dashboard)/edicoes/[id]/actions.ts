@@ -60,6 +60,14 @@ type UpdateContractPublicationInput = {
     | null;
 };
 
+type MoveContractPublicationInput = {
+  publicationId: string;
+
+  currentEditionId: string;
+
+  targetEditionId: string;
+};
+
 /*
  * =====================================================
  * ADICIONAR PUBLICAÇÃO
@@ -837,6 +845,269 @@ export async function removeContractPublicationFromEdition(
 
   revalidateEditionPaths(
     editionId,
+    publication.contract_id
+  );
+
+  return {
+    success: true,
+  };
+}
+
+/*
+ * =====================================================
+ * MOVER PARA OUTRA EDIÇÃO
+ * =====================================================
+ */
+
+export async function moveContractPublicationToEdition(
+  input:
+    MoveContractPublicationInput
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  if (
+    !input.publicationId ||
+    !input.currentEditionId ||
+    !input.targetEditionId
+  ) {
+    return {
+      success: false,
+
+      error:
+        "Dados inválidos para mover a publicação.",
+    };
+  }
+
+  if (
+    input.currentEditionId ===
+    input.targetEditionId
+  ) {
+    return {
+      success: false,
+
+      error:
+        "Selecione uma edição diferente da atual.",
+    };
+  }
+
+  const supabase =
+    await createClient();
+
+  /*
+   * =====================================================
+   * EDIÇÃO ATUAL
+   * =====================================================
+   */
+
+  const currentEditionResult =
+    await validateEdition(
+      supabase,
+      access
+        .estafetaCompany
+        .id,
+      input.currentEditionId
+    );
+
+  if (
+    !currentEditionResult.success
+  ) {
+    return currentEditionResult;
+  }
+
+  /*
+   * =====================================================
+   * EDIÇÃO DE DESTINO
+   * =====================================================
+   */
+
+  const targetEditionResult =
+    await validateEdition(
+      supabase,
+      access
+        .estafetaCompany
+        .id,
+      input.targetEditionId
+    );
+
+  if (
+    !targetEditionResult.success
+  ) {
+    return {
+      success:
+        false as const,
+
+      error:
+        "A edição de destino não foi encontrada ou não está aberta.",
+    };
+  }
+
+  /*
+   * =====================================================
+   * PUBLICAÇÃO ATUAL
+   * =====================================================
+   */
+
+  const {
+    data:
+      publication,
+    error:
+      publicationError,
+  } =
+    await supabase
+      .from(
+        "contract_edition_publications"
+      )
+      .select(`
+        id,
+        contract_id,
+        edition_id,
+        active
+      `)
+      .eq(
+        "id",
+        input.publicationId
+      )
+      .eq(
+        "edition_id",
+        input.currentEditionId
+      )
+      .maybeSingle();
+
+  if (
+    publicationError ||
+    !publication
+  ) {
+    return {
+      success: false,
+
+      error:
+        "Publicação não encontrada.",
+    };
+  }
+
+  if (
+    !publication.active
+  ) {
+    return {
+      success: false,
+
+      error:
+        "Esta publicação já foi desvinculada da edição.",
+    };
+  }
+
+  /*
+   * =====================================================
+   * EVITAR DUPLICIDADE NO DESTINO
+   * =====================================================
+   */
+
+  const {
+    data:
+      existingPublication,
+  } =
+    await supabase
+      .from(
+        "contract_edition_publications"
+      )
+      .select(`
+        id
+      `)
+      .eq(
+        "edition_id",
+        input.targetEditionId
+      )
+      .eq(
+        "contract_id",
+        publication.contract_id
+      )
+      .eq(
+        "active",
+        true
+      )
+      .maybeSingle();
+
+  if (
+    existingPublication
+  ) {
+    return {
+      success: false,
+
+      error:
+        "Este contrato já possui uma publicação vinculada à edição de destino.",
+    };
+  }
+
+  /*
+   * =====================================================
+   * MOVER
+   * =====================================================
+   *
+   * Caderno e posição pertencem à edição atual - ao mudar de
+   * edição eles deixam de ter sentido (são específicos de
+   * cada edição), então voltam em branco e precisam ser
+   * definidos de novo na edição de destino.
+   */
+
+  const {
+    error:
+      updateError,
+  } =
+    await supabase
+      .from(
+        "contract_edition_publications"
+      )
+      .update({
+        edition_id:
+          input.targetEditionId,
+
+        section_id:
+          null,
+
+        ad_position_id:
+          null,
+
+        updated_at:
+          new Date()
+            .toISOString(),
+      })
+      .eq(
+        "id",
+        input.publicationId
+      )
+      .eq(
+        "edition_id",
+        input.currentEditionId
+      )
+      .eq(
+        "active",
+        true
+      );
+
+  if (
+    updateError
+  ) {
+    console.error(
+      "Erro ao mover publicação de edição:",
+      updateError
+    );
+
+    return {
+      success: false,
+
+      error:
+        updateError.message,
+    };
+  }
+
+  revalidateEditionPaths(
+    input.currentEditionId,
+    publication.contract_id
+  );
+
+  revalidateEditionPaths(
+    input.targetEditionId,
     publication.contract_id
   );
 

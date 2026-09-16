@@ -475,6 +475,88 @@ export default async function EditionPage({
     );
   }
 
+  /*
+   * =====================================================
+   * OUTRAS EDIÇÕES ABERTAS (para mover publicação)
+   * =====================================================
+   */
+
+  const {
+    data:
+      otherOpenEditionsData,
+    error:
+      otherOpenEditionsError,
+  } =
+    await supabase
+      .from(
+        "newspaper_editions"
+      )
+      .select(`
+        id,
+        name,
+        edition_number,
+        publication_date
+      `)
+      .eq(
+        "company_id",
+        edition.company_id
+      )
+      .eq(
+        "status",
+        "open"
+      )
+      .neq(
+        "id",
+        edition.id
+      )
+      .order(
+        "publication_date",
+        {
+          ascending: true,
+        }
+      );
+
+  if (
+    otherOpenEditionsError
+  ) {
+    console.error(
+      "Erro ao carregar outras edições abertas:",
+      otherOpenEditionsError
+    );
+  }
+
+  const otherOpenEditions =
+    (
+      otherOpenEditionsData ??
+      []
+    ).map(
+      (
+        item
+      ) => ({
+        id:
+          item.id,
+
+        label:
+          [
+            item.name,
+            item.edition_number
+              ? `Nº ${item.edition_number}`
+              : null,
+            item.publication_date
+              ? formatDate(
+                  item.publication_date
+                )
+              : null,
+          ]
+            .filter(
+              Boolean
+            )
+            .join(
+              " • "
+            ),
+      })
+    );
+
   const availableContracts =
     (
       activeContractsData ??
@@ -2673,6 +2755,9 @@ export default async function EditionPage({
                                 }
                                 positions={
                                   positionsForPublication
+                                }
+                                otherOpenEditions={
+                                  otherOpenEditions
                                 }
                               />
                             ) : (

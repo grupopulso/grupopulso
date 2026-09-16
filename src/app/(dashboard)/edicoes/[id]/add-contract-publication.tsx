@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import {
+  ArrowRightLeft,
   FileText,
   Pencil,
   Plus,
@@ -22,6 +23,7 @@ import {
 
 import {
   addContractPublicationToEdition,
+  moveContractPublicationToEdition,
   removeContractPublicationFromEdition,
   updateContractPublicationInEdition,
 } from "./actions";
@@ -147,6 +149,11 @@ type AddProps = {
     | null;
 };
 
+type OpenEdition = {
+  id: string;
+  label: string;
+};
+
 type EditProps = {
   editionId: string;
 
@@ -158,6 +165,9 @@ type EditProps = {
 
   positions:
     Position[];
+
+  otherOpenEditions:
+    OpenEdition[];
 };
 
 /*
@@ -882,6 +892,7 @@ export function EditContractPublication({
   publication,
   sections,
   positions,
+  otherOpenEditions,
 }: EditProps) {
   const router =
     useRouter();
@@ -901,6 +912,20 @@ export function EditContractPublication({
     useState(
       false
     );
+
+  const [
+    moving,
+    setMoving,
+  ] =
+    useState(
+      false
+    );
+
+  const [
+    targetEditionId,
+    setTargetEditionId,
+  ] =
+    useState("");
 
   const [
     sectionId,
@@ -1060,6 +1085,14 @@ export function EditContractPublication({
 
     setConfirmRemove(
       false
+    );
+
+    setMoving(
+      false
+    );
+
+    setTargetEditionId(
+      ""
     );
 
     setError("");
@@ -1224,6 +1257,66 @@ export function EditContractPublication({
     router.refresh();
   }
 
+  /*
+   * =====================================================
+   * MOVER PARA OUTRA EDIÇÃO
+   * =====================================================
+   */
+
+  async function handleMove() {
+    setError("");
+
+    if (
+      !targetEditionId
+    ) {
+      setError(
+        "Selecione a edição de destino."
+      );
+
+      return;
+    }
+
+    setLoading(
+      true
+    );
+
+    const result =
+      await moveContractPublicationToEdition({
+        publicationId:
+          publication.id,
+
+        currentEditionId:
+          editionId,
+
+        targetEditionId,
+      });
+
+    if (
+      !result.success
+    ) {
+      setError(
+        result.error ??
+          "Não foi possível mover a publicação."
+      );
+
+      setLoading(
+        false
+      );
+
+      return;
+    }
+
+    setLoading(
+      false
+    );
+
+    setOpen(
+      false
+    );
+
+    router.refresh();
+  }
+
   return (
     <>
       <button
@@ -1265,7 +1358,8 @@ export function EditContractPublication({
             </ErrorMessage>
           )}
 
-          {!confirmRemove ? (
+          {!confirmRemove &&
+          !moving ? (
             <form
               onSubmit={
                 handleSubmit
@@ -1332,22 +1426,44 @@ export function EditContractPublication({
               </div>
 
               <div className="flex flex-col justify-between gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:items-center">
-                <button
-                  type="button"
-                  disabled={
-                    loading
-                  }
-                  onClick={() =>
-                    setConfirmRemove(
-                      true
-                    )
-                  }
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
-                >
-                  <Trash2 className="h-4 w-4" />
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    disabled={
+                      loading
+                    }
+                    onClick={() =>
+                      setConfirmRemove(
+                        true
+                      )
+                    }
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
 
-                  Desvincular
-                </button>
+                    Desvincular
+                  </button>
+
+                  {otherOpenEditions.length >
+                    0 && (
+                    <button
+                      type="button"
+                      disabled={
+                        loading
+                      }
+                      onClick={() =>
+                        setMoving(
+                          true
+                        )
+                      }
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-semibold text-blue-600 transition hover:bg-blue-50 disabled:opacity-50"
+                    >
+                      <ArrowRightLeft className="h-4 w-4" />
+
+                      Mover de edição
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex gap-3">
                   <button
@@ -1381,7 +1497,7 @@ export function EditContractPublication({
                 </div>
               </div>
             </form>
-          ) : (
+          ) : confirmRemove ? (
             <div className="p-6">
               <div className="rounded-2xl border border-red-100 bg-red-50 p-5">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-600">
@@ -1438,6 +1554,114 @@ export function EditContractPublication({
                   {loading
                     ? "Desvinculando..."
                     : "Confirmar desvinculação"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="p-6">
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                  <ArrowRightLeft className="h-5 w-5" />
+                </div>
+
+                <h3 className="mt-4 font-semibold text-slate-900">
+                  Mover publicação para outra edição
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  O caderno e a posição atuais são específicos desta edição e ficarão em branco na edição de destino — será preciso defini-los de novo lá.
+                </p>
+
+                <p className="mt-3 text-sm font-semibold text-slate-800">
+                  {
+                    publication.clientName
+                  }{" "}
+                  •{" "}
+                  {
+                    publication.contractTitle
+                  }
+                </p>
+              </div>
+
+              <div className="mt-5">
+                <Field label="Edição de destino">
+                  <select
+                    value={
+                      targetEditionId
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      setTargetEditionId(
+                        event.target.value
+                      )
+                    }
+                    className="input"
+                  >
+                    <option value="">
+                      Selecione...
+                    </option>
+
+                    {otherOpenEditions.map(
+                      (
+                        item
+                      ) => (
+                        <option
+                          key={
+                            item.id
+                          }
+                          value={
+                            item.id
+                          }
+                        >
+                          {
+                            item.label
+                          }
+                        </option>
+                      )
+                    )}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={
+                    loading
+                  }
+                  onClick={() => {
+                    setMoving(
+                      false
+                    );
+
+                    setTargetEditionId(
+                      ""
+                    );
+
+                    setError("");
+                  }}
+                  className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600"
+                >
+                  Voltar
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    loading ||
+                    !targetEditionId
+                  }
+                  onClick={
+                    handleMove
+                  }
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-50"
+                >
+                  <ArrowRightLeft className="h-4 w-4" />
+
+                  {loading
+                    ? "Movendo..."
+                    : "Confirmar movimentação"}
                 </button>
               </div>
             </div>
