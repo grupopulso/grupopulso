@@ -34,6 +34,7 @@ type PageProps = {
     page?: string;
     status?: string;
     q?: string;
+    vendedor?: string;
   }>;
 };
 
@@ -50,6 +51,7 @@ export default async function ContratosPage({
     page: pageParam,
     status: statusParam,
     q: qParam,
+    vendedor: vendedorParam,
   } = await searchParams;
 
   const supabase =
@@ -68,6 +70,9 @@ export default async function ContratosPage({
   const search =
     (qParam ?? "").trim();
 
+  const sellerId =
+    (vendedorParam ?? "").trim();
+
   let query = supabase
     .from("contracts")
     .select(`
@@ -80,6 +85,7 @@ export default async function ContratosPage({
       status,
       auto_renew,
       legacy_subscription_number,
+      responsible_user_id,
 
       client:clients (
         id,
@@ -96,6 +102,11 @@ export default async function ContratosPage({
         id,
         name,
         type
+      ),
+
+      responsible:user_profiles (
+        id,
+        name
       )
     `);
 
@@ -122,10 +133,27 @@ export default async function ContratosPage({
   }
 }
 
-  const { data: contractsData, error } =
-    await query.order("created_at", {
+if (sellerId) {
+  query = query.eq(
+    "responsible_user_id",
+    sellerId
+  );
+}
+
+  const [
+    { data: contractsData, error },
+    { data: sellersData },
+  ] = await Promise.all([
+    query.order("created_at", {
       ascending: false,
-    });
+    }),
+
+    supabase
+      .from("user_profiles")
+      .select("id, name")
+      .eq("active", true)
+      .order("name"),
+  ]);
 
   if (error) {
     console.error(
@@ -133,6 +161,8 @@ export default async function ContratosPage({
       error
     );
   }
+
+  const sellers = sellersData ?? [];
 
   /*
    * Assinaturas do jornal (O Estafeta) têm tela própria em
@@ -249,6 +279,10 @@ export default async function ContratosPage({
       params.set("q", search);
     }
 
+    if (sellerId) {
+      params.set("vendedor", sellerId);
+    }
+
     if (targetPage > 1) {
       params.set(
         "page",
@@ -318,6 +352,25 @@ export default async function ContratosPage({
             )}
           </select>
 
+          <select
+            name="vendedor"
+            defaultValue={sellerId}
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+          >
+            <option value="">
+              Todos os responsáveis
+            </option>
+
+            {sellers.map((seller) => (
+              <option
+                key={seller.id}
+                value={seller.id}
+              >
+                {seller.name}
+              </option>
+            ))}
+          </select>
+
           <button
             type="submit"
             className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-700"
@@ -325,7 +378,9 @@ export default async function ContratosPage({
             Filtrar
           </button>
 
-          {(search || statusFilter !== "all") && (
+          {(search ||
+            statusFilter !== "all" ||
+            sellerId) && (
             <Link
               href="/contratos"
               className="text-sm font-medium text-slate-500 hover:text-slate-900 sm:px-2"
@@ -350,6 +405,10 @@ export default async function ContratosPage({
 
                   <TableHeader>
                     Empresa
+                  </TableHeader>
+
+                  <TableHeader>
+                    Responsável
                   </TableHeader>
 
                   <TableHeader>
@@ -378,6 +437,10 @@ export default async function ContratosPage({
 
                   const product = getFirst(
                     contract.product
+                  );
+
+                  const responsible = getFirst(
+                    contract.responsible
                   );
 
                   return (
@@ -428,6 +491,10 @@ export default async function ContratosPage({
                         </div>
                       </td>
 
+                      <td className="px-5 py-4 text-sm text-slate-600">
+                        {responsible?.name ?? "—"}
+                      </td>
+
                       <td className="px-5 py-4">
                         <p className="text-sm text-slate-700">
                           {formatDate(
@@ -475,11 +542,13 @@ export default async function ContratosPage({
                 {!contracts.length && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-5 py-12 text-center text-sm text-slate-400"
                     >
                       {totalContracts === 0 &&
-                      (search || statusFilter !== "all")
+                      (search ||
+                        statusFilter !== "all" ||
+                        sellerId)
                         ? "Nenhum contrato encontrado para esse filtro."
                         : selectedCompanyId
                           ? "Nenhum contrato cadastrado para a empresa selecionada."
