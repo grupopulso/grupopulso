@@ -26,6 +26,7 @@ import {
 type Edition = {
   id: string;
   name: string;
+  publication_date: string | null;
 };
 
 type Props = {
@@ -246,6 +247,11 @@ export default function SaleActions({
                       value={edition.id}
                     >
                       {edition.name}
+                      {edition.publication_date
+                        ? ` • ${formatEditionDate(
+                            edition.publication_date
+                          )}`
+                        : ""}
                     </option>
                   )
                 )}
@@ -293,5 +299,18 @@ export default function SaleActions({
         </div>
       )}
     </div>
+  );
+}
+
+function formatEditionDate(
+  value: string
+) {
+  return new Intl.DateTimeFormat(
+    "pt-BR",
+    {
+      timeZone: "UTC",
+    }
+  ).format(
+    new Date(`${value}T00:00:00Z`)
   );
 }

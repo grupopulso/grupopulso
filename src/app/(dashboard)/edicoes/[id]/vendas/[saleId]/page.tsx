@@ -599,6 +599,7 @@ export default async function SaleDetailPage({
   let openEditionsForMove: {
     id: string;
     name: string;
+    publication_date: string | null;
   }[] = [];
 
   if (
@@ -608,7 +609,7 @@ export default async function SaleDetailPage({
     const { data: otherEditions } =
       await supabase
         .from("newspaper_editions")
-        .select("id, name")
+        .select("id, name, publication_date")
         .eq(
           "company_id",
           access.estafetaCompany.id
