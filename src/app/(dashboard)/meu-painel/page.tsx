@@ -821,6 +821,222 @@ export default async function MeuPainelPage({
       ? mySold / myGoal
       : null;
 
+  /*
+   * =========================
+   * TODOS OS VENDEDORES (só admin)
+   * =========================
+   *
+   * Mesma lógica do relatório "Desempenho dos vendedores"
+   * (/relatorios/vendedores): total vendido no período por
+   * competência — não é a soma bruta das vendas do período.
+   */
+
+  type SellerCompanyRef = {
+    id: string;
+    name: string;
+    color: string | null;
+  };
+
+  type SellerRow = {
+    userId: string;
+    name: string;
+    companies: SellerCompanyRef[];
+    goal: number;
+    sold: number;
+  };
+
+  let allSellers: SellerRow[] = [];
+
+  if (isAdmin) {
+    const { data: allSettings } =
+      await adminDb
+        .from("seller_settings")
+        .select(`
+          user_id,
+          company_id,
+          company:companies ( id, name, color )
+        `)
+        .eq("active", true)
+        .order("created_at");
+
+    const allSellerUserIds = [
+      ...new Set(
+        (allSettings ?? []).map(
+          (setting) => setting.user_id
+        )
+      ),
+    ];
+
+    const { data: allProfiles } =
+      allSellerUserIds.length > 0
+        ? await adminDb
+            .from("user_profiles")
+            .select("id, name")
+            .in("id", allSellerUserIds)
+        : { data: [] };
+
+    const allProfileById = new Map(
+      (allProfiles ?? []).map(
+        (profile) => [profile.id, profile]
+      )
+    );
+
+    const allCompaniesByUser = new Map<
+      string,
+      SellerCompanyRef[]
+    >();
+
+    for (const setting of allSettings ??
+      []) {
+      const company =
+        getFirst<SellerCompanyRef>(
+          setting.company
+        );
+
+      if (!company) {
+        continue;
+      }
+
+      const current =
+        allCompaniesByUser.get(
+          setting.user_id
+        ) ?? [];
+
+      current.push(company);
+
+      allCompaniesByUser.set(
+        setting.user_id,
+        current
+      );
+    }
+
+    const activeSellers = allSellerUserIds
+      .map((id) => ({
+        userId: id,
+        profile:
+          allProfileById.get(id) ??
+          null,
+        companies:
+          allCompaniesByUser.get(id) ??
+          [],
+      }))
+      .filter(
+        (seller) =>
+          seller.profile &&
+          seller.companies.length > 0
+      );
+
+    const allUserIds = activeSellers.map(
+      (seller) => seller.userId
+    );
+
+    const allCompanyIds = [
+      ...new Set(
+        activeSellers.flatMap(
+          (seller) =>
+            seller.companies.map(
+              (company) => company.id
+            )
+        )
+      ),
+    ];
+
+    const goalByUserMonth = new Map<
+      string,
+      number
+    >();
+
+    if (allUserIds.length > 0) {
+      const { data: goals } =
+        await adminDb
+          .from("seller_goals")
+          .select(`
+            user_id,
+            month,
+            target_amount
+          `)
+          .eq("year", year)
+          .in("user_id", allUserIds);
+
+      for (const goal of goals ??
+        []) {
+        goalByUserMonth.set(
+          `${goal.user_id}:${goal.month}`,
+          Number(
+            goal.target_amount ?? 0
+          )
+        );
+      }
+    }
+
+    const soldByUserMonth = new Map<
+      string,
+      number
+    >();
+
+    const allRecords =
+      await fetchSellerCompetenceRecords(
+        adminDb,
+        {
+          userIds: allUserIds,
+          companyIds: allCompanyIds,
+          year,
+        }
+      );
+
+    for (const record of allRecords) {
+      const key = `${record.userId}:${record.month}`;
+
+      soldByUserMonth.set(
+        key,
+        (soldByUserMonth.get(key) ??
+          0) + record.amount
+      );
+    }
+
+    const monthsToSum = isAnnual
+      ? Array.from(
+          { length: 12 },
+          (_, index) => index + 1
+        )
+      : [month];
+
+    allSellers = activeSellers
+      .map((seller) => {
+        const goal = monthsToSum.reduce(
+          (total, monthNumber) =>
+            total +
+            (goalByUserMonth.get(
+              `${seller.userId}:${monthNumber}`
+            ) ?? 0),
+          0
+        );
+
+        const sold = monthsToSum.reduce(
+          (total, monthNumber) =>
+            total +
+            (soldByUserMonth.get(
+              `${seller.userId}:${monthNumber}`
+            ) ?? 0),
+          0
+        );
+
+        return {
+          userId: seller.userId,
+          name:
+            seller.profile?.name ??
+            "Vendedor",
+          companies:
+            seller.companies,
+          goal,
+          sold,
+        };
+      })
+      .sort(
+        (a, b) => b.sold - a.sold
+      );
+  }
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
@@ -1009,6 +1225,101 @@ export default async function MeuPainelPage({
                 myGoalProgress
               }
             />
+          </Panel>
+        )}
+
+        {/* VENDIDO POR VENDEDOR (só admin) */}
+
+        {isAdmin && allSellers.length > 0 && (
+          <Panel
+            title="Vendido por vendedor"
+            subtitle={`Total vendido em ${period.label} (mesma lógica do relatório de desempenho — competência, não a soma bruta das vendas do período).`}
+          >
+            <div className="space-y-3">
+              {allSellers.map((seller) => {
+                const percent =
+                  seller.goal > 0
+                    ? (seller.sold /
+                        seller.goal) *
+                      100
+                    : null;
+
+                return (
+                  <div
+                    key={seller.userId}
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/meu-painel?vendedor=${seller.userId}${
+                          isAnnual
+                            ? `&periodo=ano&ano=${year}`
+                            : `&ano=${year}&mes=${month}`
+                        }`}
+                        className="text-sm font-semibold text-slate-900 hover:text-[#15704f]"
+                      >
+                        {seller.name}
+                      </Link>
+
+                      {seller.companies.map(
+                        (company) => (
+                          <span
+                            key={
+                              company.id
+                            }
+                            className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[11px] text-slate-500"
+                          >
+                            <span
+                              className="h-1.5 w-1.5 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  company.color ??
+                                  "#94a3b8",
+                              }}
+                            />
+                            {
+                              company.name
+                            }
+                          </span>
+                        )
+                      )}
+                    </div>
+
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {formatCurrency(
+                          seller.sold
+                        )}
+                      </p>
+
+                      {seller.goal > 0 && (
+                        <p
+                          className={`text-xs font-medium ${
+                            percent !==
+                              null &&
+                            percent >= 100
+                              ? "text-emerald-600"
+                              : "text-amber-600"
+                          }`}
+                        >
+                          meta{" "}
+                          {formatCurrency(
+                            seller.goal
+                          )}
+                          {" · "}
+                          {percent !==
+                          null
+                            ? `${percent.toFixed(
+                                1
+                              )}%`
+                            : "—"}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </Panel>
         )}
 
