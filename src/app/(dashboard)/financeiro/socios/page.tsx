@@ -31,7 +31,7 @@ import DeletePartnerButton from "@/app/components/delete-partner-button";
 import TogglePartnerButton from "@/app/components/toggle-partner-button";
 
 /*
- * Empresas com divisão de lucro entre sócios (25% caixa / 75%
+ * Empresas com divisão de lucro entre sócios (34% caixa / 66%
  * sócios). Os IDs foram confirmados por consulta direta ao
  * banco.
  */
@@ -263,10 +263,11 @@ export default async function SociosFinanceiroPage({
         calculateProfitSplit(received, paid);
 
       /*
-       * Os 75% dos sócios são sempre divididos em
+       * Os 66% dos sócios são sempre divididos em
        * partes iguais entre os sócios ATIVOS — não
        * existe percentual customizado (regra combinada
-       * com o cliente em 27/08). Um sócio inativo não
+       * com o cliente em 27/08, reserva ajustada pra 34/66
+       * em 24/09 na saída do Gustavo). Um sócio inativo não
        * participa da divisão do mês, mas continua
        * aparecendo na lista (e no saldo, se tiver
        * adiantamento pendente daquele mês).
@@ -366,7 +367,7 @@ export default async function SociosFinanceiroPage({
               </h1>
 
               <p className="mt-1 text-sm text-slate-500">
-                Divisão de lucro (25% caixa / 75% sócios) e controle de adiantamentos.
+                Divisão de lucro (34% caixa / 66% sócios) e controle de adiantamentos.
               </p>
             </div>
           </div>
@@ -478,13 +479,13 @@ function CompanyPartnerCard({
           />
 
           <SummaryBox
-            label="Reserva (25%)"
+            label="Reserva (34%)"
             value={formatCurrency(reserve)}
           />
         </div>
 
         <p className="mt-3 text-xs text-slate-400">
-          Total para os sócios (75%): {" "}
+          Total para os sócios (66%): {" "}
           <strong className="font-semibold text-slate-600">
             {formatCurrency(partnersPool)}
           </strong>
@@ -517,9 +518,9 @@ function CompanyPartnerCard({
                           {
                             maximumFractionDigits: 2,
                           }
-                        )}% dos 75% dos sócios (= ${(
+                        )}% dos 66% dos sócios (= ${(
                           partner.percentageForCalc *
-                          0.75
+                          0.66
                         ).toLocaleString("pt-BR", {
                           maximumFractionDigits: 2,
                         })}% do lucro total)`

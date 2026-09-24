@@ -1,8 +1,10 @@
 /*
- * Cálculo da divisão de lucro entre sócios (Agência Atthus e
- * Pottencializa): 25% para o caixa da empresa, 75% dividido entre
- * os sócios conforme o percentual de cada um, descontados os
- * adiantamentos que cada sócio já tirou no mês.
+ * Cálculo da divisão de lucro entre sócios: 34% para o caixa da
+ * empresa, 66% dividido entre os sócios conforme o percentual de
+ * cada um, descontados os adiantamentos que cada sócio já tirou no
+ * mês. Regra atualizada em 24/09 (saída do Gustavo): com apenas o
+ * Ale e o Leandro ativos, o split igual entre sócios ativos já
+ * resulta em 33% para cada um dos 66%.
  *
  * Segue o mesmo princípio já usado em contract-status.ts e
  * financial-entry-status.ts: calcular na hora a partir dos dados
@@ -84,9 +86,9 @@ export function calculateProfitSplit(
 ) {
   const profit = received - paid;
 
-  const reserve = profit * 0.25;
+  const reserve = profit * 0.34;
 
-  const partnersPool = profit * 0.75;
+  const partnersPool = profit * 0.66;
 
   return {
     profit,

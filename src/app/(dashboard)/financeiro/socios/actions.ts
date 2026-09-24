@@ -570,11 +570,12 @@ export async function saveCompanyPartner(
   const supabase = await createClient();
 
   /*
-   * Não existe percentual customizado: os 75% dos
+   * Não existe percentual customizado: os 66% dos
    * sócios são sempre divididos em partes iguais entre
    * os sócios ativos (regra combinada com o cliente em
-   * 27/08). O valor gravado aqui é só para satisfazer a
-   * coluna (obrigatória, > 0); o cálculo de verdade, na
+   * 27/08, reserva ajustada pra 34/66 em 24/09 na saída
+   * do Gustavo). O valor gravado aqui é só para satisfazer
+   * a coluna (obrigatória, > 0); o cálculo de verdade, na
    * tela, sempre recalcula na hora com base em quantos
    * sócios estão ativos naquele momento — então continua
    * correto mesmo depois de ativar/desativar alguém.
