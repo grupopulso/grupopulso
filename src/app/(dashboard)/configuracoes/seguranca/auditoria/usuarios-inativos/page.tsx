@@ -9,6 +9,7 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 import { requireAdmin } from "@/app/lib/permissions";
 
 import ReassignButton from "./reassign-button";
+import SetDeactivationDateForm from "./set-deactivation-date-form";
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -197,6 +198,12 @@ export default async function UsuariosInativosPage() {
                           user.reassigned_at
                         )}
                       </span>
+                    ) : !deactivatedAt ? (
+                      <SetDeactivationDateForm
+                        userId={
+                          user.id
+                        }
+                      />
                     ) : eligible ? (
                       <ReassignButton
                         userId={
@@ -211,6 +218,14 @@ export default async function UsuariosInativosPage() {
                     )}
                   </div>
                 </div>
+
+                {!deactivatedAt && (
+                  <p className="mt-3 text-xs text-slate-400">
+                    Este usuário foi desativado antes dessa
+                    funcionalidade existir — informe quando ele
+                    saiu pra liberar a reatribuição.
+                  </p>
+                )}
 
                 {reassignInfo && (
                   <p className="mt-3 text-xs text-slate-500">
