@@ -118,6 +118,171 @@ export default async function UsuariosInativosPage() {
     1
   );
 
+  /*
+   * O que está vinculado a cada usuário inativo HOJE (antes de
+   * uma eventual reatribuição) — pra dar visibilidade real do
+   * que "é dele", como pedido.
+   */
+  const [
+    { data: contracts },
+    { data: sales },
+  ] =
+    userIds.length > 0
+      ? await Promise.all([
+          adminDb
+            .from("contracts")
+            .select(`
+              id,
+              title,
+              value,
+              status,
+              responsible_user_id,
+
+              company:companies (
+                id,
+                name
+              )
+            `)
+            .in(
+              "responsible_user_id",
+              userIds
+            ),
+
+          adminDb
+            .from("edition_sales")
+            .select(`
+              id,
+              status,
+              total_amount,
+              seller_user_id,
+
+              client:clients (
+                id,
+                name
+              )
+            `)
+            .in(
+              "seller_user_id",
+              userIds
+            ),
+        ])
+      : [
+          { data: [] },
+          { data: [] },
+        ];
+
+  function getFirst<T>(
+    value: T | T[] | null | undefined
+  ): T | null {
+    if (!value) return null;
+
+    return Array.isArray(value)
+      ? (value[0] ?? null)
+      : value;
+  }
+
+  const contractsByUser = new Map<
+    string,
+    {
+      id: string;
+      title: string;
+      value: number;
+      companyName: string;
+    }[]
+  >();
+
+  for (const contract of contracts ??
+    []) {
+    if (
+      !contract.responsible_user_id ||
+      contract.status === "cancelled"
+    ) {
+      continue;
+    }
+
+    const company =
+      getFirst<{
+        id: string;
+        name: string;
+      }>(contract.company);
+
+    const current =
+      contractsByUser.get(
+        contract.responsible_user_id
+      ) ?? [];
+
+    current.push({
+      id: contract.id,
+      title: contract.title,
+      value: Number(
+        contract.value ?? 0
+      ),
+      companyName:
+        company?.name ?? "—",
+    });
+
+    contractsByUser.set(
+      contract.responsible_user_id,
+      current
+    );
+  }
+
+  const salesByUser = new Map<
+    string,
+    {
+      id: string;
+      clientName: string;
+      value: number;
+    }[]
+  >();
+
+  for (const sale of sales ??
+    []) {
+    if (
+      !sale.seller_user_id ||
+      sale.status === "cancelled"
+    ) {
+      continue;
+    }
+
+    const client =
+      getFirst<{
+        id: string;
+        name: string;
+      }>(sale.client);
+
+    const current =
+      salesByUser.get(
+        sale.seller_user_id
+      ) ?? [];
+
+    current.push({
+      id: sale.id,
+      clientName:
+        client?.name ?? "—",
+      value: Number(
+        sale.total_amount ?? 0
+      ),
+    });
+
+    salesByUser.set(
+      sale.seller_user_id,
+      current
+    );
+  }
+
+  function formatCurrency(
+    value: number
+  ) {
+    return new Intl.NumberFormat(
+      "pt-BR",
+      {
+        style: "currency",
+        currency: "BRL",
+      }
+    ).format(value);
+  }
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-5xl">
@@ -169,6 +334,16 @@ export default async function UsuariosInativosPage() {
               reassignLogByUserId.get(
                 user.id
               );
+
+            const userContracts =
+              contractsByUser.get(
+                user.id
+              ) ?? [];
+
+            const userSales =
+              salesByUser.get(
+                user.id
+              ) ?? [];
 
             return (
               <div
@@ -241,6 +416,109 @@ export default async function UsuariosInativosPage() {
                     da empresa correspondente.
                   </p>
                 )}
+
+                {(userContracts.length >
+                  0 ||
+                  userSales.length >
+                    0) && (
+                  <div className="mt-4 grid grid-cols-1 gap-4 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                    {userContracts.length >
+                      0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Contratos (
+                          {
+                            userContracts.length
+                          }
+                          )
+                        </p>
+
+                        <ul className="mt-2 space-y-1.5">
+                          {userContracts.map(
+                            (
+                              contract
+                            ) => (
+                              <li
+                                key={
+                                  contract.id
+                                }
+                                className="flex items-center justify-between gap-3 text-xs text-slate-600"
+                              >
+                                <span className="truncate">
+                                  {
+                                    contract.title
+                                  }{" "}
+                                  <span className="text-slate-400">
+                                    (
+                                    {
+                                      contract.companyName
+                                    }
+                                    )
+                                  </span>
+                                </span>
+
+                                <span className="shrink-0 font-medium text-slate-700">
+                                  {formatCurrency(
+                                    contract.value
+                                  )}
+                                </span>
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    )}
+
+                    {userSales.length >
+                      0 && (
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Vendas de edição (
+                          {
+                            userSales.length
+                          }
+                          )
+                        </p>
+
+                        <ul className="mt-2 space-y-1.5">
+                          {userSales.map(
+                            (sale) => (
+                              <li
+                                key={
+                                  sale.id
+                                }
+                                className="flex items-center justify-between gap-3 text-xs text-slate-600"
+                              >
+                                <span className="truncate">
+                                  {
+                                    sale.clientName
+                                  }
+                                </span>
+
+                                <span className="shrink-0 font-medium text-slate-700">
+                                  {formatCurrency(
+                                    sale.value
+                                  )}
+                                </span>
+                              </li>
+                            )
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {userContracts.length ===
+                  0 &&
+                  userSales.length ===
+                    0 &&
+                  !user.reassigned_at && (
+                    <p className="mt-3 text-xs text-slate-400">
+                      Nenhum contrato ou venda vinculado a este
+                      usuário atualmente.
+                    </p>
+                  )}
               </div>
             );
           })}
