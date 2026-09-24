@@ -2,6 +2,58 @@
 
 ---
 
+## [ ] Tabelas `prospecting_lists` / `prospecting_leads` (Prospecção)
+
+Tela nova "Prospecção" no menu lateral: dentro de cada empresa, o
+usuário cria listas (ex.: "Guia de Serviços 2026") e dentro de cada
+lista cadastra os clientes a prospectar (nome, vendedor responsável,
+valor, tamanho do anúncio, situação e observação de cobrança) —
+substitui as planilhas usadas hoje pra não haver vendedores
+oferecendo pro mesmo cliente.
+
+```sql
+create table if not exists public.prospecting_lists (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  name text not null,
+  created_by uuid references public.user_profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.prospecting_leads (
+  id uuid primary key default gen_random_uuid(),
+  list_id uuid not null references public.prospecting_lists(id) on delete cascade,
+  client_name text not null,
+  seller_user_id uuid references public.user_profiles(id),
+  value numeric(12,2),
+  size text,
+  status text not null default 'none' check (status in ('none', 'contacted', 'closed', 'declined')),
+  billing_note text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists prospecting_lists_company_id_idx
+  on public.prospecting_lists (company_id);
+
+create index if not exists prospecting_leads_list_id_idx
+  on public.prospecting_leads (list_id);
+
+alter table public.prospecting_lists enable row level security;
+alter table public.prospecting_leads enable row level security;
+```
+
+Sem RLS policy própria de propósito — igual ao resto do financeiro,
+o acesso é controlado na aplicação (`requireModulePermission`) e as
+leituras/escritas passam pelo cliente admin (service role).
+
+Status: `none` (sem contato, aparece em branco), `contacted`
+(amarelo), `closed` (fechou o anúncio, verde), `declined` (não quer
+anunciar, vermelho).
+
+---
+
 ## [ ] Colunas `deactivated_at` / `reassigned_at` em `user_profiles` (usuário inativo → reatribuição)
 
 Quando um usuário é desativado, os contratos/vendas dele passam a ser

@@ -191,6 +191,7 @@ const MODULES = [
   "contracts",
   "subscriptions",
   "editions",
+  "prospecting",
   "financial",
   "accounts_receivable",
   "invoices",

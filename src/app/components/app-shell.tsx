@@ -18,6 +18,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  Radar,
   Repeat,
   Route,
   ScrollText,
@@ -115,6 +116,12 @@ const navigation: NavigationItem[] = [
     href: "/contratos",
     icon: FileText,
     module: "contracts",
+  },
+  {
+    label: "Prospecção",
+    href: "/prospeccao",
+    icon: Radar,
+    module: "prospecting",
   },
 
   {

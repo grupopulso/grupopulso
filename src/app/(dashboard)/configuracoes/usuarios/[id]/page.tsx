@@ -98,6 +98,10 @@ const MODULES = [
     name: "Edições e Publicidade (O Estafeta)",
   },
   {
+    key: "prospecting",
+    name: "Prospecção",
+  },
+  {
     key: "financial",
     name: "Financeiro",
   },

@@ -52,6 +52,7 @@ const MODULE_LABELS: Record<string, string> = {
   routes: "Rotas",
   products: "Produtos",
   contracts: "Contratos",
+  prospecting: "Prospecção",
   financial: "Financeiro",
   accounts_receivable: "Contas a Receber",
   accounts_payable: "Contas a Pagar",

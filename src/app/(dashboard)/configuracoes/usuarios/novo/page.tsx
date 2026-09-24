@@ -49,6 +49,10 @@ const MODULES = [
     label: "Edições e Publicidade (O Estafeta)",
   },
   {
+    module: "prospecting",
+    label: "Prospecção",
+  },
+  {
     module: "financial",
     label: "Financeiro",
   },
