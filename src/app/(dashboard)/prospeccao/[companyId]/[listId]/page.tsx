@@ -247,18 +247,18 @@ export default async function ProspeccaoListaPage({
           </div>
         </div>
 
-        <AddLeadForm
-          companyId={companyId}
-          listId={listId}
-          sellers={allSellers}
-        />
-
         <LeadsTable
           companyId={companyId}
           listId={listId}
           leads={allLeads}
           sellers={allSellers}
-        />
+        >
+          <AddLeadForm
+            companyId={companyId}
+            listId={listId}
+            sellers={allSellers}
+          />
+        </LeadsTable>
       </div>
     </main>
   );

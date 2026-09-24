@@ -33,11 +33,13 @@ export default function LeadsTable({
   listId,
   leads,
   sellers,
+  children,
 }: {
   companyId: string;
   listId: string;
   leads: Lead[];
   sellers: Seller[];
+  children?: React.ReactNode;
 }) {
   const [search, setSearch] = useState("");
   const [sellerFilter, setSellerFilter] =
@@ -163,6 +165,8 @@ export default function LeadsTable({
           {leads.length} cliente(s)
         </span>
       </div>
+
+      {children}
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
