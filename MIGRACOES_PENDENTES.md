@@ -2,7 +2,29 @@
 
 ---
 
-## [ ] Coluna `invoice_mode` em `contracts` (nota fiscal única ou por parcela)
+## [ ] Colunas `deactivated_at` / `reassigned_at` em `user_profiles` (usuário inativo → reatribuição)
+
+Quando um usuário é desativado, os contratos/vendas dele passam a ser
+do "vendedor da empresa" (um usuário por empresa: Atthus, Pottencializa,
+O Estafeta) — mas só a partir do mês seguinte à saída. Essas colunas
+guardam quando ele saiu e se já foi reatribuído, pra tela de "Usuários
+inativos" (dentro de Auditoria) e pro job de reatribuição saberem o que
+fazer.
+
+```sql
+alter table public.user_profiles
+  add column if not exists deactivated_at timestamptz;
+
+alter table public.user_profiles
+  add column if not exists reassigned_at timestamptz;
+```
+
+Sem isso, a tela de "Usuários inativos" e a reatribuição automática dão
+erro (colunas não existem).
+
+---
+
+## [x] Coluna `invoice_mode` em `contracts` (nota fiscal única ou por parcela) — já aplicada em 14/09
 
 Contrato agora escolhe entre nota fiscal única (uma para o contrato
 inteiro) ou uma nota fiscal por parcela. Sem essa coluna, a tela de

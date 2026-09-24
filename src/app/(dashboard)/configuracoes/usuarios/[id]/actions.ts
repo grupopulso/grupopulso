@@ -236,7 +236,8 @@ export async function updateUserAccess(
     .from("user_profiles")
     .select(`
       id,
-      role
+      role,
+      active
     `)
     .eq("id", userId)
     .maybeSingle();
@@ -276,6 +277,22 @@ export async function updateUserAccess(
   }
 
   /*
+   * Ao desativar agora, marca quando saiu — usado pela tela
+   * de "Usuários inativos" na auditoria pra saber a partir de
+   * quando os contratos/vendas dele podem ser reatribuídos
+   * pro vendedor da empresa (só a partir do mês seguinte).
+   * Reativar limpa a marcação (reassignedAt também, pra caso
+   * ele seja desativado de novo no futuro).
+   */
+  const becameInactive =
+    existingProfile.active &&
+    !input.active;
+
+  const becameActiveAgain =
+    !existingProfile.active &&
+    input.active;
+
+  /*
    * Atualiza o perfil.
    */
   const {
@@ -290,6 +307,21 @@ export async function updateUserAccess(
         input.active,
       updated_at:
         new Date().toISOString(),
+
+      ...(becameInactive
+        ? {
+            deactivated_at:
+              new Date().toISOString(),
+            reassigned_at: null,
+          }
+        : {}),
+
+      ...(becameActiveAgain
+        ? {
+            deactivated_at: null,
+            reassigned_at: null,
+          }
+        : {}),
     })
     .eq("id", userId);
 

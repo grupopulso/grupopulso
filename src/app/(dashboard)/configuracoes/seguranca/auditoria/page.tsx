@@ -195,20 +195,30 @@ export default async function AuditoriaPage({
           Voltar para Segurança
         </Link>
 
-        <div className="mt-5 flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#15704f]/10">
-            <FileClock className="h-5 w-5 text-[#15704f]" />
+        <div className="mt-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#15704f]/10">
+              <FileClock className="h-5 w-5 text-[#15704f]" />
+            </div>
+
+            <div>
+              <h1 className="text-2xl font-semibold text-slate-900">
+                Auditoria
+              </h1>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Histórico das ações realizadas dentro da plataforma.
+              </p>
+            </div>
           </div>
 
-          <div>
-            <h1 className="text-2xl font-semibold text-slate-900">
-              Auditoria
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Histórico das ações realizadas dentro da plataforma.
-            </p>
-          </div>
+          <Link
+            href="/configuracoes/seguranca/auditoria/usuarios-inativos"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+          >
+            <UserRound className="h-4 w-4" />
+            Usuários inativos
+          </Link>
         </div>
 
         <form
