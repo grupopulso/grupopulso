@@ -12,6 +12,9 @@ import {
 import NewListForm from "./new-list-form";
 import DeleteListButton from "./delete-list-button";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PageProps = {
   params: Promise<{ companyId: string }>;
 };

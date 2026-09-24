@@ -12,6 +12,14 @@ import {
 import AddLeadForm from "./add-lead-form";
 import LeadsTable from "./leads-table";
 
+/*
+ * Lista de prospecção é uma ferramenta viva (evita vendedores
+ * ofertando pro mesmo cliente) — nunca pode mostrar uma foto
+ * desatualizada, então força sempre buscar do banco de novo.
+ */
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PageProps = {
   params: Promise<{
     companyId: string;
