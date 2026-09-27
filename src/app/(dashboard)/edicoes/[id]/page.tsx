@@ -193,6 +193,14 @@ export default async function EditionPage({
   const access =
     await requireEstafetaAccess();
 
+  /*
+   * Admin pode editar/adicionar publicações mesmo com a edição
+   * fechada, sem precisar reabrir (pedido do Leandro em 27/09).
+   */
+  const isAdmin =
+    access.profile.role ===
+    "admin";
+
   const {
     id,
   } =
@@ -2516,8 +2524,9 @@ export default async function EditionPage({
               </p>
             </div>
 
-            {edition.status ===
-              "open" && (
+            {(edition.status ===
+              "open" ||
+              isAdmin) && (
               <AddContractPublication
                 editionId={
                   edition.id
@@ -2711,7 +2720,8 @@ export default async function EditionPage({
 
                           <td className="px-6 py-4">
                             {edition.status ===
-                            "open" ? (
+                              "open" ||
+                            isAdmin ? (
                               <EditContractPublication
                                 editionId={
                                   edition.id

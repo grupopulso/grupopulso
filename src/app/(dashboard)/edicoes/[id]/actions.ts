@@ -139,7 +139,9 @@ export async function addContractPublicationToEdition(
       access
         .estafetaCompany
         .id,
-      input.editionId
+      input.editionId,
+      access.profile.role ===
+        "admin"
     );
 
   if (
@@ -209,64 +211,13 @@ export async function addContractPublicationToEdition(
   }
 
   /*
-   * =====================================================
-   * EVITAR DUPLICIDADE
-   * =====================================================
+   * Um contrato pode ter mais de uma publicação ativa na mesma
+   * edição (ex.: o cliente compra um segundo anúncio na mesma
+   * edição) - não bloqueia mais por contrato já vinculado
+   * (pedido do Leandro em 27/09, caso do Tachini com 2 anúncios
+   * na mesma edição). A posição em si ainda não pode ser
+   * duplicada (checado abaixo, na validação de caderno/posição).
    */
-
-  const {
-    data:
-      existingPublication,
-    error:
-      existingError,
-  } =
-    await supabase
-      .from(
-        "contract_edition_publications"
-      )
-      .select(`
-        id
-      `)
-      .eq(
-        "edition_id",
-        input.editionId
-      )
-      .eq(
-        "contract_id",
-        input.contractId
-      )
-      .eq(
-        "active",
-        true
-      )
-      .maybeSingle();
-
-  if (
-    existingError
-  ) {
-    console.error(
-      "Erro ao verificar publicação existente:",
-      existingError
-    );
-
-    return {
-      success: false,
-
-      error:
-        "Não foi possível verificar se o contrato já está vinculado à edição.",
-    };
-  }
-
-  if (
-    existingPublication
-  ) {
-    return {
-      success: false,
-
-      error:
-        "Este contrato já possui uma publicação vinculada a esta edição.",
-    };
-  }
 
   /*
    * =====================================================
@@ -458,7 +409,9 @@ export async function updateContractPublicationInEdition(
       access
         .estafetaCompany
         .id,
-      input.editionId
+      input.editionId,
+      access.profile.role ===
+        "admin"
     );
 
   if (
@@ -737,7 +690,9 @@ export async function removeContractPublicationFromEdition(
       access
         .estafetaCompany
         .id,
-      editionId
+      editionId,
+      access.profile.role ===
+        "admin"
     );
 
   if (
@@ -906,7 +861,9 @@ export async function moveContractPublicationToEdition(
       access
         .estafetaCompany
         .id,
-      input.currentEditionId
+      input.currentEditionId,
+      access.profile.role ===
+        "admin"
     );
 
   if (
@@ -927,7 +884,9 @@ export async function moveContractPublicationToEdition(
       access
         .estafetaCompany
         .id,
-      input.targetEditionId
+      input.targetEditionId,
+      access.profile.role ===
+        "admin"
     );
 
   if (
@@ -998,46 +957,11 @@ export async function moveContractPublicationToEdition(
   }
 
   /*
-   * =====================================================
-   * EVITAR DUPLICIDADE NO DESTINO
-   * =====================================================
+   * Um contrato pode ter mais de uma publicação ativa na mesma
+   * edição (ver addContractPublicationToEdition), então mover
+   * pra uma edição de destino que já tenha outra publicação
+   * deste contrato também é permitido.
    */
-
-  const {
-    data:
-      existingPublication,
-  } =
-    await supabase
-      .from(
-        "contract_edition_publications"
-      )
-      .select(`
-        id
-      `)
-      .eq(
-        "edition_id",
-        input.targetEditionId
-      )
-      .eq(
-        "contract_id",
-        publication.contract_id
-      )
-      .eq(
-        "active",
-        true
-      )
-      .maybeSingle();
-
-  if (
-    existingPublication
-  ) {
-    return {
-      success: false,
-
-      error:
-        "Este contrato já possui uma publicação vinculada à edição de destino.",
-    };
-  }
 
   /*
    * =====================================================
@@ -1131,7 +1055,14 @@ async function validateEdition(
   companyId:
     string,
   editionId:
-    string
+    string,
+  /*
+   * Admin pode editar publicações mesmo com a edição fechada,
+   * sem precisar reabrir - pedido do Leandro em 27/09 (evita o
+   * ciclo reabrir → editar → fechar de novo).
+   */
+  isAdmin:
+    boolean = false
 ) {
   const {
     data:
@@ -1172,7 +1103,8 @@ async function validateEdition(
 
   if (
     edition.status !==
-    "open"
+    "open" &&
+    !isAdmin
   ) {
     return {
       success:
