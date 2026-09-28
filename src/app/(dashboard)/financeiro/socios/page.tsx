@@ -25,6 +25,18 @@ import {
   saveCompanyPartner,
 } from "./actions";
 
+/*
+ * Contrato de TV Indoor (Pottencializa) tem exclusividade: a
+ * empresa só fica com 50% do valor recebido (o resto é repassado
+ * pra quem hospeda as TVs). O lucro dos sócios não pode contar o
+ * valor recebido inteiro como receita da empresa
+ * (regra combinada com o cliente em 28/09).
+ */
+const TV_INDOOR_PRODUCT_ID =
+  "968e4198-c946-4ea3-abf0-a8b2521b7474";
+
+const TV_INDOOR_COMPANY_SHARE = 0.5;
+
 import DeleteWithdrawalButton from "@/app/components/delete-withdrawal-button";
 import DeleteContributionButton from "@/app/components/delete-contribution-button";
 import DeletePartnerButton from "@/app/components/delete-partner-button";
@@ -141,7 +153,7 @@ export default async function SociosFinanceiroPage({
 
         supabase
           .from("financial_entries")
-          .select("id, type, amount_paid")
+          .select("id, type, amount_paid, product_id")
           .eq("company_id", company.id)
           .gte("due_date", month.start)
           .lte("due_date", month.end),
@@ -242,8 +254,19 @@ export default async function SociosFinanceiroPage({
             !contributionEntryIds.has(entry.id)
         )
         .reduce(
-          (total, entry) =>
-            total + Number(entry.amount_paid ?? 0),
+          (total, entry) => {
+            const shareFactor =
+              entry.product_id ===
+              TV_INDOOR_PRODUCT_ID
+                ? TV_INDOOR_COMPANY_SHARE
+                : 1;
+
+            return (
+              total +
+              Number(entry.amount_paid ?? 0) *
+                shareFactor
+            );
+          },
           0
         );
 

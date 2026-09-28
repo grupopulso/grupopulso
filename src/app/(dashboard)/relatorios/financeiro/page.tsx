@@ -15,7 +15,17 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
+/*
+ * Contrato de TV Indoor (Pottencializa) tem exclusividade: a
+ * empresa só fica com 50% do valor recebido (o resto é repassado
+ * pra quem hospeda as TVs) — o "Recebido"/"Resultado realizado"
+ * não pode contar o valor recebido inteiro como receita da
+ * empresa (regra combinada com o cliente em 28/09).
+ */
+const TV_INDOOR_PRODUCT_ID =
+  "968e4198-c946-4ea3-abf0-a8b2521b7474";
 
+const TV_INDOOR_COMPANY_SHARE = 0.5;
 
 type SearchParams = Promise<{
   start?: string;
@@ -49,6 +59,7 @@ type Entry = {
   fine: number | string;
   discount: number | string;
   status: string;
+  product_id: string | null;
 
   company:
     | Company
@@ -118,6 +129,7 @@ export default async function RelatorioFinanceiroPage({
       fine,
       discount,
       status,
+      product_id,
 
       company:companies (
         id,
@@ -235,11 +247,21 @@ export default async function RelatorioFinanceiroPage({
           "income"
       )
       .reduce(
-        (total, entry) =>
-          total +
-          Number(
-            entry.amount_paid
-          ),
+        (total, entry) => {
+          const shareFactor =
+            entry.product_id ===
+            TV_INDOOR_PRODUCT_ID
+              ? TV_INDOOR_COMPANY_SHARE
+              : 1;
+
+          return (
+            total +
+            Number(
+              entry.amount_paid
+            ) *
+              shareFactor
+          );
+        },
         0
       );
 

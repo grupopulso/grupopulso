@@ -18,6 +18,26 @@ import {
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
 
+/*
+ * Contrato de TV Indoor (Pottencializa) tem exclusividade: só 50%
+ * do valor pago pelo cliente entra de fato na conta da empresa
+ * (o resto fica com quem hospeda as TVs, fora do sistema). O
+ * fluxo de caixa não pode contar o valor pago inteiro como
+ * entrada da empresa (regra combinada com o cliente em 28/09).
+ */
+const TV_INDOOR_PRODUCT_ID =
+  "968e4198-c946-4ea3-abf0-a8b2521b7474";
+
+const TV_INDOOR_COMPANY_SHARE = 0.5;
+
+function getCompanyShareFactor(
+  productId: string | null | undefined
+) {
+  return productId === TV_INDOOR_PRODUCT_ID
+    ? TV_INDOOR_COMPANY_SHARE
+    : 1;
+}
+
 type SearchParams = Promise<{
   start?: string;
   end?: string;
@@ -53,6 +73,7 @@ type Entry = {
   fine: number | string;
   discount: number | string;
   status: string;
+  product_id: string | null;
   company: Company | Company[] | null;
 };
 
@@ -68,6 +89,7 @@ type Transaction = {
         company_id: string;
         type: "income" | "expense";
         description: string;
+        product_id: string | null;
 
         company:
           | Company
@@ -79,6 +101,7 @@ type Transaction = {
         company_id: string;
         type: "income" | "expense";
         description: string;
+        product_id: string | null;
 
         company:
           | Company
@@ -175,6 +198,7 @@ export default async function FluxoCaixaPage({
           company_id,
           type,
           description,
+          product_id,
 
           company:companies (
             id,
@@ -214,6 +238,7 @@ export default async function FluxoCaixaPage({
         fine,
         discount,
         status,
+        product_id,
 
         company:companies (
           id,
@@ -425,11 +450,22 @@ export default async function FluxoCaixaPage({
         (
           total,
           transaction
-        ) =>
-          total +
-          Number(
-            transaction.amount
-          ),
+        ) => {
+          const entry =
+            getFirst(
+              transaction.financial_entry
+            );
+
+          return (
+            total +
+            Number(
+              transaction.amount
+            ) *
+              getCompanyShareFactor(
+                entry?.product_id
+              )
+          );
+        },
         0
       );
 
@@ -489,7 +525,10 @@ export default async function FluxoCaixaPage({
           total +
           calculateEntryOpenAmount(
             entry
-          ),
+          ) *
+            getCompanyShareFactor(
+              entry.product_id
+            ),
         0
       );
 
@@ -1028,7 +1067,10 @@ function createRealizedRows(
           amount:
             Number(
               transaction.amount
-            ),
+            ) *
+              getCompanyShareFactor(
+                entry.product_id
+              ),
 
           company:
             getFirst(
@@ -1087,7 +1129,10 @@ function createForecastRows(
         amount:
           calculateEntryOpenAmount(
             entry
-          ),
+          ) *
+            getCompanyShareFactor(
+              entry.product_id
+            ),
 
         company:
           getFirst(
