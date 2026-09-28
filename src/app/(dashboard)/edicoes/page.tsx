@@ -53,6 +53,13 @@ type ContractRecord = {
   client_id: string;
 
   status: string;
+
+  title: string;
+
+  client:
+    | { id: string; name: string }
+    | { id: string; name: string }[]
+    | null;
 };
 
 type PageProps = {
@@ -297,7 +304,13 @@ export default async function EditionsPage({
         .select(`
           id,
           client_id,
-          status
+          status,
+          title,
+
+          client:clients (
+            id,
+            name
+          )
         `)
         .eq(
           "company_id",
@@ -637,7 +650,7 @@ export default async function EditionsPage({
                  * =========================================
                  */
 
-                const pendingPublications =
+                const pendingPublicationsList =
                   publications.filter(
                     (
                       publication
@@ -645,7 +658,37 @@ export default async function EditionsPage({
                       !publication.ad_position_id ||
                       !publication
                         .size_description
-                  ).length;
+                  );
+
+                const pendingPublications =
+                  pendingPublicationsList.length;
+
+                const pendingPublicationNames =
+                  pendingPublicationsList
+                    .map(
+                      (
+                        publication
+                      ) => {
+                        const contract =
+                          contractsById.get(
+                            publication.contract_id
+                          );
+
+                        const client =
+                          getFirst(
+                            contract?.client
+                          );
+
+                        return (
+                          client?.name ??
+                          contract?.title ??
+                          "Cliente"
+                        );
+                      }
+                    )
+                    .join(
+                      ", "
+                    );
 
                 /*
                  * =========================================
@@ -813,7 +856,10 @@ export default async function EditionsPage({
 
                             {pendingPublications >
                               0 && (
-                              <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                              <span
+                                title={`Falta definir posição/tamanho: ${pendingPublicationNames}`}
+                                className="inline-flex cursor-help rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 underline decoration-dotted"
+                              >
                                 {
                                   pendingPublications
                                 }{" "}
