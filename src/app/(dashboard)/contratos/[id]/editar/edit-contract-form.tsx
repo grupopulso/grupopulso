@@ -241,6 +241,25 @@ export default function EditContractForm({
       )
     );
 
+  /*
+   * Quem digita é o valor da PARCELA - o valor total é
+   * calculado automaticamente (parcela × quantidade), em vez
+   * de pedir o total e dividir (pedido do cliente em 28/09).
+   */
+  const [
+    installmentAmount,
+    setInstallmentAmount,
+  ] =
+    useState(
+      formatValue(
+        roundMoney(
+          contract.value /
+            (contract.installments ||
+              1)
+        )
+      )
+    );
+
   const [
     billingFrequency,
     setBillingFrequency,
@@ -1115,23 +1134,49 @@ export default function EditContractForm({
               />
             </Field>
 
-            <Field label="Valor total">
+            <Field label="Valor da parcela">
               <input
                 value={
-                  value
+                  installmentAmount
                 }
                 onChange={(
                   event
-                ) =>
-                  setValue(
+                ) => {
+                  const text =
                     event.target
-                      .value
-                  )
-                }
+                      .value;
+
+                  setInstallmentAmount(
+                    text
+                  );
+
+                  setValue(
+                    formatValue(
+                      roundMoney(
+                        parseMoney(
+                          text
+                        ) *
+                          installments
+                      )
+                    )
+                  );
+                }}
                 inputMode="decimal"
                 className="input"
                 required
               />
+
+              <p className="mt-2 text-sm text-slate-500">
+                Valor total do contrato:{" "}
+                <strong className="text-slate-800">
+                  {formatValue(
+                    parseMoney(
+                      value
+                    )
+                  )}
+                </strong>{" "}
+                ({installments}x)
+              </p>
             </Field>
 
             <Field label="Periodicidade">
@@ -1423,8 +1468,8 @@ export default function EditContractForm({
                 }
                 onChange={(
                   event
-                ) =>
-                  setInstallments(
+                ) => {
+                  const nextInstallments =
                     Math.max(
                       1,
                       Number(
@@ -1432,9 +1477,31 @@ export default function EditContractForm({
                           .value
                       ) ||
                         1
-                    )
-                  )
-                }
+                    );
+
+                  setInstallments(
+                    nextInstallments
+                  );
+
+                  const parsedInstallmentAmount =
+                    parseMoney(
+                      installmentAmount
+                    );
+
+                  if (
+                    parsedInstallmentAmount >
+                    0
+                  ) {
+                    setValue(
+                      formatValue(
+                        roundMoney(
+                          parsedInstallmentAmount *
+                            nextInstallments
+                        )
+                      )
+                    );
+                  }
+                }}
                 className="input"
               />
             </Field>
@@ -1649,6 +1716,16 @@ function parseMoney(
         ",",
         "."
       )
+  );
+}
+
+function roundMoney(
+  value: number
+) {
+  return (
+    Math.round(
+      value * 100
+    ) / 100
   );
 }
 

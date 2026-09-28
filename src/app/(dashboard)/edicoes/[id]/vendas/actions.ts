@@ -573,6 +573,27 @@ export async function createEditionSale(
     };
   }
 
+  const {
+    data:
+      sellerProfile,
+  } =
+    await supabase
+      .from(
+        "user_profiles"
+      )
+      .select(
+        "name"
+      )
+      .eq(
+        "id",
+        input.sellerUserId
+      )
+      .maybeSingle();
+
+  const sellerName =
+    sellerProfile?.name ??
+    "Vendedor não identificado";
+
   /*
    * =====================================================
    * NORMALIZAR ITENS
@@ -902,6 +923,8 @@ export async function createEditionSale(
 
           clientName:
             client.name,
+
+          sellerName,
 
           paymentMethodName:
             paymentMethod.name,
@@ -1507,6 +1530,27 @@ export async function updateEditionSale(
     };
   }
 
+  const {
+    data:
+      sellerProfile,
+  } =
+    await supabase
+      .from(
+        "user_profiles"
+      )
+      .select(
+        "name"
+      )
+      .eq(
+        "id",
+        input.sellerUserId
+      )
+      .maybeSingle();
+
+  const sellerName =
+    sellerProfile?.name ??
+    "Vendedor não identificado";
+
   /*
    * =====================================================
    * NORMALIZAR ITENS
@@ -1875,6 +1919,8 @@ export async function updateEditionSale(
 
         clientName:
           client.name,
+
+        sellerName,
 
         paymentMethodName:
           paymentMethod.name,
@@ -2815,6 +2861,8 @@ async function createSaleFinancialEntries(
 
     clientName: string;
 
+    sellerName: string;
+
     paymentMethodName:
       string;
 
@@ -2944,7 +2992,7 @@ async function createSaleFinancialEntries(
             null,
 
           description:
-            `${input.editionName} - Publicidade - ${input.clientName} - Parcela ${installmentNumber}/${input.installments}`,
+            `${input.editionName} - Publicidade - ${input.clientName} - Parcela ${installmentNumber}/${input.installments} - Vendedor: ${input.sellerName}`,
 
           document_number:
             null,

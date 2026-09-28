@@ -401,6 +401,27 @@ export default function ContractForm({
         : ""
     );
 
+  /*
+   * Quem digita é o valor da PARCELA - o valor total é
+   * calculado automaticamente (parcela × quantidade), em vez
+   * de pedir o total e dividir (pedido do cliente em 28/09).
+   */
+  const [
+    installmentAmount,
+    setInstallmentAmount,
+  ] =
+    useState(
+      renewal
+        ? formatMoneyInput(
+            roundMoney(
+              renewal.value /
+                (renewal.installments ??
+                  1)
+            )
+          )
+        : ""
+    );
+
   const [
     billingFrequency,
     setBillingFrequency,
@@ -2250,26 +2271,53 @@ export default function ContractForm({
 
             {/* VALOR */}
 
-            <Field label="Valor total">
+            <Field label="Valor da parcela">
               <input
                 value={
                   courtesy
                     ? "0,00 (cortesia)"
-                    : value
+                    : installmentAmount
                 }
                 onChange={(
                   event
-                ) =>
+                ) => {
+                  const text =
+                    event.target
+                      .value;
+
+                  setInstallmentAmount(
+                    text
+                  );
+
                   setValue(
-                    event.target.value
-                  )
-                }
+                    formatMoneyInput(
+                      roundMoney(
+                        parseMoney(
+                          text
+                        ) *
+                          installments
+                      )
+                    )
+                  );
+                }}
                 placeholder="0,00"
                 inputMode="decimal"
                 required={!courtesy}
                 disabled={courtesy}
                 className="input disabled:bg-slate-50 disabled:text-slate-400"
               />
+
+              {!courtesy && (
+                <p className="mt-2 text-sm text-slate-500">
+                  Valor total do contrato:{" "}
+                  <strong className="text-slate-800">
+                    {formatCurrency(
+                      numericValue
+                    )}
+                  </strong>{" "}
+                  ({installments}x)
+                </p>
+              )}
 
               <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
                 <input
@@ -2765,17 +2813,40 @@ export default function ContractForm({
                 }
                 onChange={(
                   event
-                ) =>
-                  setInstallments(
+                ) => {
+                  const nextInstallments =
                     Math.max(
                       1,
                       Number(
                         event.target.value
                       ) ||
                         1
-                    )
-                  )
-                }
+                    );
+
+                  setInstallments(
+                    nextInstallments
+                  );
+
+                  const parsedInstallmentAmount =
+                    parseMoney(
+                      installmentAmount
+                    );
+
+                  if (
+                    !courtesy &&
+                    parsedInstallmentAmount >
+                      0
+                  ) {
+                    setValue(
+                      formatMoneyInput(
+                        roundMoney(
+                          parsedInstallmentAmount *
+                            nextInstallments
+                        )
+                      )
+                    );
+                  }
+                }}
                 required
                 className="input"
               />
