@@ -23,6 +23,7 @@ import CancelContractButton from "./cancel-contract-button";
 import RenewContractButton from "./renew-contract-button";
 import ContractResponsibleEditor from "./contract-responsible-editor";
 import FinancialDocumentControls from "@/app/(dashboard)/financeiro/[id]/financial-document-controls";
+import { EditContractPublication } from "@/app/(dashboard)/edicoes/[id]/add-contract-publication";
 
 import {
   createClient,
@@ -61,6 +62,9 @@ export default async function ContractDetailPage({
   const canReassignResponsible =
     access.profile.role === "admin" ||
     access.profile.role === "manager";
+
+  const isAdmin =
+    access.profile.role === "admin";
 
   const {
     id,
@@ -234,10 +238,13 @@ export default async function ContractDetailPage({
     editionName: string;
     editionNumber: number | null;
     editionStatus: string;
+    sectionId: string | null;
     sectionName: string | null;
+    adPositionId: string | null;
     positionName: string | null;
     sizeDescription: string | null;
     amount: number;
+    notes: string | null;
     publicationDate: string;
   }[] = [];
 
@@ -246,6 +253,35 @@ export default async function ContractDetailPage({
     name: string;
     editionNumber: number | null;
   }[] = [];
+
+  /*
+   * Caderno/posição são específicos de cada edição - pra poder
+   * editar uma publicação direto por aqui (sem precisar entrar
+   * na edição), precisamos das opções de cada edição vinculada.
+   */
+  const sectionsByEdition = new Map<
+    string,
+    {
+      id: string;
+      name: string;
+      description: string | null;
+    }[]
+  >();
+
+  const positionsByEdition = new Map<
+    string,
+    {
+      id: string;
+      section_id: string | null;
+      position_code: string;
+      name: string;
+      capacity: number | null;
+      manually_blocked: boolean;
+      blocked_reason: string | null;
+      active: boolean;
+      usageCount: number;
+    }[]
+  >();
 
   if (canPublishInEditions) {
     const [
@@ -259,8 +295,11 @@ export default async function ContractDetailPage({
         .select(`
           id,
           edition_id,
+          section_id,
+          ad_position_id,
           size_description,
           amount,
+          notes,
           active,
 
           edition:newspaper_editions (
@@ -340,9 +379,13 @@ export default async function ContractDetailPage({
           editionStatus:
             publicationEdition?.status ??
             "open",
+          sectionId:
+            publication.section_id,
           sectionName:
             publicationSection?.name ??
             null,
+          adPositionId:
+            publication.ad_position_id,
           positionName:
             publicationPosition?.name ??
             null,
@@ -351,6 +394,8 @@ export default async function ContractDetailPage({
           amount: Number(
             publication.amount ?? 0
           ),
+          notes:
+            publication.notes,
           publicationDate:
             publicationEdition?.publication_date ??
             "",
@@ -368,6 +413,149 @@ export default async function ContractDetailPage({
           publication.editionId
       )
     );
+
+    if (linkedEditionIds.size > 0) {
+      const editionIdsArray = [
+        ...linkedEditionIds,
+      ];
+
+      const [
+        sectionsResult,
+        positionsResult,
+        allPublicationsResult,
+      ] = await Promise.all([
+        adminDb
+          .from("edition_sections")
+          .select(`
+            id,
+            edition_id,
+            name,
+            description,
+            active
+          `)
+          .in(
+            "edition_id",
+            editionIdsArray
+          ),
+
+        adminDb
+          .from(
+            "edition_ad_positions"
+          )
+          .select(`
+            id,
+            edition_id,
+            section_id,
+            position_code,
+            name,
+            capacity,
+            manually_blocked,
+            blocked_reason,
+            active
+          `)
+          .in(
+            "edition_id",
+            editionIdsArray
+          ),
+
+        adminDb
+          .from(
+            "contract_edition_publications"
+          )
+          .select(
+            "ad_position_id"
+          )
+          .in(
+            "edition_id",
+            editionIdsArray
+          )
+          .eq("active", true)
+          .not(
+            "ad_position_id",
+            "is",
+            null
+          ),
+      ]);
+
+      const usageCountByPosition =
+        new Map<
+          string,
+          number
+        >();
+
+      for (const row of allPublicationsResult
+        .data ?? []) {
+        if (
+          !row.ad_position_id
+        ) {
+          continue;
+        }
+
+        usageCountByPosition.set(
+          row.ad_position_id,
+          (usageCountByPosition.get(
+            row.ad_position_id
+          ) ?? 0) + 1
+        );
+      }
+
+      for (const section of sectionsResult
+        .data ?? []) {
+        if (!section.active) {
+          continue;
+        }
+
+        const current =
+          sectionsByEdition.get(
+            section.edition_id
+          ) ?? [];
+
+        current.push({
+          id: section.id,
+          name: section.name,
+          description:
+            section.description,
+        });
+
+        sectionsByEdition.set(
+          section.edition_id,
+          current
+        );
+      }
+
+      for (const position of positionsResult
+        .data ?? []) {
+        const current =
+          positionsByEdition.get(
+            position.edition_id
+          ) ?? [];
+
+        current.push({
+          id: position.id,
+          section_id:
+            position.section_id,
+          position_code:
+            position.position_code,
+          name: position.name,
+          capacity:
+            position.capacity,
+          manually_blocked:
+            position.manually_blocked,
+          blocked_reason:
+            position.blocked_reason,
+          active: position.active,
+          usageCount:
+            usageCountByPosition.get(
+              position.id
+            ) ?? 0,
+        });
+
+        positionsByEdition.set(
+          position.edition_id,
+          current
+        );
+      }
+    }
 
     openEditionsForPublish = (
       openEditionsResult.data ?? []
@@ -1413,6 +1601,10 @@ const commissionProfilesById =
                       <TableHeader>
                         Valor
                       </TableHeader>
+
+                      <TableHeader>
+                        {""}
+                      </TableHeader>
                     </tr>
                   </thead>
 
@@ -1459,6 +1651,68 @@ const commissionProfilesById =
                           <td className="px-5 py-4 text-sm font-semibold text-slate-900">
                             {formatCurrency(
                               publication.amount
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4 text-right">
+                            {publication.editionStatus ===
+                              "open" ||
+                            isAdmin ? (
+                              <EditContractPublication
+                                editionId={
+                                  publication.editionId
+                                }
+                                publication={{
+                                  id:
+                                    publication.id,
+
+                                  contractId:
+                                    contract.id,
+
+                                  contractTitle:
+                                    contract.title,
+
+                                  clientName:
+                                    client?.name ??
+                                    "Cliente",
+
+                                  productName:
+                                    product?.name ??
+                                    null,
+
+                                  sectionId:
+                                    publication.sectionId,
+
+                                  adPositionId:
+                                    publication.adPositionId,
+
+                                  sizeDescription:
+                                    publication.sizeDescription,
+
+                                  amount:
+                                    publication.amount,
+
+                                  notes:
+                                    publication.notes,
+                                }}
+                                sections={
+                                  sectionsByEdition.get(
+                                    publication.editionId
+                                  ) ?? []
+                                }
+                                positions={
+                                  positionsByEdition.get(
+                                    publication.editionId
+                                  ) ?? []
+                                }
+                                otherOpenEditions={
+                                  []
+                                }
+                              />
+                            ) : (
+                              <span className="text-xs text-slate-400">
+                                Edição fechada
+                              </span>
                             )}
                           </td>
                         </tr>

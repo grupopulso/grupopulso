@@ -29,6 +29,18 @@ import {
 const POTTENCIALIZA_COMPANY_ID =
   "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
 
+/*
+ * Contrato de TV Indoor (Pottencializa) tem exclusividade: a
+ * empresa só fica com 50% do valor recebido (o resto é repassado
+ * pra quem hospeda as TVs). A comissão da vendedora é calculada
+ * só sobre esses 50%, não sobre o valor total do contrato
+ * (regra combinada com o cliente em 28/09).
+ */
+const TV_INDOOR_PRODUCT_ID =
+  "968e4198-c946-4ea3-abf0-a8b2521b7474";
+
+const TV_INDOOR_COMMISSION_BASE_FACTOR = 0.5;
+
 type BillingFrequency =
   | "one_time"
   | "monthly"
@@ -774,11 +786,27 @@ export async function createContract(
     };
   }
 
+  /*
+   * TV Indoor: comissão calculada sobre 50% do valor (ver
+   * TV_INDOOR_COMMISSION_BASE_FACTOR acima).
+   */
+  const commissionBaseFactor =
+    validatedProductId ===
+    TV_INDOOR_PRODUCT_ID
+      ? TV_INDOOR_COMMISSION_BASE_FACTOR
+      : 1;
+
+  const commissionBaseAmount =
+    roundMoney(
+      input.value *
+        commissionBaseFactor
+    );
+
   const commissionAmount =
     isCourtesy
       ? 0
       : roundMoney(
-          input.value *
+          commissionBaseAmount *
             (
               commissionPercentage /
               100
@@ -1108,7 +1136,7 @@ export async function createContract(
         commissionPercentage,
 
       base_amount:
-        input.value,
+        commissionBaseAmount,
 
       amount:
         commissionAmount,
@@ -1209,7 +1237,7 @@ export async function createContract(
 
     const amount =
       roundMoney(
-        input.value *
+        commissionBaseAmount *
           (
             percentage /
             100
@@ -1237,7 +1265,7 @@ export async function createContract(
       percentage,
 
       base_amount:
-        input.value,
+        commissionBaseAmount,
 
       amount,
 
