@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { FilePlus2 } from "lucide-react";
 
-import { createClient } from "@/app/lib/supabase/server";
+import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
@@ -54,8 +54,14 @@ export default async function ContratosPage({
     vendedor: vendedorParam,
   } = await searchParams;
 
+  /*
+   * Via service role: a permissão já foi checada acima
+   * (contracts.view). RLS bloqueava a leitura de contracts (e do
+   * embed de responsible:user_profiles) mesmo pra admin, fazendo
+   * a lista aparecer vazia com qualquer filtro.
+   */
   const supabase =
-    await createClient();
+    createAdminClient();
 
   const selectedCompanyId =
     await getSelectedCompanyId();
@@ -102,11 +108,6 @@ export default async function ContratosPage({
         id,
         name,
         type
-      ),
-
-      responsible:user_profiles (
-        id,
-        name
       )
     `);
 
@@ -143,6 +144,7 @@ if (sellerId) {
   const [
     { data: contractsData, error },
     { data: sellersData },
+    { data: allProfilesData },
   ] = await Promise.all([
     query.order("created_at", {
       ascending: false,
@@ -153,6 +155,17 @@ if (sellerId) {
       .select("id, name")
       .eq("active", true)
       .order("name"),
+
+    /*
+     * Não existe FK formal entre contracts.responsible_user_id e
+     * user_profiles pro PostgREST embutir - por isso o nome do
+     * responsável é resolvido aqui, à parte (inclui inativos, pra
+     * contratos ainda não reatribuídos continuarem mostrando o
+     * nome de quem saiu).
+     */
+    supabase
+      .from("user_profiles")
+      .select("id, name"),
   ]);
 
   if (error) {
@@ -161,6 +174,15 @@ if (sellerId) {
       error
     );
   }
+
+  const responsibleNameById = new Map(
+    (allProfilesData ?? []).map(
+      (profile) => [
+        profile.id,
+        profile.name,
+      ]
+    )
+  );
 
   const sellers = sellersData ?? [];
 
@@ -439,9 +461,12 @@ if (sellerId) {
                     contract.product
                   );
 
-                  const responsible = getFirst(
-                    contract.responsible
-                  );
+                  const responsibleName =
+                    contract.responsible_user_id
+                      ? responsibleNameById.get(
+                          contract.responsible_user_id
+                        )
+                      : null;
 
                   return (
                     <tr
@@ -492,7 +517,7 @@ if (sellerId) {
                       </td>
 
                       <td className="px-5 py-4 text-sm text-slate-600">
-                        {responsible?.name ?? "—"}
+                        {responsibleName ?? "—"}
                       </td>
 
                       <td className="px-5 py-4">
