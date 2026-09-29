@@ -2589,7 +2589,7 @@ export default async function EditionPage({
                       Situação
                     </TableHeader>
 
-                    <TableHeader>
+                    <TableHeader className="sticky right-0 z-10 border-l border-slate-200 bg-slate-50 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">
                       Ações
                     </TableHeader>
                   </tr>
@@ -2718,7 +2718,7 @@ export default async function EditionPage({
                             )}
                           </td>
 
-                          <td className="px-6 py-4">
+                          <td className="sticky right-0 z-10 border-l border-slate-200 bg-white px-6 py-4 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.15)]">
                             {edition.status ===
                               "open" ||
                             isAdmin ? (
@@ -3039,12 +3039,18 @@ function SummaryCard({
 
 function TableHeader({
   children,
+  className,
 }: {
   children:
     React.ReactNode;
+  className?: string;
 }) {
   return (
-    <th className="whitespace-nowrap px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <th
+      className={`whitespace-nowrap px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 ${
+        className ?? ""
+      }`}
+    >
       {
         children
       }
