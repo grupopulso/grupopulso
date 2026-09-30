@@ -18,6 +18,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { createClient } from "@/app/lib/supabase/client";
 
+import {
+  getFinancialEntryFormData,
+} from "@/app/(dashboard)/financeiro/novo/actions";
+
 import SupplierQuickModal, {
   QuickSupplier,
 } from "@/app/components/supplier-quick-modal";
@@ -220,94 +224,31 @@ export default function FinancialEntryForm({
 
   useEffect(() => {
     async function loadData() {
-      const [
-        clientsResult,
-        suppliersResult,
-        companiesResult,
-        contractsResult,
-        categoriesResult,
-        costCentersResult,
-        accountsResult,
-        paymentMethodsResult,
-      ] = await Promise.all([
-        supabase
-          .from("clients")
-          .select("id, name")
-          .eq("active", true)
-          .order("name"),
+      const formData =
+        await getFinancialEntryFormData();
 
-        supabase
-          .from("suppliers")
-          .select(
-            "id, name, trade_name, cpf_cnpj, email, phone"
-          )
-          .eq("active", true)
-          .order("name"),
+      setClients(formData.clients);
+      setSuppliers(formData.suppliers);
+      setCompanies(formData.companies);
+      setContracts(formData.contracts);
+      setCategories(formData.categories);
+      setCostCenters(formData.costCenters);
+      setFinancialAccounts(
+        formData.financialAccounts
+      );
+      setPaymentMethods(
+        formData.paymentMethods
+      );
 
-        supabase
-          .from("companies")
-          .select("id, name")
-          .eq("active", true)
-          .order("name"),
-
-        supabase
-          .from("contracts")
-          .select(`
-            id,
-            client_id,
-            company_id,
-            product_id,
-            title,
-            value
-          `)
-          .neq("status", "cancelled")
-          .order("created_at", {
-            ascending: false,
-          }),
-
-        supabase
-          .from("financial_categories")
-          .select("id, name, type")
-          .eq("active", true)
-          .order("name"),
-
-        supabase
-          .from("cost_centers")
-          .select("id, company_id, name")
-          .eq("active", true)
-          .order("name"),
-
-        supabase
-          .from("financial_accounts")
-          .select("id, company_id, name")
-          .eq("active", true)
-          .order("name"),
-
-        supabase
-          .from("financial_payment_methods")
-          .select("id, name, usage_type, active")
-          .eq("active", true)
-          .order("name"),
-      ]);
-
-      setClients(clientsResult.data ?? []);
-      setSuppliers(suppliersResult.data ?? []);
-      setCompanies(companiesResult.data ?? []);
-      setContracts(contractsResult.data ?? []);
-      setCategories(categoriesResult.data ?? []);
-      setCostCenters(costCentersResult.data ?? []);
-      setFinancialAccounts(accountsResult.data ?? []);
-      setPaymentMethods(paymentMethodsResult.data ?? []);
-
-      if (companiesResult.data?.length) {
+      if (formData.companies.length) {
         setCompanyIds([
-          companiesResult.data[0].id,
+          formData.companies[0].id,
         ]);
       }
     }
 
     loadData();
-  }, [supabase]);
+  }, []);
 
   const availableContracts = useMemo(() => {
     return contracts.filter(
