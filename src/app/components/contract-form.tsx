@@ -760,8 +760,27 @@ export default function ContractForm({
           formData.responsibleOptions
         );
 
+        /*
+         * Renovação: mantém o mesmo responsável do contrato
+         * original (se ele ainda for uma opção válida), em vez
+         * de cair sempre em quem está logado - senão a comissão
+         * era gerada pra quem renovou, não pra quem é o
+         * responsável do contrato (bug reportado em 30/09).
+         */
+        const renewalResponsibleIsValid =
+          renewal?.responsibleUserId &&
+          formData.responsibleOptions.some(
+            (
+              option
+            ) =>
+              option.id ===
+              renewal.responsibleUserId
+          );
+
         setResponsibleUserId(
-          formData.currentUserId
+          renewalResponsibleIsValid
+            ? renewal!.responsibleUserId!
+            : formData.currentUserId
         );
 
         /*

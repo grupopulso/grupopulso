@@ -42,6 +42,7 @@ export type RenewalPrefill = {
   startDate: string;
   endDate: string;
   firstDueDate: string;
+  responsibleUserId: string | null;
 };
 
 export async function deleteContract(
@@ -476,7 +477,8 @@ export async function getRenewalPrefill(
       payment_method_id,
       installments,
       first_due_date,
-      notes
+      notes,
+      responsible_user_id
     `)
     .eq("id", contractId)
     .maybeSingle();
@@ -681,6 +683,8 @@ export async function getRenewalPrefill(
       startDate: newStartDate,
       endDate: newEndDate,
       firstDueDate: newStartDate,
+      responsibleUserId:
+        oldContract.responsible_user_id,
     },
   };
 }
@@ -763,6 +767,7 @@ export async function linkRenewalContracts(
     `/contratos/${newContractId}`
   );
   revalidatePath("/assinaturas");
+  revalidatePath("/meu-painel");
 
   return { success: true };
 }

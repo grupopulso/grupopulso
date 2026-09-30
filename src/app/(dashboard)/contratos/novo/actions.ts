@@ -2084,6 +2084,71 @@ export type ContractFormData = {
   }[];
 };
 
+/*
+ * O Supabase/PostgREST limita cada select a 1000 linhas por
+ * padrão. Com mais de 1000 clientes ativos, um .select() sem
+ * paginação corta silenciosamente os últimos em ordem alfabética
+ * (ex: "TURISMO SIVIERO" não aparecia na busca de cliente ao
+ * renovar contrato - bug reportado em 30/09). Busca em páginas
+ * até esgotar os resultados.
+ */
+async function fetchAllActiveClients(
+  adminDb: ReturnType<typeof createAdminClient>
+) {
+  const pageSize = 1000;
+
+  let allRows: ContractFormData["clients"] =
+    [];
+
+  let offset = 0;
+
+  while (true) {
+    const { data, error } =
+      await adminDb
+        .from("clients")
+        .select(`
+          id,
+          name,
+          client_companies (
+            company_id,
+            status
+          )
+        `)
+        .eq("active", true)
+        .order("name")
+        .range(
+          offset,
+          offset + pageSize - 1
+        );
+
+    if (error) {
+      return {
+        data: allRows,
+        error,
+      };
+    }
+
+    allRows = allRows.concat(
+      (data ??
+        []) as ContractFormData["clients"]
+    );
+
+    if (
+      !data ||
+      data.length < pageSize
+    ) {
+      break;
+    }
+
+    offset += pageSize;
+  }
+
+  return {
+    data: allRows,
+    error: null,
+  };
+}
+
 export async function getContractFormData(): Promise<ContractFormData> {
   const access = await requireModulePermission(
     "contracts",
@@ -2113,18 +2178,7 @@ export async function getContractFormData(): Promise<ContractFormData> {
     sellerSettingsResult,
     responsibleOptionsResult,
   ] = await Promise.all([
-    adminDb
-      .from("clients")
-      .select(`
-        id,
-        name,
-        client_companies (
-          company_id,
-          status
-        )
-      `)
-      .eq("active", true)
-      .order("name"),
+    fetchAllActiveClients(adminDb),
 
     adminDb
       .from("companies")
