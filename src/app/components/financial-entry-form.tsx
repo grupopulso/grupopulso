@@ -147,8 +147,12 @@ export default function FinancialEntryForm({
 ] = useState(
   initialClientId
 );
+  const [noClient, setNoClient] =
+    useState(false);
   const [supplierId, setSupplierId] =
     useState("");
+  const [noSupplier, setNoSupplier] =
+    useState(false);
 
   const [contractId, setContractId] =
     useState("");
@@ -476,7 +480,9 @@ export default function FinancialEntryForm({
     setEntryType(type);
 
     setClientId("");
+    setNoClient(false);
     setSupplierId("");
+    setNoSupplier(false);
     setContractId("");
   }
 
@@ -555,20 +561,22 @@ export default function FinancialEntryForm({
 
     if (
       entryType === "income" &&
-      !clientId
+      !clientId &&
+      !noClient
     ) {
       setError(
-        "Selecione o cliente da receita."
+        "Selecione o cliente da receita ou marque \"Venda sem cliente identificado\"."
       );
       return;
     }
 
     if (
       entryType === "expense" &&
-      !supplierId
+      !supplierId &&
+      !noSupplier
     ) {
       setError(
-        "Selecione o fornecedor da despesa."
+        "Selecione o fornecedor da despesa ou marque \"Despesa sem fornecedor identificado\"."
       );
       return;
     }
@@ -1088,8 +1096,9 @@ export default function FinancialEntryForm({
                       event.target.value
                     )
                   }
-                  required
-                  className="input"
+                  required={!noClient}
+                  disabled={noClient}
+                  className="input disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <option value="">
                     Selecione...
@@ -1106,6 +1115,26 @@ export default function FinancialEntryForm({
                     )
                   )}
                 </select>
+
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={noClient}
+                    onChange={(event) => {
+                      setNoClient(
+                        event.target.checked
+                      );
+
+                      if (
+                        event.target.checked
+                      ) {
+                        setClientId("");
+                      }
+                    }}
+                    className="h-4 w-4"
+                  />
+                  Venda sem cliente identificado
+                </label>
               </Field>
             ) : (
               <div className="block">
@@ -1135,8 +1164,9 @@ export default function FinancialEntryForm({
                       event.target.value
                     )
                   }
-                  required
-                  className="input"
+                  required={!noSupplier}
+                  disabled={noSupplier}
+                  className="input disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <option value="">
                     Selecione...
@@ -1153,6 +1183,26 @@ export default function FinancialEntryForm({
                     )
                   )}
                 </select>
+
+                <label className="mt-2 flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={noSupplier}
+                    onChange={(event) => {
+                      setNoSupplier(
+                        event.target.checked
+                      );
+
+                      if (
+                        event.target.checked
+                      ) {
+                        setSupplierId("");
+                      }
+                    }}
+                    className="h-4 w-4"
+                  />
+                  Despesa sem fornecedor identificado
+                </label>
               </div>
             )}
 
