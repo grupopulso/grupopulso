@@ -79,6 +79,21 @@ export default async function RelatorioFinanceiroPage({
   "reports",
   "view"
 );
+
+  /*
+   * Relatório financeiro mostra números consolidados da
+   * empresa (receita, despesa, resultado) - exige também o
+   * módulo amplo "financial", não basta "reports". Isso
+   * mantém os outros relatórios (clientes, contratos, etc.)
+   * liberados por "reports" sozinho, mas bloqueia este pra
+   * quem só tem módulos financeiros estreitos, como a Lely
+   * (pedido do cliente em 30/09).
+   */
+  await requireModulePermission(
+    "financial",
+    "view"
+  );
+
   const params = await searchParams;
 
   const supabase =
