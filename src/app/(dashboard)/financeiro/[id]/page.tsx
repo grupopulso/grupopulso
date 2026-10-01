@@ -106,6 +106,7 @@ charge_sent_at,
       recurring,
       recurrence_frequency,
       notes,
+      contract_id,
 
       company:companies (
         id,
@@ -241,6 +242,63 @@ charge_sent_at,
   const costCenter = getFirst(entry.cost_center);
   const account = getFirst(entry.financial_account);
 
+  /*
+   * VENDEDOR RESPONSÁVEL
+   *
+   * Lançamento de contrato: vem direto de
+   * contracts.responsible_user_id.
+   *
+   * Lançamento de venda de edição (sem contrato): não há
+   * coluna de vínculo com a venda em financial_entries, só
+   * o 1º lançamento da venda é referenciado por
+   * edition_sales.financial_entry_id. As demais parcelas só
+   * têm o id da venda embutido no texto de `notes`
+   * ("Venda de publicidade <id>. ...", gravado em
+   * createSaleFinancialEntries) - é daí que extraímos o
+   * vendedor pra qualquer parcela.
+   */
+  let sellerUserId: string | null = null;
+
+  if (entry.contract_id) {
+    const { data: contractRow } = await adminDb
+      .from("contracts")
+      .select("responsible_user_id")
+      .eq("id", entry.contract_id)
+      .maybeSingle();
+
+    sellerUserId =
+      contractRow?.responsible_user_id ?? null;
+  } else {
+    const saleIdMatch = (
+      entry.notes ?? ""
+    ).match(
+      /Venda de publicidade ([0-9a-fA-F-]{36})\./
+    );
+
+    if (saleIdMatch) {
+      const { data: saleRow } = await adminDb
+        .from("edition_sales")
+        .select("seller_user_id")
+        .eq("id", saleIdMatch[1])
+        .maybeSingle();
+
+      sellerUserId =
+        saleRow?.seller_user_id ?? null;
+    }
+  }
+
+  let sellerName: string | null = null;
+
+  if (sellerUserId) {
+    const { data: sellerProfile } = await adminDb
+      .from("user_profiles")
+      .select("name")
+      .eq("id", sellerUserId)
+      .maybeSingle();
+
+    sellerName = sellerProfile?.name ?? null;
+  }
+
   const totalValue =
     calculateEntryTotal(entry);
 
@@ -370,6 +428,14 @@ charge_sent_at,
                       : supplier?.name ?? "—"
                   }
                 />
+
+                {entry.type === "income" && (
+                  <InfoItem
+                    icon={UserRound}
+                    label="Vendedor"
+                    value={sellerName ?? "—"}
+                  />
+                )}
 
                 <InfoItem
                   icon={FileText}
