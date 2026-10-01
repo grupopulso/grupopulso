@@ -1,6 +1,5 @@
-import Link from "next/link";
-
 import FinancialDocumentControls from "./financial-document-controls";
+import BackButton from "./back-button";
 
 import {
   notFound,
@@ -8,7 +7,6 @@ import {
 } from "next/navigation";
 
 import {
-  ArrowLeft,
   Banknote,
   Building2,
   CalendarDays,
@@ -332,13 +330,7 @@ charge_sent_at,
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-7xl">
-        <Link
-          href="/financeiro"
-          className="inline-flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-900"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar ao financeiro
-        </Link>
+        <BackButton />
 
         <div className="mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-center">
           <div>
