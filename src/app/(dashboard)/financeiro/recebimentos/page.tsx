@@ -8,6 +8,7 @@ import {
   canAccessModule,
   requireModulePermission,
 } from "@/app/lib/permissions";
+import { getCompanyShareFactor } from "@/app/lib/tv-indoor";
 
 const PAGE_SIZE = 20;
 
@@ -82,6 +83,7 @@ export default async function RecebimentosPage({
           company_id,
           type,
           description,
+          product_id,
 
           client:clients (
             id,
@@ -140,7 +142,12 @@ export default async function RecebimentosPage({
 
   const totalReceived = allReceipts.reduce(
     (total, transaction) =>
-      total + Number(transaction.amount),
+      total +
+      Number(transaction.amount) *
+        getCompanyShareFactor(
+          getFirst(transaction.financial_entry)
+            ?.product_id
+        ),
     0
   );
 
@@ -448,7 +455,10 @@ export default async function RecebimentosPage({
                       <td className="px-5 py-4 text-sm font-semibold text-emerald-700">
                         +{" "}
                         {formatCurrency(
-                          Number(transaction.amount)
+                          Number(transaction.amount) *
+                            getCompanyShareFactor(
+                              entry?.product_id
+                            )
                         )}
                       </td>
                     </tr>

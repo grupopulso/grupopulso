@@ -15,6 +15,8 @@ import {
   getEntryCompetenceMonth,
 } from "@/app/lib/competence-date";
 
+import { getCompanyShareFactor } from "@/app/lib/tv-indoor";
+
 type Company = {
   id: string;
   name: string;
@@ -80,11 +82,13 @@ type Transaction = {
         id: string;
         company_id: string;
         type: string;
+        product_id: string | null;
       }
     | {
         id: string;
         company_id: string;
         type: string;
+        product_id: string | null;
       }[]
     | null;
 };
@@ -468,7 +472,8 @@ export default async function HomePage({
       financial_entry:financial_entries (
         id,
         company_id,
-        type
+        type,
+        product_id
       )
     `)
     .gte(
@@ -1042,7 +1047,10 @@ function calculateMetrics({
           total +
           Number(
             transaction.amount
-          )
+          ) *
+            getCompanyShareFactor(
+              entry.product_id
+            )
         );
       },
       0

@@ -15,6 +15,7 @@ import {
   FINANCIAL_ENTRY_STATUS_STYLES,
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
+import { getCompanyShareFactor } from "@/app/lib/tv-indoor";
 
 const PAGE_SIZE = 20;
 
@@ -119,6 +120,7 @@ export default async function ContasReceberPage({
       fine,
       discount,
       status,
+      product_id,
 
       client:clients (
         id,
@@ -216,7 +218,9 @@ export default async function ContasReceberPage({
 
   const receivedTotal = normalized.reduce(
     (total, entry) =>
-      total + Number(entry.amount_paid),
+      total +
+      Number(entry.amount_paid) *
+        getCompanyShareFactor(entry.product_id),
     0
   );
 

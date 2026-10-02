@@ -22,6 +22,10 @@ import {
   createAuditLog,
 } from "@/app/lib/audit";
 
+import {
+  getCompanyShareFactor,
+} from "@/app/lib/tv-indoor";
+
 /*
  * =====================================================
  * DADOS DO FORMULÁRIO DE MOVIMENTAÇÃO
@@ -186,7 +190,8 @@ export async function registerFinancialTransaction(
         interest,
         fine,
         discount,
-        status
+        status,
+        product_id
       `)
       .eq(
         "id",
@@ -477,6 +482,93 @@ export async function registerFinancialTransaction(
 
   /*
    * =====================================================
+   * TV INDOOR: SÓ 50% ENTRA NA CONTA
+   * =====================================================
+   *
+   * A baixa abate o lançamento por inteiro (o cliente pagou
+   * 100%), mas a função do banco soma o valor todo no saldo da
+   * conta. Em contrato de TV Indoor só a parte da empresa
+   * (50%) entra de fato, então devolvemos o resto do saldo.
+   * Atualização condicionada ao saldo lido (compare-and-swap)
+   * pra não atropelar outra baixa simultânea na mesma conta.
+   */
+
+  let accountBalanceAfter = Number(
+    result.new_account_balance
+  );
+
+  const companyShare =
+    entry.type === "income"
+      ? getCompanyShareFactor(
+          entry.product_id
+        )
+      : 1;
+
+  if (companyShare < 1) {
+    const retained =
+      Math.round(
+        input.amount *
+          (1 - companyShare) *
+          100
+      ) / 100;
+
+    let adjusted = false;
+
+    for (
+      let attempt = 0;
+      attempt < 3 && !adjusted;
+      attempt++
+    ) {
+      const { data: freshAccount } =
+        await adminDb
+          .from("financial_accounts")
+          .select("current_balance")
+          .eq("id", account.id)
+          .maybeSingle();
+
+      if (!freshAccount) {
+        break;
+      }
+
+      const currentBalance = Number(
+        freshAccount.current_balance
+      );
+
+      const nextBalance =
+        Math.round(
+          (currentBalance - retained) *
+            100
+        ) / 100;
+
+      const { data: updatedRows } =
+        await adminDb
+          .from("financial_accounts")
+          .update({
+            current_balance: nextBalance,
+          })
+          .eq("id", account.id)
+          .eq(
+            "current_balance",
+            freshAccount.current_balance
+          )
+          .select("id");
+
+      if (updatedRows?.length) {
+        adjusted = true;
+        accountBalanceAfter = nextBalance;
+      }
+    }
+
+    if (!adjusted) {
+      console.error(
+        "Recebimento de TV Indoor registrado, mas não foi possível descontar a parte que não entra do saldo da conta:",
+        { entryId, accountId: account.id, retained }
+      );
+    }
+  }
+
+  /*
+   * =====================================================
    * COMISSÕES LIBERADAS PELO RECEBIMENTO
    * =====================================================
    */
@@ -715,9 +807,7 @@ export async function registerFinancialTransaction(
         account.name,
 
       account_balance:
-        Number(
-          result.new_account_balance
-        ),
+        accountBalanceAfter,
 
       payment_method:
         method.code,

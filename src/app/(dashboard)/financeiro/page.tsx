@@ -25,6 +25,7 @@ import {
   FINANCIAL_ENTRY_STATUS_STYLES,
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
+import { getCompanyShareFactor } from "@/app/lib/tv-indoor";
 
 type Company = {
   id: string;
@@ -130,6 +131,7 @@ export default async function FinanceiroPage({
       status,
       recurring,
       recurrence_frequency,
+      product_id,
 
       company:companies (
         id,
@@ -280,7 +282,10 @@ export default async function FinanceiroPage({
           total +
           Number(
             entry.amount_paid
-          ),
+          ) *
+            getCompanyShareFactor(
+              entry.product_id
+            ),
         0
       );
 
