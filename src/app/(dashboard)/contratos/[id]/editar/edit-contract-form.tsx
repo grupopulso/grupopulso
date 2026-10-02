@@ -299,7 +299,7 @@ export default function EditContractForm({
     intervalDays,
     setIntervalDays,
   ] =
-    useState(30);
+    useState(0);
 
   const [
     firstDueDate,
@@ -1525,19 +1525,19 @@ export default function EditContractForm({
               />
             </Field>
 
-            <Field label="Intervalo entre parcelas (dias)">
+            <Field label="Intervalo entre parcelas (dias) — 0 = mesmo dia de cada mês">
               <input
                 type="number"
-                min={1}
+                min={0}
                 max={365}
                 value={intervalDays}
                 onChange={(event) =>
                   setIntervalDays(
                     Math.max(
-                      1,
+                      0,
                       Number(
                         event.target.value
-                      ) || 30
+                      ) || 0
                     )
                   )
                 }

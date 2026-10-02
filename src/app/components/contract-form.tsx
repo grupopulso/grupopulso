@@ -462,7 +462,7 @@ export default function ContractForm({
     setIntervalDays,
   ] =
     useState(
-      30
+      0
     );
 
   const [
@@ -2912,11 +2912,11 @@ export default function ContractForm({
               />
             </Field>
 
-            <Field label="Intervalo entre parcelas (dias)">
+            <Field label="Intervalo entre parcelas (dias) — 0 = mesmo dia de cada mês">
               <input
                 type="number"
                 min={
-                  1
+                  0
                 }
                 max={
                   365
@@ -2929,11 +2929,11 @@ export default function ContractForm({
                 ) =>
                   setIntervalDays(
                     Math.max(
-                      1,
+                      0,
                       Number(
                         event.target.value
                       ) ||
-                        30
+                        0
                     )
                   )
                 }

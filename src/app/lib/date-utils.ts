@@ -81,20 +81,26 @@ export function addDays(
 
 /*
  * Gera as datas de vencimento das parcelas a partir do
- * primeiro vencimento e de um intervalo fixo em dias
- * (padrão 30). A parcela 1 fica exatamente no primeiro
- * vencimento; as demais somam `intervalDays` a cada passo.
+ * primeiro vencimento. A parcela 1 fica exatamente no primeiro
+ * vencimento.
+ *
+ * Padrão (intervalDays 0 ou inválido): mesmo dia de cada mês
+ * (05/10, 05/11, 05/12...), usando o último dia do mês quando o
+ * dia não existe (31/01 -> 28/02 -> 31/03). Com `intervalDays`
+ * >= 1, soma esse intervalo fixo em dias a cada parcela.
  */
 export function buildDueDates(
   firstDueDate: string,
   count: number,
   intervalDays: number
 ): string[] {
-  const safeInterval =
+  const useFixedDays =
     Number.isFinite(intervalDays) &&
-    intervalDays >= 1
-      ? Math.floor(intervalDays)
-      : 30;
+    intervalDays >= 1;
+
+  const safeInterval = useFixedDays
+    ? Math.floor(intervalDays)
+    : 0;
 
   const safeCount =
     Number.isInteger(count) && count > 0
@@ -113,10 +119,15 @@ export function buildDueDates(
     (_, index) =>
       index === 0
         ? firstDueDate
-        : addDays(
-            firstDueDate,
-            safeInterval * index
-          )
+        : useFixedDays
+          ? addDays(
+              firstDueDate,
+              safeInterval * index
+            )
+          : addMonthsClamped(
+              firstDueDate,
+              index
+            )
   );
 }
 

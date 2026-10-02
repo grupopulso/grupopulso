@@ -188,7 +188,7 @@ export function SaleForm({
     intervalDays,
     setIntervalDays,
   ] =
-    useState(30);
+    useState(0);
 
   const [
     firstDueDate,
@@ -1904,21 +1904,21 @@ export function SaleForm({
 
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Intervalo entre parcelas (dias)
+              Intervalo entre parcelas (dias) — 0 = mesmo dia de cada mês
             </label>
 
             <input
               type="number"
-              min={1}
+              min={0}
               max={365}
               value={intervalDays}
               onChange={(event) =>
                 setIntervalDays(
                   Math.max(
-                    1,
+                    0,
                     Number(
                       event.target.value
-                    ) || 30
+                    ) || 0
                   )
                 )
               }
