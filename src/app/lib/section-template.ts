@@ -3,9 +3,11 @@ import type { createClient } from "@/app/lib/supabase/server";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 export type SectionTemplate = {
+  sourceSectionId: string;
   description: string | null;
   salesGoal: number;
   positions: {
+    id: string;
     position_code: string;
     name: string;
     capacity: number | null;
@@ -103,7 +105,7 @@ export async function loadSectionTemplate(
     await supabase
       .from("edition_ad_positions")
       .select(
-        "position_code, name, capacity, active"
+        "id, position_code, name, capacity, active"
       )
       .eq("section_id", pick.row.id);
 
@@ -112,9 +114,11 @@ export async function loadSectionTemplate(
   }
 
   return {
+    sourceSectionId: pick.row.id,
     description: pick.row.description ?? null,
     salesGoal: Number(pick.row.sales_goal ?? 0),
     positions: positions.map((position) => ({
+      id: position.id,
       position_code: position.position_code,
       name: position.name,
       capacity:

@@ -151,6 +151,12 @@ export default function SectionsManagement({
     useState("");
 
   const [
+    copyPublications,
+    setCopyPublications,
+  ] =
+    useState(false);
+
+  const [
     editingId,
     setEditingId,
   ] =
@@ -233,6 +239,10 @@ export default function SectionsManagement({
     setDescription("");
 
     setSalesGoal("");
+
+    setCopyPublications(
+      false
+    );
 
     setEditingId(
       null
@@ -364,6 +374,8 @@ export default function SectionsManagement({
 
                 salesGoal:
                   numericSalesGoal,
+
+                copyPublications,
               });
 
         if (
@@ -381,14 +393,38 @@ export default function SectionsManagement({
           return;
         }
 
+        const copyStats =
+          result as {
+            publicationsCopied?: number;
+            publicationsSkipped?: number;
+          };
+
+        const copied =
+          copyStats.publicationsCopied ??
+          0;
+
+        const skipped =
+          copyStats.publicationsSkipped ??
+          0;
+
+        const publicationsText =
+          !editingId &&
+          copyPublications
+            ? ` ${copied} publicação(ões) trazida(s) da edição anterior` +
+              (skipped > 0
+                ? `; ${skipped} não pôde(puderam) ser trazida(s) (contrato encerrado/inativo ou posição indisponível).`
+                : ".")
+            : "";
+
         setMessage({
           type:
             "success",
 
           text:
-            editingId
+            (editingId
               ? "Caderno atualizado com sucesso."
-              : "Caderno adicionado com sucesso.",
+              : "Caderno adicionado com sucesso.") +
+            publicationsText,
         });
 
         resetForm();
@@ -855,6 +891,32 @@ export default function SectionsManagement({
               </button>
             </div>
           </div>
+
+          {!isEditing && (
+            <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={
+                  copyPublications
+                }
+                onChange={(
+                  event
+                ) =>
+                  setCopyPublications(
+                    event.target
+                      .checked
+                  )
+                }
+                className="mt-0.5 h-4 w-4"
+              />
+
+              <span>
+                Trazer também as publicações deste caderno da
+                edição anterior (se já existir um caderno com o
+                mesmo nome). Só entram contratos ainda ativos.
+              </span>
+            </label>
+          )}
         </form>
       )}
 

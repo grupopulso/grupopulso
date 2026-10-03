@@ -16,6 +16,10 @@ import {
   loadSectionTemplate,
 } from "@/app/lib/section-template";
 
+import {
+  addContractPublicationToEdition,
+} from "./actions";
+
 /*
  * =====================================================
  * TIPOS
@@ -27,6 +31,12 @@ type CreateSectionInput = {
   name: string;
   description?: string;
   salesGoal?: number;
+
+  /*
+   * Traz também as publicações do caderno de mesmo nome da
+   * edição anterior (só de contratos ainda vigentes).
+   */
+  copyPublications?: boolean;
 };
 
 type UpdateSectionInput = {
@@ -162,7 +172,8 @@ export async function createEditionSection(
       .select(`
         id,
         company_id,
-        status
+        status,
+        publication_date
       `)
       .eq(
         "id",
@@ -464,6 +475,153 @@ export async function createEditionSection(
     };
   }
 
+  /*
+   * =====================================================
+   * TRAZER AS PUBLICAÇÕES DA EDIÇÃO ANTERIOR (opcional)
+   * =====================================================
+   *
+   * Passa por addContractPublicationToEdition, que já valida
+   * contrato ativo, posição, bloqueio e capacidade. Contrato
+   * cuja vigência terminou antes desta edição não é trazido.
+   */
+
+  let publicationsCopied = 0;
+  let publicationsSkipped = 0;
+
+  if (
+    input.copyPublications &&
+    template
+  ) {
+    const {
+      data: sourcePublications,
+    } =
+      await supabase
+        .from(
+          "contract_edition_publications"
+        )
+        .select(`
+          contract_id,
+          ad_position_id,
+          size_description,
+          amount,
+          notes,
+          contract:contracts (
+            end_date
+          )
+        `)
+        .eq(
+          "section_id",
+          template.sourceSectionId
+        )
+        .eq(
+          "active",
+          true
+        );
+
+    const sourceCodeById =
+      new Map(
+        template.positions.map(
+          (position) => [
+            position.id,
+            position.position_code,
+          ]
+        )
+      );
+
+    const {
+      data: targetPositions,
+    } =
+      await supabase
+        .from(
+          "edition_ad_positions"
+        )
+        .select(
+          "id, position_code"
+        )
+        .eq(
+          "section_id",
+          section.id
+        );
+
+    const targetIdByCode =
+      new Map(
+        (targetPositions ?? []).map(
+          (position) => [
+            position.position_code,
+            position.id,
+          ]
+        )
+      );
+
+    for (
+      const publication of
+        sourcePublications ?? []
+    ) {
+      const contract =
+        Array.isArray(
+          publication.contract
+        )
+          ? publication.contract[0]
+          : publication.contract;
+
+      if (
+        contract?.end_date &&
+        edition.publication_date &&
+        contract.end_date <
+          edition.publication_date
+      ) {
+        publicationsSkipped++;
+
+        continue;
+      }
+
+      const sourceCode =
+        publication.ad_position_id
+          ? sourceCodeById.get(
+              publication.ad_position_id
+            )
+          : null;
+
+      const result =
+        await addContractPublicationToEdition({
+          editionId:
+            input.editionId,
+
+          contractId:
+            publication.contract_id,
+
+          sectionId:
+            section.id,
+
+          adPositionId:
+            sourceCode
+              ? targetIdByCode.get(
+                  sourceCode
+                ) ?? null
+              : null,
+
+          sizeDescription:
+            publication.size_description,
+
+          amount: Number(
+            publication.amount ??
+              0
+          ),
+
+          notes:
+            publication.notes,
+        });
+
+      if (
+        result.success
+      ) {
+        publicationsCopied++;
+      } else {
+        publicationsSkipped++;
+      }
+    }
+  }
+
   revalidateEdition(
     input.editionId
   );
@@ -472,6 +630,8 @@ export async function createEditionSection(
     success: true,
     id:
       section.id,
+    publicationsCopied,
+    publicationsSkipped,
   };
 }
 
