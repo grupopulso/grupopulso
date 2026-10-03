@@ -12,6 +12,10 @@ import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
+import {
+  loadSectionTemplate,
+} from "@/app/lib/section-template";
+
 /*
  * =====================================================
  * TIPOS
@@ -492,6 +496,25 @@ export async function createEdition(
       const section of
         sections
     ) {
+      /*
+       * Caderno de mesmo nome na edição mais recente: mantém
+       * descrição, meta (se não informadas) e posições.
+       */
+      const template =
+        await loadSectionTemplate(
+          supabase,
+          {
+            companyId:
+              estafetaCompanyId,
+
+            name:
+              section.name,
+
+            excludeEditionId:
+              edition.id,
+          }
+        );
+
       const {
         data:
           createdSection,
@@ -511,10 +534,15 @@ export async function createEdition(
               section.name,
 
             description:
-              section.description,
+              section.description ??
+              template?.description ??
+              null,
 
             sales_goal:
-              section.salesGoal,
+              section.salesGoal > 0
+                ? section.salesGoal
+                : template?.salesGoal ??
+                  0,
 
             active:
               true,
@@ -542,35 +570,65 @@ export async function createEdition(
        */
 
       const positionRows =
-        DEFAULT_AD_POSITIONS.map(
-          (
-            position
-          ) => ({
-            edition_id:
-              edition.id,
+        template
+          ? template.positions.map(
+              (
+                position
+              ) => ({
+                edition_id:
+                  edition.id,
 
-            section_id:
-              createdSection.id,
+                section_id:
+                  createdSection.id,
 
-            position_code:
-              position.code,
+                position_code:
+                  position.position_code,
 
-            name:
-              position.name,
+                name:
+                  position.name,
 
-            capacity:
-              position.capacity,
+                capacity:
+                  position.capacity,
 
-            manually_blocked:
-              false,
+                manually_blocked:
+                  false,
 
-            blocked_reason:
-              null,
+                blocked_reason:
+                  null,
 
-            active:
-              true,
-          })
-        );
+                active:
+                  position.active,
+              })
+            )
+          : DEFAULT_AD_POSITIONS.map(
+              (
+                position
+              ) => ({
+                edition_id:
+                  edition.id,
+
+                section_id:
+                  createdSection.id,
+
+                position_code:
+                  position.code,
+
+                name:
+                  position.name,
+
+                capacity:
+                  position.capacity,
+
+                manually_blocked:
+                  false,
+
+                blocked_reason:
+                  null,
+
+                active:
+                  true,
+              })
+            );
 
       const {
         error:
