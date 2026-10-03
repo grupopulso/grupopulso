@@ -35,6 +35,7 @@ type PageProps = {
     status?: string;
     q?: string;
     vendedor?: string;
+    valor?: string;
   }>;
 };
 
@@ -52,7 +53,18 @@ export default async function ContratosPage({
     status: statusParam,
     q: qParam,
     vendedor: vendedorParam,
+    valor: valorParam,
   } = await searchParams;
+
+  /*
+   * contracts.value é o TOTAL do contrato (a soma das parcelas
+   * fecha com ele). O usuário escolhe ver o total ou o valor
+   * mensal (total / nº de parcelas).
+   */
+  const valueMode: "total" | "parcela" =
+    valorParam === "parcela"
+      ? "parcela"
+      : "total";
 
   /*
    * Via service role: a permissão já foi checada acima
@@ -88,6 +100,7 @@ export default async function ContratosPage({
       end_date,
       value,
       billing_frequency,
+      installments,
       status,
       auto_renew,
       legacy_subscription_number,
@@ -305,6 +318,10 @@ if (sellerId) {
       params.set("vendedor", sellerId);
     }
 
+    if (valueMode !== "total") {
+      params.set("valor", valueMode);
+    }
+
     if (targetPage > 1) {
       params.set(
         "page",
@@ -393,6 +410,21 @@ if (sellerId) {
             ))}
           </select>
 
+          <select
+            name="valor"
+            defaultValue={valueMode}
+            aria-label="Valor exibido"
+            className="h-11 rounded-xl border border-slate-200 px-4 text-sm text-slate-700 outline-none focus:border-[#15704f]"
+          >
+            <option value="total">
+              Valor total do contrato
+            </option>
+
+            <option value="parcela">
+              Valor mensal (por parcela)
+            </option>
+          </select>
+
           <button
             type="submit"
             className="h-11 rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white transition hover:bg-slate-700"
@@ -438,7 +470,9 @@ if (sellerId) {
                   </TableHeader>
 
                   <TableHeader>
-                    Valor
+                    {valueMode === "parcela"
+                      ? "Valor mensal"
+                      : "Valor total"}
                   </TableHeader>
 
                   <TableHeader>
@@ -540,16 +574,32 @@ if (sellerId) {
                       <td className="px-5 py-4">
                         <p className="text-sm font-semibold text-slate-900">
                           {formatCurrency(
-                            Number(
-                              contract.value
-                            )
+                            valueMode === "parcela"
+                              ? Number(
+                                  contract.value
+                                ) /
+                                  Math.max(
+                                    Number(
+                                      contract.installments
+                                    ) || 1,
+                                    1
+                                  )
+                              : Number(
+                                  contract.value
+                                )
                           )}
                         </p>
 
                         <p className="mt-1 text-xs text-slate-400">
-                          {getBillingLabel(
-                            contract.billing_frequency
-                          )}
+                          {valueMode === "parcela"
+                            ? `por parcela · ${getBillingLabel(
+                                contract.billing_frequency
+                              )}`
+                            : Number(
+                                  contract.installments
+                                ) > 1
+                              ? `total · ${contract.installments}x`
+                              : "total"}
                         </p>
                       </td>
 
