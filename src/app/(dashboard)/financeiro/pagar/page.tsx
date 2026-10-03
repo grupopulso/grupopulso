@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, Plus } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
@@ -550,6 +550,10 @@ export default async function ContasPagarPage({
                   <TableHeader>
                     Status
                   </TableHeader>
+
+                  <TableHeader>
+                    Ações
+                  </TableHeader>
                 </tr>
               </thead>
 
@@ -664,6 +668,23 @@ export default async function ContasPagarPage({
                           }
                         />
                       </td>
+
+                      <td className="px-5 py-4">
+                        {entry.calculatedStatus !==
+                        "cancelled" ? (
+                          <Link
+                            href={`/financeiro/${entry.id}/editar`}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#15704f] hover:underline"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-slate-300">
+                            —
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -671,7 +692,7 @@ export default async function ContasPagarPage({
                 {!pagedEntries.length && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="px-5 py-14 text-center"
                     >
                       <p className="text-sm font-medium text-slate-500">

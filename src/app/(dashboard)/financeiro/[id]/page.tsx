@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import FinancialDocumentControls from "./financial-document-controls";
 import BackButton from "./back-button";
 
@@ -12,6 +14,7 @@ import {
   CalendarDays,
   CircleDollarSign,
   FileText,
+  Pencil,
   UserRound,
 } from "lucide-react";
 
@@ -351,14 +354,27 @@ charge_sent_at,
             </p>
           </div>
 
-          {calculatedStatus !== "paid" &&
-            calculatedStatus !== "cancelled" && (
-              <RegisterTransactionForm
-                entryId={entry.id}
-                type={entry.type}
-                openAmount={openAmount}
-              />
-            )}
+          <div className="flex flex-wrap items-center gap-3">
+            {entry.type === "expense" &&
+              calculatedStatus !== "cancelled" && (
+                <Link
+                  href={`/financeiro/${entry.id}/editar`}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Editar despesa
+                </Link>
+              )}
+
+            {calculatedStatus !== "paid" &&
+              calculatedStatus !== "cancelled" && (
+                <RegisterTransactionForm
+                  entryId={entry.id}
+                  type={entry.type}
+                  openAmount={openAmount}
+                />
+              )}
+          </div>
         </div>
 
         <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">

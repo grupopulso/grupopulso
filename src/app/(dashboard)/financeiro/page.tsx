@@ -604,7 +604,10 @@ export default async function FinanceiroPage({
         {/* ALERTAS */}
 
         <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
-          <div className="rounded-2xl border border-red-100 bg-red-50 p-5">
+          <Link
+            href="/financeiro/receber?status=overdue"
+            className="block rounded-2xl border border-red-100 bg-red-50 p-5 transition hover:border-red-200 hover:shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-red-700">
@@ -620,9 +623,12 @@ export default async function FinanceiroPage({
 
               <CalendarClock className="h-6 w-6 text-red-500" />
             </div>
-          </div>
+          </Link>
 
-          <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
+          <Link
+            href="/financeiro/pagar?status=overdue"
+            className="block rounded-2xl border border-orange-100 bg-orange-50 p-5 transition hover:border-orange-200 hover:shadow-sm"
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-orange-700">
@@ -638,7 +644,7 @@ export default async function FinanceiroPage({
 
               <CalendarClock className="h-6 w-6 text-orange-500" />
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* ATALHOS */}
