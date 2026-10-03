@@ -12,10 +12,7 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
-import {
-  competenceQueryRangeForYear,
-  getEntryCompetenceMonth,
-} from "@/app/lib/competence-date";
+import { loadBilledEntries } from "@/app/lib/billed-entries";
 
 import GoalEditor from "./goal-editor";
 
@@ -223,84 +220,25 @@ export default async function MetasPage({
     number
   >();
 
-  if (companyIds.length > 0) {
-    const dueRange =
-      competenceQueryRangeForYear(
-        year
-      );
-
-    const { data: entries, error } =
-      await supabase
-        .from("financial_entries")
-        .select(`
-          company_id,
-          due_date,
-          competence_date,
-          amount,
-          status,
-          contract_id,
-
-          contract:contracts (
-            billing_frequency,
-            start_date
-          )
-        `)
-        .eq("type", "income")
-        .neq("status", "cancelled")
-        .gte("due_date", dueRange.start)
-        .lte("due_date", dueRange.end)
-        .in("company_id", companyIds);
-
-    if (error) {
-      console.error(
-        "Erro ao carregar faturamento:",
-        error
-      );
-    }
-
-    for (const entry of entries ?? []) {
-      const contract = getFirst(
-        entry.contract
-      );
-
-      const competence =
-        getEntryCompetenceMonth({
-          dueDate: entry.due_date,
-          competenceDate:
-            entry.competence_date,
-          billingFrequency:
-            contract?.billing_frequency ??
-            null,
-          contractStartDate:
-            contract?.start_date ??
-            null,
-          companySlug:
-            companySlugById.get(
-              entry.company_id
-            ) ?? null,
-        });
-
-      if (!competence) {
-        continue;
+  const billedEntries =
+    await loadBilledEntries(
+      supabase,
+      {
+        companyIds,
+        companySlugById,
+        year,
+        month,
+        isAnnual,
       }
+    );
 
-      const inPeriod = isAnnual
-        ? competence.year === year
-        : competence.year === year &&
-          competence.month === month;
-
-      if (!inPeriod) {
-        continue;
-      }
-
-      billedByCompany.set(
-        entry.company_id,
-        (billedByCompany.get(
-          entry.company_id
-        ) ?? 0) +
-          Number(entry.amount ?? 0)
-      );
-    }
+  for (const entry of billedEntries) {
+    billedByCompany.set(
+      entry.companyId,
+      (billedByCompany.get(
+        entry.companyId
+      ) ?? 0) + entry.amount
+    );
   }
 
   /*
@@ -582,10 +520,18 @@ function CompanyGoalCard({
     progress
   );
 
+  const detailHref = isAnnual
+    ? `/metas/${company.id}?periodo=ano&ano=${year}`
+    : `/metas/${company.id}?ano=${year}&mes=${month}`;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6">
       <div className="flex items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <Link
+          href={detailHref}
+          title="Ver como chegou no valor faturado"
+          className="flex items-center gap-2 hover:underline"
+        >
           <span
             className="h-3 w-3 rounded-full"
             style={{
@@ -597,7 +543,7 @@ function CompanyGoalCard({
           <p className="font-semibold text-slate-900">
             {company.name}
           </p>
-        </div>
+        </Link>
 
         <StatusBadge status={status} />
       </div>
@@ -703,6 +649,14 @@ function CompanyGoalCard({
           )}
         </>
       )}
+
+      <Link
+        href={detailHref}
+        className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-[#15704f] hover:underline"
+      >
+        Ver como chegou nesse valor
+        <ChevronRight className="h-3.5 w-3.5" />
+      </Link>
     </div>
   );
 }
@@ -793,22 +747,6 @@ function SummaryCard({
  * HELPERS
  * =========================
  */
-
-function getFirst<T>(
-  value:
-    | T
-    | T[]
-    | null
-    | undefined
-): T | null {
-  if (!value) {
-    return null;
-  }
-
-  return Array.isArray(value)
-    ? (value[0] ?? null)
-    : value;
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
