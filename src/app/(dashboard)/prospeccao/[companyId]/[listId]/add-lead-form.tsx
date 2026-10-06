@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import { createProspectingLead } from "./actions";
-import { STATUS_OPTIONS } from "./status";
+import {
+  KIND_OPTIONS,
+  STATUS_OPTIONS,
+} from "./status";
 
 type Seller = {
   id: string;
@@ -30,12 +33,16 @@ export default function AddLeadForm({
   companyId,
   listId,
   sellers,
+  showKind = false,
 }: {
   companyId: string;
   listId: string;
   sellers: Seller[];
+  showKind?: boolean;
 }) {
   const router = useRouter();
+
+  const [kind, setKind] = useState("");
 
   const [clientName, setClientName] =
     useState("");
@@ -76,6 +83,9 @@ export default function AddLeadForm({
           size,
           status,
           billingNote,
+          kind: showKind
+            ? kind || null
+            : undefined,
         });
 
       if (!result.success) {
@@ -89,6 +99,7 @@ export default function AddLeadForm({
       setSize("");
       setStatus("none");
       setBillingNote("");
+      setKind("");
 
       router.refresh();
     });
@@ -99,7 +110,13 @@ export default function AddLeadForm({
       onSubmit={handleSubmit}
       className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-white p-4"
     >
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      <div
+        className={`grid grid-cols-1 gap-3 sm:grid-cols-2 ${
+          showKind
+            ? "lg:grid-cols-7"
+            : "lg:grid-cols-6"
+        }`}
+      >
         <input
           required
           value={clientName}
@@ -111,6 +128,29 @@ export default function AddLeadForm({
           placeholder="Nome do cliente"
           className="input h-10 lg:col-span-2"
         />
+
+        {showKind && (
+          <select
+            value={kind}
+            onChange={(event) =>
+              setKind(event.target.value)
+            }
+            className="input h-10"
+          >
+            <option value="">
+              Telão ou TV...
+            </option>
+
+            {KIND_OPTIONS.map((option) => (
+              <option
+                key={option.value}
+                value={option.value}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
 
         <select
           value={sellerUserId}
@@ -179,16 +219,17 @@ export default function AddLeadForm({
         </select>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-3">
-        <input
+      <div className="mt-3 flex flex-wrap items-start gap-3">
+        <textarea
           value={billingNote}
           onChange={(event) =>
             setBillingNote(
               event.target.value
             )
           }
-          placeholder="Observação de cobrança (opcional)"
-          className="input h-10 flex-1"
+          rows={2}
+          placeholder="Observações (opcional): quando foi feita a cobrança, quando entrou, contato..."
+          className="input min-w-[240px] flex-1"
         />
 
         <button

@@ -3,7 +3,10 @@
 import { useMemo, useState } from "react";
 
 import LeadRow from "./lead-row";
-import { STATUS_OPTIONS } from "./status";
+import {
+  KIND_OPTIONS,
+  STATUS_OPTIONS,
+} from "./status";
 
 type Seller = {
   id: string;
@@ -18,6 +21,7 @@ type Lead = {
   size: string | null;
   status: string;
   billing_note: string | null;
+  kind?: string | null;
 };
 
 function normalize(value: string) {
@@ -33,12 +37,14 @@ export default function LeadsTable({
   listId,
   leads,
   sellers,
+  showKind = false,
   children,
 }: {
   companyId: string;
   listId: string;
   leads: Lead[];
   sellers: Seller[];
+  showKind?: boolean;
   children?: React.ReactNode;
 }) {
   const [search, setSearch] = useState("");
@@ -46,15 +52,24 @@ export default function LeadsTable({
     useState("");
   const [statusFilter, setStatusFilter] =
     useState("");
+  const [kindFilter, setKindFilter] =
+    useState("");
 
   const filteredLeads = useMemo(() => {
     const term = normalize(search);
 
     return leads.filter((lead) => {
+      /*
+       * A busca olha o nome e também as observações (é lá que
+       * ficam contato, data da cobrança, etc.).
+       */
       const matchesSearch =
         !term ||
         normalize(
           lead.client_name
+        ).includes(term) ||
+        normalize(
+          lead.billing_note ?? ""
         ).includes(term);
 
       const matchesSeller =
@@ -66,10 +81,15 @@ export default function LeadsTable({
         !statusFilter ||
         lead.status === statusFilter;
 
+      const matchesKind =
+        !kindFilter ||
+        lead.kind === kindFilter;
+
       return (
         matchesSearch &&
         matchesSeller &&
-        matchesStatus
+        matchesStatus &&
+        matchesKind
       );
     });
   }, [
@@ -77,12 +97,14 @@ export default function LeadsTable({
     search,
     sellerFilter,
     statusFilter,
+    kindFilter,
   ]);
 
   const hasActiveFilters =
     Boolean(search) ||
     Boolean(sellerFilter) ||
-    Boolean(statusFilter);
+    Boolean(statusFilter) ||
+    Boolean(kindFilter);
 
   return (
     <>
@@ -94,9 +116,34 @@ export default function LeadsTable({
               event.target.value
             )
           }
-          placeholder="Buscar cliente..."
+          placeholder="Buscar cliente ou observação..."
           className="input h-10 flex-1 min-w-[200px]"
         />
+
+        {showKind && (
+          <select
+            value={kindFilter}
+            onChange={(event) =>
+              setKindFilter(
+                event.target.value
+              )
+            }
+            className="input h-10"
+          >
+            <option value="">
+              Telão e TV
+            </option>
+
+            {KIND_OPTIONS.map((option) => (
+              <option
+                key={option.value}
+                value={option.value}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        )}
 
         <select
           value={sellerFilter}
@@ -153,6 +200,7 @@ export default function LeadsTable({
               setSearch("");
               setSellerFilter("");
               setStatusFilter("");
+              setKindFilter("");
             }}
             className="text-sm font-medium text-slate-500 hover:text-slate-900"
           >
@@ -174,6 +222,9 @@ export default function LeadsTable({
             <thead className="bg-slate-50">
               <tr>
                 <Header>Cliente</Header>
+                {showKind && (
+                  <Header>Tipo</Header>
+                )}
                 <Header>
                   Vendedor
                 </Header>
@@ -185,7 +236,7 @@ export default function LeadsTable({
                   Situação
                 </Header>
                 <Header>
-                  Cobrança
+                  Observações
                 </Header>
                 <Header>{""}</Header>
               </tr>
@@ -202,6 +253,7 @@ export default function LeadsTable({
                     listId={listId}
                     lead={lead}
                     sellers={sellers}
+                    showKind={showKind}
                   />
                 )
               )}
@@ -210,7 +262,7 @@ export default function LeadsTable({
                 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={showKind ? 8 : 7}
                     className="px-4 py-12 text-center text-sm text-slate-400"
                   >
                     {leads.length === 0

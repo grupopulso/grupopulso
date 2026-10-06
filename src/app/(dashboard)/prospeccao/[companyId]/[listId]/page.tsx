@@ -20,6 +20,20 @@ import LeadsTable from "./leads-table";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const POTTENCIALIZA_COMPANY_ID =
+  "9d08d74c-c5fe-48c9-b0c5-382cea273d99";
+
+type Lead = {
+  id: string;
+  client_name: string;
+  seller_user_id: string | null;
+  value: number | string | null;
+  size: string | null;
+  status: string;
+  billing_note: string | null;
+  kind?: string | null;
+};
+
 type PageProps = {
   params: Promise<{
     companyId: string;
@@ -55,9 +69,47 @@ export default async function ProspeccaoListaPage({
    */
   const adminDb = createAdminClient();
 
+  /*
+   * Pottencializa junta telões e TVs numa lista só: o campo
+   * "Tipo" (Telão/TV) só existe lá. Se a coluna `kind` ainda não
+   * foi criada no banco (MIGRACOES_PENDENTES.md), cai na leitura
+   * sem ela e esconde o campo, em vez de quebrar a lista.
+   */
+  const baseColumns =
+    "id, client_name, seller_user_id, value, size, status, billing_note";
+
+  let showKind =
+    companyId === POTTENCIALIZA_COMPANY_ID;
+
+  const loadLeads = async (
+    columns: string
+  ) =>
+    (await adminDb
+      .from("prospecting_leads")
+      .select(columns)
+      .eq("list_id", listId)
+      .order("client_name")) as unknown as {
+      data: Lead[] | null;
+      error: unknown;
+    };
+
+  let leadsResult = await loadLeads(
+    showKind
+      ? `${baseColumns}, kind`
+      : baseColumns
+  );
+
+  if (showKind && leadsResult.error) {
+    showKind = false;
+
+    leadsResult =
+      await loadLeads(baseColumns);
+  }
+
+  const leads = leadsResult.data;
+
   const [
     { data: list },
-    { data: leads },
     { data: sellers },
   ] = await Promise.all([
     adminDb
@@ -66,20 +118,6 @@ export default async function ProspeccaoListaPage({
       .eq("id", listId)
       .eq("company_id", companyId)
       .maybeSingle(),
-
-    adminDb
-      .from("prospecting_leads")
-      .select(`
-        id,
-        client_name,
-        seller_user_id,
-        value,
-        size,
-        status,
-        billing_note
-      `)
-      .eq("list_id", listId)
-      .order("client_name"),
 
     adminDb
       .from("user_profiles")
@@ -260,11 +298,13 @@ export default async function ProspeccaoListaPage({
           listId={listId}
           leads={allLeads}
           sellers={allSellers}
+          showKind={showKind}
         >
           <AddLeadForm
             companyId={companyId}
             listId={listId}
             sellers={allSellers}
+            showKind={showKind}
           />
         </LeadsTable>
       </div>

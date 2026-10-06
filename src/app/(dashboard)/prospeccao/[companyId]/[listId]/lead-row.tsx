@@ -10,6 +10,9 @@ import {
 } from "./actions";
 
 import {
+  KIND_BADGE_CLASSES,
+  KIND_OPTIONS,
+  kindLabel,
   STATUS_BADGE_CLASSES,
   STATUS_OPTIONS,
   STATUS_ROW_CLASSES,
@@ -29,6 +32,7 @@ type Lead = {
   size: string | null;
   status: string;
   billing_note: string | null;
+  kind?: string | null;
 };
 
 function formatCurrency(
@@ -66,11 +70,13 @@ export default function LeadRow({
   listId,
   lead,
   sellers,
+  showKind = false,
 }: {
   companyId: string;
   listId: string;
   lead: Lead;
   sellers: Seller[];
+  showKind?: boolean;
 }) {
   const router = useRouter();
 
@@ -105,6 +111,10 @@ export default function LeadRow({
   const [billingNote, setBillingNote] =
     useState(lead.billing_note ?? "");
 
+  const [kind, setKind] = useState(
+    lead.kind ?? ""
+  );
+
   const [error, setError] = useState("");
 
   const [isPending, startTransition] =
@@ -132,6 +142,7 @@ export default function LeadRow({
     setBillingNote(
       lead.billing_note ?? ""
     );
+    setKind(lead.kind ?? "");
     setError("");
     setEditing(false);
   }
@@ -153,6 +164,9 @@ export default function LeadRow({
             size,
             status,
             billingNote,
+            kind: showKind
+              ? kind || null
+              : undefined,
           }
         );
 
@@ -191,6 +205,27 @@ export default function LeadRow({
           {lead.client_name}
         </td>
 
+        {showKind && (
+          <td className="px-4 py-3">
+            {lead.kind ? (
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                  KIND_BADGE_CLASSES[
+                    lead.kind
+                  ] ??
+                  "bg-slate-100 text-slate-500"
+                }`}
+              >
+                {kindLabel(lead.kind)}
+              </span>
+            ) : (
+              <span className="text-sm text-slate-400">
+                —
+              </span>
+            )}
+          </td>
+        )}
+
         <td className="px-4 py-3 text-sm text-slate-700">
           {seller?.name ?? "—"}
         </td>
@@ -216,7 +251,7 @@ export default function LeadRow({
           </span>
         </td>
 
-        <td className="px-4 py-3 text-sm text-slate-700">
+        <td className="min-w-[220px] max-w-md whitespace-pre-wrap px-4 py-3 text-sm text-slate-700">
           {lead.billing_note || "—"}
         </td>
 
@@ -259,6 +294,29 @@ export default function LeadRow({
           className="input h-9"
         />
       </td>
+
+      {showKind && (
+        <td className="px-4 py-2">
+          <select
+            value={kind}
+            onChange={(event) =>
+              setKind(event.target.value)
+            }
+            className="input h-9"
+          >
+            <option value="">—</option>
+
+            {KIND_OPTIONS.map((option) => (
+              <option
+                key={option.value}
+                value={option.value}
+              >
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </td>
+      )}
 
       <td className="px-4 py-2">
         <select
@@ -335,15 +393,16 @@ export default function LeadRow({
       </td>
 
       <td className="px-4 py-2">
-        <input
+        <textarea
           value={billingNote}
           onChange={(event) =>
             setBillingNote(
               event.target.value
             )
           }
-          placeholder="Ex.: 04/05"
-          className="input h-9"
+          rows={3}
+          placeholder="Cobrança feita em 04/05 · Entrou em 10/05 · Contato: ..."
+          className="input min-w-[240px]"
         />
       </td>
 

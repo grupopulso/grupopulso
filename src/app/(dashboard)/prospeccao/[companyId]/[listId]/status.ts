@@ -25,6 +25,33 @@ export const STATUS_BADGE_CLASSES: Record<
   declined: "bg-red-200 text-red-800",
 };
 
+/*
+ * Tipo do ponto (só na prospecção da Pottencializa, que tem telões
+ * e TVs numa lista única). Valor vazio = não informado.
+ */
+export const KIND_OPTIONS = [
+  { value: "telao", label: "Telão" },
+  { value: "tv", label: "TV" },
+] as const;
+
+export const KIND_BADGE_CLASSES: Record<
+  string,
+  string
+> = {
+  telao: "bg-indigo-100 text-indigo-700",
+  tv: "bg-sky-100 text-sky-700",
+};
+
+export function kindLabel(
+  kind: string | null
+) {
+  return (
+    KIND_OPTIONS.find(
+      (option) => option.value === kind
+    )?.label ?? "—"
+  );
+}
+
 export function statusLabel(status: string) {
   return (
     STATUS_OPTIONS.find(

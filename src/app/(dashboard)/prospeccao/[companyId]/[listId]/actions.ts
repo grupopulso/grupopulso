@@ -29,11 +29,26 @@ type LeadInput = {
   size?: string | null;
   status: string;
   billingNote?: string | null;
+
+  /*
+   * undefined = não mexe na coluna (tela sem o campo Tipo, ou
+   * coluna ainda não criada no banco); "" / null = limpa.
+   */
+  kind?: string | null;
 };
+
+const VALID_KINDS = ["telao", "tv"];
 
 function validateLead(input: LeadInput) {
   if (!input.clientName.trim()) {
     return "Informe o nome do cliente.";
+  }
+
+  if (
+    input.kind &&
+    !VALID_KINDS.includes(input.kind)
+  ) {
+    return "Tipo inválido.";
   }
 
   if (
@@ -93,6 +108,9 @@ export async function createProspectingLead(
         billing_note:
           input.billingNote?.trim() ||
           null,
+        ...(input.kind
+          ? { kind: input.kind }
+          : {}),
       })
       .select("id")
       .single();
@@ -160,6 +178,9 @@ export async function updateProspectingLead(
       billing_note:
         input.billingNote?.trim() ||
         null,
+      ...(input.kind !== undefined
+        ? { kind: input.kind || null }
+        : {}),
       updated_at:
         new Date().toISOString(),
     })

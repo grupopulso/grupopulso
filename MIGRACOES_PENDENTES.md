@@ -2,6 +2,27 @@
 
 ---
 
+## [ ] Coluna `kind` em `prospecting_leads` (telão ou TV na Prospecção da Pottencializa)
+
+Pottencializa tinha duas listas separadas ("TELÃO" e "TVs INDOOR").
+Agora é uma lista só, e cada cliente tem o tipo **Telão** ou **TV**.
+A tela já funciona sem esta coluna (só esconde o campo Tipo); depois
+de rodar o SQL o campo aparece sozinho. Os 49 clientes que já estão
+em "TVs INDOOR" ficam marcados como TV.
+
+```sql
+alter table public.prospecting_leads
+  add column if not exists kind text
+  check (kind in ('telao', 'tv'));
+
+update public.prospecting_leads
+  set kind = 'tv'
+  where list_id = '916c3721-ab2d-407b-9afd-45f1b4f2e3b7'
+    and kind is null;
+```
+
+---
+
 ## [ ] Tabelas `prospecting_lists` / `prospecting_leads` (Prospecção)
 
 Tela nova "Prospecção" no menu lateral: dentro de cada empresa, o
