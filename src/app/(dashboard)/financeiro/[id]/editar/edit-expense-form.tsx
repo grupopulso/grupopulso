@@ -183,8 +183,16 @@ export default function EditExpenseForm({
       return;
     }
 
-    router.push(`/financeiro/${entryId}`);
-    router.refresh();
+    /*
+     * Volta pra tela de onde veio (o lançamento ou a lista) em vez
+     * de empilhar uma nova entrada no histórico - senão o
+     * "Voltar" do lançamento cairia de novo nesta tela de edição.
+     */
+    if (window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(`/financeiro/${entryId}`);
+    }
   }
 
   return (
@@ -465,7 +473,15 @@ export default function EditExpenseForm({
       <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={() => {
+            if (window.history.length > 1) {
+              router.back();
+            } else {
+              router.push(
+                `/financeiro/${entryId}`
+              );
+            }
+          }}
           disabled={loading}
           className="h-11 rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
         >

@@ -265,6 +265,121 @@ export async function getExpenseEditData(
 
 /*
  * =====================================================
+ * EXCLUIR DESPESA
+ * =====================================================
+ *
+ * Só exclui despesa sem nenhum pagamento registrado (excluir
+ * uma já paga apagaria o histórico do caixa) e que não nasceu
+ * de comissão/retirada de sócio (o registro de origem ficaria
+ * apontando pra um lançamento que não existe mais).
+ */
+
+export async function deleteExpenseEntry(
+  entryId: string
+) {
+  await requireAuthenticatedUser();
+
+  const adminDb = createAdminClient();
+
+  const { data: entry } = await adminDb
+    .from("financial_entries")
+    .select(ENTRY_COLUMNS)
+    .eq("id", entryId)
+    .maybeSingle();
+
+  if (!entry) {
+    return {
+      success: false as const,
+      message: "Lançamento não encontrado.",
+    };
+  }
+
+  if (entry.type !== "expense") {
+    return {
+      success: false as const,
+      message:
+        "Só é possível excluir despesas por aqui.",
+    };
+  }
+
+  await requireFinancialEntryAccess(
+    "expense",
+    "delete"
+  );
+
+  await requireCompanyAccess(
+    entry.company_id
+  );
+
+  const lockedReason =
+    await getEditLockReason(
+      adminDb,
+      entry.id
+    );
+
+  if (lockedReason) {
+    return {
+      success: false as const,
+      message: lockedReason,
+    };
+  }
+
+  const { count: transactionCount } =
+    await adminDb
+      .from("financial_transactions")
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("financial_entry_id", entry.id);
+
+  if (
+    Number(entry.amount_paid) > 0 ||
+    (transactionCount ?? 0) > 0
+  ) {
+    return {
+      success: false as const,
+      message:
+        "Esta despesa já tem pagamento registrado e não pode ser excluída.",
+    };
+  }
+
+  const { error } = await adminDb
+    .from("financial_entries")
+    .delete()
+    .eq("id", entry.id);
+
+  if (error) {
+    console.error(
+      "Erro ao excluir despesa:",
+      error
+    );
+
+    return {
+      success: false as const,
+      message:
+        "Não foi possível excluir a despesa.",
+    };
+  }
+
+  await createAuditLog({
+    module: "financial",
+    action: "delete",
+    entityType: "financial_entry",
+    entityId: entry.id,
+    description: `Despesa excluída: ${entry.description}.`,
+    oldData: entry,
+  });
+
+  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/pagar");
+  revalidatePath("/financeiro/fluxo");
+
+  return { success: true as const };
+}
+
+/*
+ * =====================================================
  * SALVAR EDIÇÃO
  * =====================================================
  */

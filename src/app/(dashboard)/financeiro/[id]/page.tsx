@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import FinancialDocumentControls from "./financial-document-controls";
 import BackButton from "./back-button";
+import DeleteExpenseButton from "./delete-expense-button";
 
 import {
   notFound,
@@ -24,6 +25,7 @@ import { createAdminClient } from "@/app/lib/supabase/admin";
 import RegisterTransactionForm from "@/app/components/register-transaction-form";
 
 import {
+  canAccessFinancialEntry,
   requireAuthenticatedUser,
   requireFinancialEntryAccess,
 } from "@/app/lib/permissions";
@@ -51,7 +53,8 @@ type PaymentMethod = {
 export default async function FinancialEntryPage({
   params,
 }: PageProps) {
-  await requireAuthenticatedUser();
+  const currentAccess =
+    await requireAuthenticatedUser();
 
   const { id } = await params;
 
@@ -364,6 +367,22 @@ charge_sent_at,
                   <Pencil className="h-4 w-4" />
                   Editar despesa
                 </Link>
+              )}
+
+            {entry.type === "expense" &&
+              calculatedStatus !== "cancelled" &&
+              Number(entry.amount_paid) === 0 &&
+              canAccessFinancialEntry(
+                currentAccess,
+                "expense",
+                "delete"
+              ) && (
+                <DeleteExpenseButton
+                  entryId={entry.id}
+                  description={
+                    entry.description
+                  }
+                />
               )}
 
             {calculatedStatus !== "paid" &&

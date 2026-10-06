@@ -5,8 +5,10 @@ import { createClient } from "@/app/lib/supabase/server";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
+  canAccessFinancialEntry,
   requireModulePermission,
 } from "@/app/lib/permissions";
+import DeleteExpenseButton from "../[id]/delete-expense-button";
 import {
   calculateEntryOpenAmount,
   calculateEntryTotal,
@@ -60,6 +62,13 @@ export default async function ContasPagarPage({
     await requireModulePermission(
       "accounts_payable",
       "view"
+    );
+
+  const canDelete =
+    canAccessFinancialEntry(
+      access,
+      "expense",
+      "delete"
     );
 
   const {
@@ -672,13 +681,28 @@ export default async function ContasPagarPage({
                       <td className="px-5 py-4">
                         {entry.calculatedStatus !==
                         "cancelled" ? (
-                          <Link
-                            href={`/financeiro/${entry.id}/editar`}
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#15704f] hover:underline"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                            Editar
-                          </Link>
+                          <div className="flex items-center gap-4">
+                            <Link
+                              href={`/financeiro/${entry.id}/editar`}
+                              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#15704f] hover:underline"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Editar
+                            </Link>
+
+                            {canDelete &&
+                              Number(
+                                entry.amount_paid
+                              ) === 0 && (
+                                <DeleteExpenseButton
+                                  variant="row"
+                                  entryId={entry.id}
+                                  description={
+                                    entry.description
+                                  }
+                                />
+                              )}
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-300">
                             —

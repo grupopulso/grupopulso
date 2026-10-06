@@ -325,6 +325,32 @@ export async function requireFinancialEntryAccess(
 }
 
 /*
+ * Versão sem redirect de requireFinancialEntryAccess: diz se o
+ * usuário pode fazer `action` num lançamento de receita/despesa
+ * (módulo geral "financial" OU o módulo específico da natureza).
+ * Usada pra mostrar/esconder botões - a checagem de verdade fica
+ * na server action.
+ */
+export function canAccessFinancialEntry(
+  access: Awaited<
+    ReturnType<typeof getCurrentUserAccess>
+  >,
+  type: "income" | "expense",
+  action: PermissionAction
+) {
+  if (access?.profile.role === "admin") {
+    return true;
+  }
+
+  return [
+    "financial",
+    ...FINANCIAL_MODULES_BY_TYPE[type],
+  ].some((module) =>
+    canAccessModule(access, module, action)
+  );
+}
+
+/*
  * Para o formulário de novo lançamento: descobre quais
  * naturezas o usuário pode criar. Redireciona se não
  * puder criar nenhuma.
