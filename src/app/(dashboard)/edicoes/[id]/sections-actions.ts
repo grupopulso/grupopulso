@@ -1358,7 +1358,7 @@ export async function updateEditionAdPositionCapacity(
  * Pedido do Leandro (07/10): trocar a data de um caderno
  * "especial" levando tudo o que tem dentro. O caderno muda de
  * edição junto com as posições, as publicações de contrato e as
- * vendas avulsas que estão nele (ids preservados, então os
+ * vendas que estão dentro dele (ids preservados, então os
  * vínculos de posição continuam valendo).
  *
  * Venda é de UMA edição só: se uma venda tem itens em outros

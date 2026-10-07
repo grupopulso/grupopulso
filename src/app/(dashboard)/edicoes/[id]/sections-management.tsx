@@ -512,7 +512,7 @@ export default function SectionsManagement({
 
     if (
       !window.confirm(
-        `Mover o caderno "${section.name}" para ${target.label}? Ele leva junto as posições, as publicações de contrato e as vendas avulsas que estão nele.`
+        `Mover o caderno "${section.name}" para ${target.label}? Ele leva junto as posições, as publicações de contrato e as vendas que estão dentro dele.`
       )
     ) {
       return;
@@ -542,7 +542,7 @@ export default function SectionsManagement({
 
       setMessage({
         type: "success",
-        text: `Caderno movido para ${result.targetName}. Foram junto ${result.publications} publicação(ões) de contrato e ${result.sales} venda(s) avulsa(s).`,
+        text: `Caderno movido para ${result.targetName}. Foram junto ${result.publications} publicação(ões) de contrato e ${result.sales} venda(s).`,
       });
     });
   }
