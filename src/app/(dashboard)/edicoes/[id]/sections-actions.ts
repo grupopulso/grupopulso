@@ -9,6 +9,14 @@ import {
 } from "@/app/lib/supabase/server";
 
 import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
+  createAuditLog,
+} from "@/app/lib/audit";
+
+import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
@@ -1341,6 +1349,420 @@ export async function updateEditionAdPositionCapacity(
  * HELPERS
  * =====================================================
  */
+
+/*
+ * =====================================================
+ * MOVER CADERNO PARA OUTRA EDIÇÃO (outra data)
+ * =====================================================
+ *
+ * Pedido do Leandro (07/10): trocar a data de um caderno
+ * "especial" levando tudo o que tem dentro. O caderno muda de
+ * edição junto com as posições, as publicações de contrato e as
+ * vendas avulsas que estão nele (ids preservados, então os
+ * vínculos de posição continuam valendo).
+ *
+ * Venda é de UMA edição só: se uma venda tem itens em outros
+ * cadernos (ou sem caderno), mover o caderno partiria a venda
+ * entre duas edições - nesse caso bloqueia e diz quais vendas.
+ *
+ * Financeiro e comissões não mudam (não têm vínculo com a
+ * edição), igual ao "mover venda". O texto dos lançamentos
+ * ("Edição 1803 - Publicidade...") e a data de competência
+ * gravada neles continuam os da criação.
+ */
+
+export async function moveEditionSection(
+  input: {
+    sectionId: string;
+    editionId: string;
+    targetEditionId: string;
+  }
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  const isAdmin =
+    access.profile.role === "admin";
+
+  const db = createAdminClient();
+
+  if (
+    !input.sectionId ||
+    !input.editionId ||
+    !input.targetEditionId
+  ) {
+    return {
+      success: false as const,
+      message: "Dados inválidos.",
+    };
+  }
+
+  if (
+    input.editionId ===
+    input.targetEditionId
+  ) {
+    return {
+      success: false as const,
+      message:
+        "O caderno já está nesta edição.",
+    };
+  }
+
+  const { data: section } = await db
+    .from("edition_sections")
+    .select("id, name, edition_id")
+    .eq("id", input.sectionId)
+    .eq("edition_id", input.editionId)
+    .maybeSingle();
+
+  if (!section) {
+    return {
+      success: false as const,
+      message: "Caderno não encontrado.",
+    };
+  }
+
+  const { data: editions } = await db
+    .from("newspaper_editions")
+    .select("id, name, status")
+    .in("id", [
+      input.editionId,
+      input.targetEditionId,
+    ])
+    .eq(
+      "company_id",
+      access.estafetaCompany.id
+    );
+
+  const source = editions?.find(
+    (item) => item.id === input.editionId
+  );
+
+  const target = editions?.find(
+    (item) =>
+      item.id === input.targetEditionId
+  );
+
+  if (!source || !target) {
+    return {
+      success: false as const,
+      message: "Edição não encontrada.",
+    };
+  }
+
+  if (
+    !isAdmin &&
+    (source.status !== "open" ||
+      target.status !== "open")
+  ) {
+    return {
+      success: false as const,
+      message:
+        "As duas edições precisam estar abertas para mover o caderno.",
+    };
+  }
+
+  const { data: sameName } = await db
+    .from("edition_sections")
+    .select("id")
+    .eq("edition_id", target.id)
+    .ilike(
+      "name",
+      section.name.replace(
+        /[\\%_]/g,
+        (char: string) => `\\${char}`
+      )
+    )
+    .maybeSingle();
+
+  if (sameName) {
+    return {
+      success: false as const,
+      message: `A ${target.name} já tem um caderno chamado "${section.name}".`,
+    };
+  }
+
+  /*
+   * VENDAS AVULSAS COM ITENS NESTE CADERNO
+   */
+
+  const { data: sectionItems } = await db
+    .from("edition_sale_items")
+    .select("sale_id")
+    .eq("section_id", section.id);
+
+  const saleIds = Array.from(
+    new Set(
+      (sectionItems ?? []).map(
+        (item) => item.sale_id
+      )
+    )
+  );
+
+  let moveSaleIds: string[] = [];
+  let cancelledSaleIds: string[] = [];
+
+  if (saleIds.length > 0) {
+    const [
+      { data: sales },
+      { data: allItems },
+    ] = await Promise.all([
+      db
+        .from("edition_sales")
+        .select(
+          "id, status, edition_id, client:clients(name)"
+        )
+        .in("id", saleIds),
+
+      db
+        .from("edition_sale_items")
+        .select("sale_id, section_id")
+        .in("sale_id", saleIds),
+    ]);
+
+    const mixed = (sales ?? []).filter(
+      (sale) =>
+        sale.status !== "cancelled" &&
+        (allItems ?? []).some(
+          (item) =>
+            item.sale_id === sale.id &&
+            item.section_id !== section.id
+        )
+    );
+
+    if (mixed.length > 0) {
+      const names = mixed
+        .slice(0, 3)
+        .map((sale) => {
+          const client = Array.isArray(
+            sale.client
+          )
+            ? sale.client[0]
+            : sale.client;
+
+          return client?.name ?? "venda";
+        })
+        .join(", ");
+
+      return {
+        success: false as const,
+        message: `Não dá para mover: ${mixed.length} venda(s) (${names}) têm itens em outros cadernos além deste. Ajuste a venda para ficar só neste caderno e tente de novo.`,
+      };
+    }
+
+    const strange = (sales ?? []).find(
+      (sale) =>
+        sale.status !== "cancelled" &&
+        sale.edition_id !== source.id
+    );
+
+    if (strange) {
+      return {
+        success: false as const,
+        message:
+          "Há uma venda neste caderno que pertence a outra edição. Corrija antes de mover.",
+      };
+    }
+
+    moveSaleIds = (sales ?? [])
+      .filter(
+        (sale) =>
+          sale.status !== "cancelled"
+      )
+      .map((sale) => sale.id);
+
+    cancelledSaleIds = (sales ?? [])
+      .filter(
+        (sale) =>
+          sale.status === "cancelled"
+      )
+      .map((sale) => sale.id);
+  }
+
+  const { data: positions } = await db
+    .from("edition_ad_positions")
+    .select("id")
+    .eq("section_id", section.id)
+    .eq("edition_id", source.id);
+
+  const positionIds = (positions ?? []).map(
+    (item) => item.id
+  );
+
+  const { data: publications } = await db
+    .from("contract_edition_publications")
+    .select("id")
+    .eq("section_id", section.id)
+    .eq("edition_id", source.id);
+
+  const publicationIds = (
+    publications ?? []
+  ).map((item) => item.id);
+
+  /*
+   * MOVE (com desfazer se algum passo falhar)
+   */
+
+  const done: (() => Promise<unknown>)[] =
+    [];
+
+  async function rollback() {
+    for (const undo of done.reverse()) {
+      try {
+        await undo();
+      } catch (error) {
+        console.error(
+          "Erro ao desfazer o move do caderno:",
+          error
+        );
+      }
+    }
+  }
+
+  const now = new Date().toISOString();
+
+  const step1 = await db
+    .from("edition_sections")
+    .update({ edition_id: target.id })
+    .eq("id", section.id);
+
+  if (step1.error) {
+    return {
+      success: false as const,
+      message: step1.error.message,
+    };
+  }
+
+  done.push(async () =>
+    db
+      .from("edition_sections")
+      .update({ edition_id: source.id })
+      .eq("id", section.id)
+  );
+
+  if (positionIds.length > 0) {
+    const step2 = await db
+      .from("edition_ad_positions")
+      .update({
+        edition_id: target.id,
+        updated_at: now,
+      })
+      .in("id", positionIds);
+
+    if (step2.error) {
+      await rollback();
+
+      return {
+        success: false as const,
+        message:
+          "Não foi possível mover as posições do caderno.",
+      };
+    }
+
+    done.push(async () =>
+      db
+        .from("edition_ad_positions")
+        .update({ edition_id: source.id })
+        .in("id", positionIds)
+    );
+  }
+
+  if (publicationIds.length > 0) {
+    const step3 = await db
+      .from("contract_edition_publications")
+      .update({
+        edition_id: target.id,
+        updated_at: now,
+      })
+      .in("id", publicationIds);
+
+    if (step3.error) {
+      await rollback();
+
+      return {
+        success: false as const,
+        message:
+          "Não foi possível mover as publicações do caderno.",
+      };
+    }
+
+    done.push(async () =>
+      db
+        .from("contract_edition_publications")
+        .update({ edition_id: source.id })
+        .in("id", publicationIds)
+    );
+  }
+
+  if (moveSaleIds.length > 0) {
+    const step4 = await db
+      .from("edition_sales")
+      .update({
+        edition_id: target.id,
+        updated_at: now,
+      })
+      .in("id", moveSaleIds);
+
+    if (step4.error) {
+      await rollback();
+
+      return {
+        success: false as const,
+        message:
+          "Não foi possível mover as vendas do caderno.",
+      };
+    }
+
+    done.push(async () =>
+      db
+        .from("edition_sales")
+        .update({ edition_id: source.id })
+        .in("id", moveSaleIds)
+    );
+  }
+
+  /*
+   * Vendas canceladas não acompanham o caderno: só soltam o
+   * vínculo com ele (o caderno agora é de outra edição).
+   */
+  if (cancelledSaleIds.length > 0) {
+    await db
+      .from("edition_sale_items")
+      .update({
+        section_id: null,
+        ad_position_id: null,
+      })
+      .in("sale_id", cancelledSaleIds)
+      .eq("section_id", section.id);
+  }
+
+  await createAuditLog({
+    module: "editions",
+    action: "update",
+    entityType: "edition_section",
+    entityId: section.id,
+    description: `Caderno "${section.name}" movido da ${source.name} para a ${target.name}.`,
+    oldData: { edition_id: source.id },
+    newData: {
+      edition_id: target.id,
+      positions: positionIds.length,
+      publications: publicationIds.length,
+      sales: moveSaleIds.length,
+    },
+  });
+
+  revalidateEdition(source.id);
+  revalidateEdition(target.id);
+
+  revalidatePath("/edicoes/vendas");
+
+  return {
+    success: true as const,
+    targetName: target.name,
+    publications: publicationIds.length,
+    sales: moveSaleIds.length,
+  };
+}
 
 function revalidateEdition(
   editionId: string

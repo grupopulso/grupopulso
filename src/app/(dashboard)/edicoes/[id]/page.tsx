@@ -2494,6 +2494,9 @@ export default async function EditionPage({
         {/* CADERNOS */}
 
         <SectionsManagement
+          otherEditions={
+            otherOpenEditions
+          }
           editionId={
             edition.id
           }

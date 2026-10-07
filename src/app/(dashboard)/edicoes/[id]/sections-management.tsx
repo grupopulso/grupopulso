@@ -6,6 +6,7 @@ import {
 } from "react";
 
 import {
+  ArrowRightLeft,
   Ban,
   BookOpen,
   CheckCircle2,
@@ -25,6 +26,7 @@ import {
 import {
   createEditionSection,
   deleteEditionSection,
+  moveEditionSection,
   setEditionAdPositionBlocked,
   setEditionSectionActive,
   updateEditionAdPositionCapacity,
@@ -113,6 +115,15 @@ type Props = {
 
   sections:
     Section[];
+
+  /*
+   * Outras edições abertas, destino possível ao mover um caderno
+   * (trocar a data de um especial).
+   */
+  otherEditions?: {
+    id: string;
+    label: string;
+  }[];
 };
 
 /*
@@ -125,7 +136,14 @@ export default function SectionsManagement({
   editionId,
   editionOpen,
   sections,
+  otherEditions = [],
 }: Props) {
+  const [movingSectionId, setMovingSectionId] =
+    useState<string | null>(null);
+
+  const [moveTargetId, setMoveTargetId] =
+    useState("");
+
   /*
    * =====================================================
    * FORMULÁRIO DO CADERNO
@@ -472,6 +490,59 @@ export default function SectionsManagement({
       setMessage({
         type: "success",
         text: "Caderno excluído.",
+      });
+    });
+  }
+
+  function handleMove(
+    section: Section
+  ) {
+    const target = otherEditions.find(
+      (item) => item.id === moveTargetId
+    );
+
+    if (!target) {
+      setMessage({
+        type: "error",
+        text: "Escolha a edição de destino.",
+      });
+
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Mover o caderno "${section.name}" para ${target.label}? Ele leva junto as posições, as publicações de contrato e as vendas avulsas que estão nele.`
+      )
+    ) {
+      return;
+    }
+
+    setMessage(null);
+
+    startTransition(async () => {
+      const result =
+        await moveEditionSection({
+          sectionId: section.id,
+          editionId,
+          targetEditionId: target.id,
+        });
+
+      if (!result.success) {
+        setMessage({
+          type: "error",
+          text: result.message,
+        });
+
+        return;
+      }
+
+      setMovingSectionId(null);
+      setMoveTargetId("");
+
+      setMessage({
+        type: "success",
+        text: `Caderno movido para ${result.targetName}. Foram junto ${result.publications} publicação(ões) de contrato e ${result.sales} venda(s) avulsa(s).`,
       });
     });
   }
@@ -1037,6 +1108,31 @@ export default function SectionsManagement({
                             : "Ativar"}
                         </button>
 
+                        {otherEditions.length >
+                          0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMoveTargetId("");
+
+                              setMovingSectionId(
+                                movingSectionId ===
+                                  section.id
+                                  ? null
+                                  : section.id
+                              );
+                            }}
+                            disabled={
+                              isPending
+                            }
+                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 transition hover:border-[#15704f] hover:text-[#15704f] disabled:opacity-50"
+                          >
+                            <ArrowRightLeft className="h-3.5 w-3.5" />
+
+                            Mover de edição
+                          </button>
+                        )}
+
                         <button
                           type="button"
                           onClick={() =>
@@ -1056,6 +1152,68 @@ export default function SectionsManagement({
                       </div>
                     )}
                   </div>
+
+                  {movingSectionId ===
+                    section.id && (
+                    <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 bg-slate-50 px-5 py-4">
+                      <span className="text-sm font-medium text-slate-700">
+                        Mover este caderno para:
+                      </span>
+
+                      <select
+                        value={moveTargetId}
+                        onChange={(event) =>
+                          setMoveTargetId(
+                            event.target.value
+                          )
+                        }
+                        className="input h-10 min-w-[260px]"
+                      >
+                        <option value="">
+                          Escolha a edição...
+                        </option>
+
+                        {otherEditions.map(
+                          (item) => (
+                            <option
+                              key={item.id}
+                              value={item.id}
+                            >
+                              {item.label}
+                            </option>
+                          )
+                        )}
+                      </select>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleMove(section)
+                        }
+                        disabled={
+                          isPending ||
+                          !moveTargetId
+                        }
+                        className="inline-flex h-10 items-center rounded-xl bg-[#15704f] px-4 text-sm font-semibold text-white disabled:opacity-50"
+                      >
+                        {isPending
+                          ? "Movendo..."
+                          : "Mover"}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMovingSectionId(
+                            null
+                          )
+                        }
+                        className="text-sm font-medium text-slate-500 hover:text-slate-900"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
 
                   {/* META */}
 
