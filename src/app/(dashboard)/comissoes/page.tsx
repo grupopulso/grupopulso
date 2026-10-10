@@ -10,6 +10,7 @@ import {
   Clock3,
   FileText,
   HandCoins,
+  HelpCircle,
   Hourglass,
   ShoppingCart,
   UserRound,
@@ -2103,6 +2104,58 @@ function CommissionStatusBadge({
  * =====================================================
  */
 
+/*
+ * Explicações que aparecem ao passar o mouse em cada termo da
+ * tela (cards e cabeçalhos das tabelas), indexadas pelo texto do
+ * rótulo.
+ */
+const HINTS: Record<string, string> = {
+  "Valor das origens":
+    "Soma do valor das vendas e contratos que geraram comissão — a base sobre a qual a porcentagem é calculada. Cada venda ou contrato conta uma vez só.",
+
+  Origens:
+    "Quantidade de vendas e contratos diferentes que geraram comissão para essa pessoa.",
+
+  Valor:
+    "Soma do valor dessas vendas e contratos (a base de cálculo da comissão).",
+
+  Prevista:
+    "Total de comissão que a pessoa vai receber quando os clientes pagarem tudo (valor da venda ou contrato × porcentagem).",
+
+  Liberada:
+    "Parte da comissão já liberada porque o cliente já pagou. Ela vai sendo liberada proporcionalmente, conforme os pagamentos dos clientes entram.",
+
+  "Em pagamento":
+    "Parte que já foi pedida para pagar (a despesa da comissão foi gerada) mas ainda não foi paga.",
+
+  Paga:
+    "Parte da comissão que já foi efetivamente paga ao beneficiário.",
+
+  Disponível:
+    "O que já pode ser pago agora: Liberada − Paga − Em pagamento.",
+
+  "A liberar":
+    "O que ainda depende de o cliente pagar: Prevista − Liberada.",
+
+  Beneficiário:
+    "Pessoa que recebe a comissão (o vendedor ou quem tem regra de repasse sobre ele).",
+
+  Origem:
+    "De onde veio a comissão: de uma venda de anúncio numa edição ou de um contrato.",
+
+  Referência:
+    "A edição (no caso de venda) ou o contrato que gerou a comissão.",
+
+  "%":
+    "Porcentagem de comissão aplicada sobre o valor da venda ou do contrato.",
+
+  Status:
+    "Situação da comissão: Pendente (nada liberado ainda), Liberada ou Liberada parcialmente (o cliente já pagou tudo ou parte), Paga ou Paga parcialmente, ou Cancelada.",
+
+  Ação:
+    "\"Pagar\" gera a despesa com o valor disponível. \"Ver venda\" / \"Ver contrato\" abre a origem da comissão.",
+};
+
 function SummaryCard({
   icon: Icon,
   label,
@@ -2116,13 +2169,28 @@ function SummaryCard({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div
+      className="rounded-2xl border border-slate-200 bg-white p-5"
+      title={HINTS[label]}
+    >
       <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-[#15704f]">
         <Icon className="h-4 w-4" />
       </div>
 
-      <p className="mt-4 text-sm text-slate-500">
-        {label}
+      <p className="mt-4 flex items-center gap-1.5 text-sm text-slate-500">
+        <span
+          className={
+            HINTS[label]
+              ? "cursor-help underline decoration-dotted underline-offset-4"
+              : undefined
+          }
+        >
+          {label}
+        </span>
+
+        {HINTS[label] && (
+          <HelpCircle className="h-3.5 w-3.5 text-slate-300" />
+        )}
       </p>
 
       <p className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
@@ -2144,9 +2212,25 @@ function TableHeader({
   children:
     React.ReactNode;
 }) {
+  const hint =
+    typeof children === "string"
+      ? HINTS[children.trim()]
+      : undefined;
+
   return (
-    <th className="whitespace-nowrap px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-      {children}
+    <th
+      title={hint}
+      className="whitespace-nowrap px-6 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500"
+    >
+      <span
+        className={
+          hint
+            ? "cursor-help underline decoration-dotted underline-offset-4"
+            : undefined
+        }
+      >
+        {children}
+      </span>
     </th>
   );
 }
