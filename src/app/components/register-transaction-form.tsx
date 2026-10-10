@@ -20,7 +20,14 @@ import {
 import {
   getRegisterTransactionFormData,
   registerFinancialTransaction,
+  registerGroupTransactions,
 } from "@/app/(dashboard)/financeiro/[id]/actions";
+
+type Sibling = {
+  id: string;
+  companyName: string;
+  openAmount: number;
+};
 
 type Props = {
   entryId: string;
@@ -121,6 +128,34 @@ export default function RegisterTransactionForm({
     setNotes,
   ] =
     useState("");
+
+  /*
+   * Despesa dividida entre empresas: as outras partes do rateio
+   * (com saldo em aberto) e se a baixa vale pra todas de uma vez.
+   */
+  const [
+    siblings,
+    setSiblings,
+  ] =
+    useState<Sibling[]>([]);
+
+  const [
+    groupPay,
+    setGroupPay,
+  ] =
+    useState(true);
+
+  const groupActive =
+    groupPay &&
+    siblings.length > 0;
+
+  const groupTotal =
+    openAmount +
+    siblings.reduce(
+      (sum, item) =>
+        sum + item.openAmount,
+      0
+    );
 
   const [
     loading,
@@ -226,6 +261,11 @@ export default function RegisterTransactionForm({
         accounts
       );
 
+      setSiblings(
+        (result.siblings ??
+          []) as Sibling[]
+      );
+
       /*
        * Se existe somente uma
        * conta para a empresa,
@@ -312,9 +352,10 @@ export default function RegisterTransactionForm({
       );
 
     if (
-      numericAmount <= 0 ||
-      numericAmount >
-        openAmount
+      !groupActive &&
+      (numericAmount <= 0 ||
+        numericAmount >
+          openAmount)
     ) {
       setError(
         "Informe um valor válido, limitado ao saldo em aberto."
@@ -373,25 +414,40 @@ export default function RegisterTransactionForm({
     setError("");
 
     try {
-      const result =
-        await registerFinancialTransaction(
-          entryId,
-          {
-            amount:
-              numericAmount,
+      const result = groupActive
+        ? await registerGroupTransactions(
+            entryId,
+            {
+              date,
 
-            date,
+              paymentMethod:
+                selectedMethod.code,
 
-            paymentMethod:
-              selectedMethod.code,
+              financialAccountId,
 
-            financialAccountId,
+              notes:
+                notes.trim() ||
+                undefined,
+            }
+          )
+        : await registerFinancialTransaction(
+            entryId,
+            {
+              amount:
+                numericAmount,
 
-            notes:
-              notes.trim() ||
-              undefined,
-          }
-        );
+              date,
+
+              paymentMethod:
+                selectedMethod.code,
+
+              financialAccountId,
+
+              notes:
+                notes.trim() ||
+                undefined,
+            }
+          );
 
       if (
         !result.success
@@ -535,6 +591,51 @@ export default function RegisterTransactionForm({
         )}
 
         <div className="mt-6 space-y-5">
+          {/* RATEIO ENTRE EMPRESAS */}
+
+          {siblings.length > 0 && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <input
+                type="checkbox"
+                checked={groupPay}
+                onChange={(event) =>
+                  setGroupPay(
+                    event.target.checked
+                  )
+                }
+                disabled={loading}
+                className="mt-1 h-4 w-4"
+              />
+
+              <span className="text-sm text-slate-700">
+                <strong className="block text-slate-900">
+                  Dar baixa em todas as{" "}
+                  {siblings.length + 1} empresas
+                  deste rateio de uma vez
+                </strong>
+
+                Esta despesa foi dividida entre
+                empresas. Marcado, quita o saldo de
+                todas ({formatCurrency(groupTotal)}
+                {" no total"}) com a mesma data, forma
+                e conta (nas outras empresas é usada a
+                conta de mesmo nome). Desmarcado, dá a
+                baixa só desta empresa.
+                <span className="mt-1 block text-xs text-slate-500">
+                  Outras partes:{" "}
+                  {siblings
+                    .map(
+                      (item) =>
+                        `${item.companyName} ${formatCurrency(
+                          item.openAmount
+                        )}`
+                    )
+                    .join(" · ")}
+                </span>
+              </span>
+            </label>
+          )}
+
           {/* CONTA */}
 
           <Field
@@ -610,7 +711,11 @@ export default function RegisterTransactionForm({
           <Field label="Valor">
             <input
               value={
-                amount
+                groupActive
+                  ? formatValue(
+                      groupTotal
+                    )
+                  : amount
               }
               onChange={(
                 event
@@ -622,7 +727,8 @@ export default function RegisterTransactionForm({
               }
               required
               disabled={
-                loading
+                loading ||
+                groupActive
               }
               inputMode="decimal"
               className="input disabled:bg-slate-50"

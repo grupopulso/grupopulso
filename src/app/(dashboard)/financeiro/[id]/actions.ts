@@ -26,6 +26,10 @@ import {
   getCompanyShareFactor,
 } from "@/app/lib/tv-indoor";
 
+import {
+  calculateEntryOpenAmount,
+} from "@/app/lib/financial-entry-status";
+
 /*
  * =====================================================
  * DADOS DO FORMULÁRIO DE MOVIMENTAÇÃO
@@ -40,6 +44,65 @@ import {
  * certa.
  */
 
+/*
+ * Despesa lançada para várias empresas vira um lançamento por
+ * empresa, todos criados no MESMO insert (mesmo created_at) com a
+ * mesma descrição e vencimento - é assim que as partes de um
+ * rateio são reconhecidas, sem coluna de vínculo. Devolve as
+ * OUTRAS partes (não canceladas) do rateio de `entry`.
+ */
+async function findExpenseSiblings(
+  adminDb: ReturnType<typeof createAdminClient>,
+  entry: {
+    id: string;
+    type: string;
+    created_at: string;
+    description: string;
+    due_date: string;
+  }
+) {
+  if (entry.type !== "expense") {
+    return [];
+  }
+
+  const { data } = await adminDb
+    .from("financial_entries")
+    .select(`
+      id,
+      company_id,
+      amount,
+      amount_paid,
+      interest,
+      fine,
+      discount,
+      status,
+      company:companies (
+        name
+      )
+    `)
+    .eq("type", "expense")
+    .eq("created_at", entry.created_at)
+    .eq("description", entry.description)
+    .eq("due_date", entry.due_date)
+    .neq("id", entry.id)
+    .neq("status", "cancelled");
+
+  return (data ?? []).map((row) => {
+    const company = Array.isArray(row.company)
+      ? row.company[0]
+      : row.company;
+
+    return {
+      id: row.id as string,
+      companyId: row.company_id as string,
+      companyName:
+        (company?.name as string | undefined) ??
+        "Empresa",
+      openAmount: calculateEntryOpenAmount(row),
+    };
+  });
+}
+
 export async function getRegisterTransactionFormData(
   entryId: string
 ) {
@@ -53,7 +116,10 @@ export async function getRegisterTransactionFormData(
     .select(`
       id,
       company_id,
-      type
+      type,
+      created_at,
+      description,
+      due_date
     `)
     .eq("id", entryId)
     .maybeSingle();
@@ -125,12 +191,244 @@ export async function getRegisterTransactionFormData(
     );
   }
 
+  const siblings = (
+    await findExpenseSiblings(adminDb, entry)
+  ).filter((item) => item.openAmount > 0);
+
   return {
     success: true as const,
     paymentMethods:
       methodsResult.data ?? [],
     financialAccounts:
       accountsResult.data ?? [],
+
+    /*
+     * Outras empresas do mesmo rateio ainda com saldo em aberto
+     * (permite dar a baixa em todas de uma vez).
+     */
+    siblings,
+  };
+}
+
+/*
+ * =====================================================
+ * BAIXA EM TODAS AS EMPRESAS DO RATEIO
+ * =====================================================
+ *
+ * Quita o saldo em aberto deste lançamento E das outras empresas
+ * do mesmo rateio, de uma vez, com a mesma data, forma e
+ * observação. A conta escolhida vale pra empresa do lançamento;
+ * nas outras usa a conta de mesmo nome e tipo da empresa delas
+ * (as contas são por empresa). Se alguma empresa não tiver conta
+ * equivalente, nada é baixado.
+ */
+
+export async function registerGroupTransactions(
+  entryId: string,
+  input: {
+    date: string;
+    paymentMethod: string;
+    financialAccountId: string;
+    notes?: string;
+  }
+) {
+  await requireAuthenticatedUser();
+
+  const adminDb = createAdminClient();
+
+  const { data: entry } = await adminDb
+    .from("financial_entries")
+    .select(`
+      id,
+      company_id,
+      type,
+      created_at,
+      description,
+      due_date,
+      amount,
+      amount_paid,
+      interest,
+      fine,
+      discount,
+      status
+    `)
+    .eq("id", entryId)
+    .maybeSingle();
+
+  if (!entry) {
+    return {
+      success: false as const,
+      message: "Lançamento não encontrado.",
+    };
+  }
+
+  if (entry.type !== "expense") {
+    return {
+      success: false as const,
+      message:
+        "A baixa em todas as empresas vale só para despesas.",
+    };
+  }
+
+  await requireFinancialEntryAccess(
+    "expense",
+    "edit"
+  );
+
+  await requireCompanyAccess(
+    entry.company_id
+  );
+
+  const siblings =
+    await findExpenseSiblings(adminDb, entry);
+
+  const { data: company } = await adminDb
+    .from("companies")
+    .select("name")
+    .eq("id", entry.company_id)
+    .maybeSingle();
+
+  const parts = [
+    {
+      id: entry.id,
+      companyId: entry.company_id,
+      companyName: company?.name ?? "Empresa",
+      openAmount:
+        calculateEntryOpenAmount(entry),
+    },
+    ...siblings,
+  ].filter((part) => part.openAmount > 0);
+
+  if (parts.length === 0) {
+    return {
+      success: false as const,
+      message:
+        "Não há saldo em aberto neste rateio.",
+    };
+  }
+
+  for (const part of parts) {
+    await requireCompanyAccess(part.companyId);
+  }
+
+  const { data: chosen } = await adminDb
+    .from("financial_accounts")
+    .select("id, company_id, name, type, active")
+    .eq("id", input.financialAccountId)
+    .maybeSingle();
+
+  if (!chosen || !chosen.active) {
+    return {
+      success: false as const,
+      message:
+        "Conta financeira inválida ou inativa.",
+    };
+  }
+
+  /*
+   * Conta de cada parte: a escolhida (se for da empresa ou
+   * compartilhada) ou a de mesmo nome e tipo na empresa dela.
+   */
+  const accountByEntry = new Map<
+    string,
+    string
+  >();
+
+  const missing: string[] = [];
+
+  for (const part of parts) {
+    if (
+      !chosen.company_id ||
+      chosen.company_id === part.companyId
+    ) {
+      accountByEntry.set(part.id, chosen.id);
+
+      continue;
+    }
+
+    const { data: candidates } = await adminDb
+      .from("financial_accounts")
+      .select("id, name, type")
+      .eq("company_id", part.companyId)
+      .eq("active", true);
+
+    const wantedName = chosen.name
+      .trim()
+      .toLocaleLowerCase("pt-BR");
+
+    const equivalent =
+      (candidates ?? []).find(
+        (item) =>
+          item.name
+            .trim()
+            .toLocaleLowerCase("pt-BR") ===
+            wantedName &&
+          item.type === chosen.type
+      ) ??
+      (candidates ?? []).find(
+        (item) =>
+          item.name
+            .trim()
+            .toLocaleLowerCase("pt-BR") ===
+          wantedName
+      );
+
+    if (equivalent) {
+      accountByEntry.set(
+        part.id,
+        equivalent.id
+      );
+    } else {
+      missing.push(part.companyName);
+    }
+  }
+
+  if (missing.length > 0) {
+    return {
+      success: false as const,
+      message: `Não achei uma conta "${chosen.name}" ativa em: ${missing.join(
+        ", "
+      )}. Cadastre a conta nessa(s) empresa(s) ou dê a baixa de cada empresa separadamente.`,
+    };
+  }
+
+  const done: string[] = [];
+
+  for (const part of parts) {
+    const result =
+      await registerFinancialTransaction(
+        part.id,
+        {
+          amount: part.openAmount,
+          date: input.date,
+          paymentMethod: input.paymentMethod,
+          financialAccountId:
+            accountByEntry.get(part.id)!,
+          notes: input.notes,
+        }
+      );
+
+    if (!result.success) {
+      return {
+        success: false as const,
+        message: `${
+          done.length > 0
+            ? `Já foi dada a baixa em: ${done.join(
+                ", "
+              )}. `
+            : ""
+        }Falhou em ${part.companyName}: ${
+          result.message ?? "erro ao registrar."
+        } Dê a baixa de novo para quitar o restante.`,
+      };
+    }
+
+    done.push(part.companyName);
+  }
+
+  return {
+    success: true as const,
+    companies: done,
   };
 }
 

@@ -368,6 +368,39 @@ export default function FinancialEntryForm({
     });
   }
 
+  /*
+   * "Grupo Pulso": marca todas as empresas de uma vez e divide o
+   * valor igualmente (dá pra ajustar depois). Clicar de novo volta
+   * pra uma empresa só.
+   */
+  function toggleAllCompanies() {
+    const allIds = companies.map(
+      (company) => company.id
+    );
+
+    const allSelected =
+      allIds.length > 0 &&
+      allIds.every((id) =>
+        companyIds.includes(id)
+      );
+
+    if (allSelected) {
+      setCompanyIds(allIds.slice(0, 1));
+      setCompanyValues({});
+
+      return;
+    }
+
+    setCompanyIds(allIds);
+
+    setCompanyValues(
+      buildEqualSplit(
+        parseMoney(amount),
+        allIds
+      )
+    );
+  }
+
   function handleCompanyValueChange(
     id: string,
     value: string
@@ -916,6 +949,25 @@ export default function FinancialEntryForm({
               </span>
 
               <div className="flex flex-wrap gap-2">
+                {companies.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggleAllCompanies}
+                    title="Marca todas as empresas e divide o valor igualmente"
+                    className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      companies.every((company) =>
+                        companyIds.includes(
+                          company.id
+                        )
+                      )
+                        ? "border-[#15704f] bg-[#15704f] text-white"
+                        : "border-[#15704f]/40 text-[#15704f] hover:bg-[#15704f]/10"
+                    }`}
+                  >
+                    Grupo Pulso (todas)
+                  </button>
+                )}
+
                 {companies.map(
                   (company) => {
                     const selected =
@@ -1000,6 +1052,14 @@ export default function FinancialEntryForm({
                       );
                     })}
                   </div>
+
+                  {entryType === "expense" && (
+                    <p className="text-xs text-slate-500">
+                      Cada empresa vira um lançamento,
+                      mas a baixa pode ser dada em todas
+                      de uma vez na hora de pagar.
+                    </p>
+                  )}
 
                   <div className="flex items-center justify-between border-t border-slate-200 pt-3 text-xs">
                     <span className="text-slate-500">
