@@ -6,6 +6,7 @@ import {
   FileClock,
   Search,
   ShieldCheck,
+  Star,
   UserRound,
 } from "lucide-react";
 
@@ -53,6 +54,7 @@ const MODULE_LABELS: Record<string, string> = {
   products: "Produtos",
   contracts: "Contratos",
   prospecting: "Prospecção",
+  feedback: "Avaliação do sistema",
   financial: "Financeiro",
   accounts_receivable: "Contas a Receber",
   accounts_payable: "Contas a Pagar",
@@ -219,6 +221,14 @@ export default async function AuditoriaPage({
           >
             <UserRound className="h-4 w-4" />
             Usuários inativos
+          </Link>
+
+          <Link
+            href="/configuracoes/avaliacoes"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 transition hover:border-[#15704f]/40 hover:text-[#15704f]"
+          >
+            <Star className="h-4 w-4" />
+            Avaliações do sistema
           </Link>
         </div>
 

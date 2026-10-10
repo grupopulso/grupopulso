@@ -2,6 +2,9 @@ import { cookies } from "next/headers";
 
 import AppShell from "@/app/components/app-shell";
 import { CompanyProvider } from "@/app/components/company-provider";
+import FeedbackPrompt from "@/app/components/feedback-prompt";
+import { hasAnsweredFeedback } from "@/app/lib/feedback";
+import { getFeedbackModulesForUser } from "@/app/lib/feedback-modules";
 
 import { createClient } from "@/app/lib/supabase/server";
 
@@ -104,6 +107,9 @@ export default async function DashboardLayout({
       ) as Company[];
   }
 
+  const alreadyAnswered =
+    await hasAnsweredFeedback(user.id);
+
   const cookieStore =
     await cookies();
 
@@ -156,6 +162,14 @@ export default async function DashboardLayout({
       >
         {children}
       </AppShell>
+
+      <FeedbackPrompt
+        show={!alreadyAnswered}
+        modules={getFeedbackModulesForUser(
+          access.profile.role,
+          access.permissions
+        )}
+      />
     </CompanyProvider>
   );
 }
