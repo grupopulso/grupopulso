@@ -268,9 +268,12 @@ export async function getExpenseEditData(
  * EXCLUIR DESPESA
  * =====================================================
  *
- * Só exclui despesa sem nenhum pagamento registrado (excluir
- * uma já paga apagaria o histórico do caixa) e que não nasceu
- * de comissão/retirada de sócio (o registro de origem ficaria
+ * Despesa já paga também pode ser excluída (pedido do cliente,
+ * pra apagar um lançamento feito errado e refazer certo): cada
+ * pagamento é desfeito e o valor VOLTA pra conta de onde saiu
+ * (o pagamento de despesa subtrai do saldo da conta, então a
+ * devolução soma de volta). Não exclui despesa que nasceu de
+ * comissão/retirada de sócio (o registro de origem ficaria
  * apontando pra um lançamento que não existe mais).
  */
 
@@ -324,24 +327,133 @@ export async function deleteExpenseEntry(
     };
   }
 
-  const { count: transactionCount } =
+  const { data: transactions } =
     await adminDb
       .from("financial_transactions")
-      .select("id", {
-        count: "exact",
-        head: true,
-      })
+      .select(
+        "id, financial_account_id, amount, transaction_date, payment_method, notes"
+      )
       .eq("financial_entry_id", entry.id);
 
-  if (
-    Number(entry.amount_paid) > 0 ||
-    (transactionCount ?? 0) > 0
+  /*
+   * Valor a devolver por conta (centavos, pra não acumular erro de
+   * ponto flutuante).
+   */
+  const refundByAccount = new Map<
+    string,
+    number
+  >();
+
+  for (const tx of transactions ?? []) {
+    if (!tx.financial_account_id) {
+      continue;
+    }
+
+    refundByAccount.set(
+      tx.financial_account_id,
+      (refundByAccount.get(
+        tx.financial_account_id
+      ) ?? 0) +
+        Math.round(Number(tx.amount) * 100)
+    );
+  }
+
+  /*
+   * Devolve o valor às contas (com compare-and-swap no saldo lido,
+   * pra não atropelar outro lançamento simultâneo). Se algum passo
+   * seguinte falhar, desfaz as devoluções já feitas.
+   */
+  const refunded: {
+    accountId: string;
+    cents: number;
+  }[] = [];
+
+  async function adjustBalance(
+    accountId: string,
+    cents: number
   ) {
-    return {
-      success: false as const,
-      message:
-        "Esta despesa já tem pagamento registrado e não pode ser excluída.",
-    };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: account } = await adminDb
+        .from("financial_accounts")
+        .select("current_balance")
+        .eq("id", accountId)
+        .maybeSingle();
+
+      if (!account) {
+        return false;
+      }
+
+      const next =
+        Math.round(
+          Number(account.current_balance) *
+            100 +
+            cents
+        ) / 100;
+
+      const { data: updated } = await adminDb
+        .from("financial_accounts")
+        .update({ current_balance: next })
+        .eq("id", accountId)
+        .eq(
+          "current_balance",
+          account.current_balance
+        )
+        .select("id");
+
+      if (updated?.length) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  async function undoRefunds() {
+    for (const item of refunded) {
+      await adjustBalance(
+        item.accountId,
+        -item.cents
+      );
+    }
+  }
+
+  for (const [
+    accountId,
+    cents,
+  ] of refundByAccount) {
+    if (await adjustBalance(accountId, cents)) {
+      refunded.push({ accountId, cents });
+    } else {
+      await undoRefunds();
+
+      return {
+        success: false as const,
+        message:
+          "Não foi possível devolver o valor à conta. Nada foi excluído; tente de novo.",
+      };
+    }
+  }
+
+  if ((transactions ?? []).length > 0) {
+    const { error: txError } = await adminDb
+      .from("financial_transactions")
+      .delete()
+      .eq("financial_entry_id", entry.id);
+
+    if (txError) {
+      console.error(
+        "Erro ao excluir pagamentos da despesa:",
+        txError
+      );
+
+      await undoRefunds();
+
+      return {
+        success: false as const,
+        message:
+          "Não foi possível desfazer o pagamento da despesa.",
+      };
+    }
   }
 
   const { error } = await adminDb
@@ -355,6 +467,30 @@ export async function deleteExpenseEntry(
       error
     );
 
+    /*
+     * Recria os pagamentos apagados e desfaz a devolução, pra
+     * deixar tudo como estava.
+     */
+    if ((transactions ?? []).length > 0) {
+      await adminDb
+        .from("financial_transactions")
+        .insert(
+          (transactions ?? []).map((tx) => ({
+            id: tx.id,
+            financial_entry_id: entry.id,
+            financial_account_id:
+              tx.financial_account_id,
+            amount: tx.amount,
+            transaction_date:
+              tx.transaction_date,
+            payment_method: tx.payment_method,
+            notes: tx.notes,
+          }))
+        );
+    }
+
+    await undoRefunds();
+
     return {
       success: false as const,
       message:
@@ -362,20 +498,46 @@ export async function deleteExpenseEntry(
     };
   }
 
+  const refundedTotal =
+    Array.from(refundByAccount.values()).reduce(
+      (sum, cents) => sum + cents,
+      0
+    ) / 100;
+
   await createAuditLog({
     module: "financial",
     action: "delete",
     entityType: "financial_entry",
     entityId: entry.id,
-    description: `Despesa excluída: ${entry.description}.`,
-    oldData: entry,
+    description:
+      refundedTotal > 0
+        ? `Despesa excluída: ${entry.description}. R$ ${refundedTotal.toLocaleString(
+            "pt-BR",
+            { minimumFractionDigits: 2 }
+          )} devolvido(s) às contas.`
+        : `Despesa excluída: ${entry.description}.`,
+    oldData: {
+      entry,
+      transactions: transactions ?? [],
+    },
+    newData: {
+      refunded: refunded.map((item) => ({
+        accountId: item.accountId,
+        amount: item.cents / 100,
+      })),
+    },
   });
 
   revalidatePath("/financeiro");
   revalidatePath("/financeiro/pagar");
+  revalidatePath("/financeiro/pagamentos");
   revalidatePath("/financeiro/fluxo");
+  revalidatePath("/financeiro/configuracoes/contas");
 
-  return { success: true as const };
+  return {
+    success: true as const,
+    refundedTotal,
+  };
 }
 
 /*

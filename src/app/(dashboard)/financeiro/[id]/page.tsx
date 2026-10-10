@@ -371,7 +371,6 @@ charge_sent_at,
 
             {entry.type === "expense" &&
               calculatedStatus !== "cancelled" &&
-              Number(entry.amount_paid) === 0 &&
               canAccessFinancialEntry(
                 currentAccess,
                 "expense",
@@ -382,6 +381,9 @@ charge_sent_at,
                   description={
                     entry.description
                   }
+                  paidAmount={Number(
+                    entry.amount_paid
+                  )}
                 />
               )}
 

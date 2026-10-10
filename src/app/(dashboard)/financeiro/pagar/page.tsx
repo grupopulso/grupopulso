@@ -690,18 +690,18 @@ export default async function ContasPagarPage({
                               Editar
                             </Link>
 
-                            {canDelete &&
-                              Number(
-                                entry.amount_paid
-                              ) === 0 && (
-                                <DeleteExpenseButton
-                                  variant="row"
-                                  entryId={entry.id}
-                                  description={
-                                    entry.description
-                                  }
-                                />
-                              )}
+                            {canDelete && (
+                              <DeleteExpenseButton
+                                variant="row"
+                                entryId={entry.id}
+                                description={
+                                  entry.description
+                                }
+                                paidAmount={Number(
+                                  entry.amount_paid
+                                )}
+                              />
+                            )}
                           </div>
                         ) : (
                           <span className="text-xs text-slate-300">

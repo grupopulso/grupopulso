@@ -16,10 +16,12 @@ import { deleteExpenseEntry } from "./edit-actions";
 export default function DeleteExpenseButton({
   entryId,
   description,
+  paidAmount = 0,
   variant = "page",
 }: {
   entryId: string;
   description: string;
+  paidAmount?: number;
   variant?: "page" | "row";
 }) {
   const router = useRouter();
@@ -32,9 +34,20 @@ export default function DeleteExpenseButton({
   function handleDelete() {
     setError("");
 
+    const paidText =
+      paidAmount > 0
+        ? ` O pagamento de ${paidAmount.toLocaleString(
+            "pt-BR",
+            {
+              style: "currency",
+              currency: "BRL",
+            }
+          )} será desfeito e o valor volta para a conta de onde saiu.`
+        : "";
+
     if (
       !window.confirm(
-        `Excluir a despesa "${description}"? Essa ação não pode ser desfeita.`
+        `Excluir a despesa "${description}"?${paidText} Essa ação não pode ser desfeita.`
       )
     ) {
       return;
@@ -52,6 +65,18 @@ export default function DeleteExpenseButton({
         }
 
         return;
+      }
+
+      if (result.refundedTotal > 0) {
+        window.alert(
+          `Despesa excluída. ${result.refundedTotal.toLocaleString(
+            "pt-BR",
+            {
+              style: "currency",
+              currency: "BRL",
+            }
+          )} voltaram para a conta.`
+        );
       }
 
       if (variant === "row") {
