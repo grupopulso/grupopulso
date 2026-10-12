@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -412,10 +413,11 @@ export default async function MeuPainelPage({
 
   if (contractIds.length > 0) {
     const { data: entriesRaw } =
-      await supabase
-        .from("financial_entries")
-        .select(
-          `
+      await fetchAllRows((from, to) =>
+        supabase
+          .from("financial_entries")
+          .select(
+            `
           id,
           contract_id,
           description,
@@ -428,12 +430,15 @@ export default async function MeuPainelPage({
           status,
           client:clients ( id, name )
         `
-        )
-        .in("contract_id", contractIds)
-        .eq("type", "income")
-        .neq("status", "cancelled")
-        .gte("due_date", periodStart)
-        .lte("due_date", periodEndInclusive);
+          )
+          .in("contract_id", contractIds)
+          .eq("type", "income")
+          .neq("status", "cancelled")
+          .gte("due_date", periodStart)
+          .lte("due_date", periodEndInclusive)
+          .order("id")
+          .range(from, to)
+      );
 
     const contractTitleById = new Map(
       myContracts.map((contract) => [

@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
@@ -67,36 +68,40 @@ export default async function PagamentosPage({
       : "";
 
   const { data: transactions, error } =
-    await adminDb
-      .from("financial_transactions")
-      .select(`
-        id,
-        amount,
-        transaction_date,
-        payment_method,
-        notes,
-
-        financial_entry:financial_entries (
+    await fetchAllRows((from, to) =>
+      adminDb
+        .from("financial_transactions")
+        .select(`
           id,
-          company_id,
-          type,
-          description,
+          amount,
+          transaction_date,
+          payment_method,
+          notes,
 
-          supplier:suppliers (
+          financial_entry:financial_entries (
             id,
-            name
-          ),
+            company_id,
+            type,
+            description,
 
-          company:companies (
-            id,
-            name,
-            color
+            supplier:suppliers (
+              id,
+              name
+            ),
+
+            company:companies (
+              id,
+              name,
+              color
+            )
           )
-        )
       `)
-      .order("transaction_date", {
-        ascending: false,
-      });
+        .order("transaction_date", {
+          ascending: false,
+        })
+        .order("id")
+        .range(from, to)
+    );
 
   if (error) {
     console.error(

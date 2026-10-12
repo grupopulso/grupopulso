@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -190,11 +191,13 @@ export default async function FinanceiroPage({
   const {
     data: entriesData,
     error,
-  } = await query.order(
-    "due_date",
-    {
-      ascending: true,
-    }
+  } = await fetchAllRows((from, to) =>
+    query
+      .order("due_date", {
+        ascending: true,
+      })
+      .order("id")
+      .range(from, to)
   );
 
   if (error) {

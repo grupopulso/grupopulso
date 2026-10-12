@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -151,12 +152,16 @@ export default async function SociosFinanceiroPage({
           .eq("company_id", company.id)
           .order("created_at"),
 
-        supabase
-          .from("financial_entries")
-          .select("id, type, amount_paid, product_id")
-          .eq("company_id", company.id)
-          .gte("due_date", month.start)
-          .lte("due_date", month.end),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("financial_entries")
+            .select("id, type, amount_paid, product_id")
+            .eq("company_id", company.id)
+            .gte("due_date", month.start)
+            .lte("due_date", month.end)
+            .order("id")
+            .range(from, to)
+        ),
 
         supabase
           .from("partner_withdrawals")

@@ -137,20 +137,24 @@ function canAccessCompany(
         .range(from, to)
     ),
 
-    supabase
-      .from("financial_entries")
-      .select(`
-        id,
-        company_id,
-        type,
-        due_date,
-        amount,
-        amount_paid,
-        interest,
-        fine,
-        discount,
-        status
-      `),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("financial_entries")
+        .select(`
+          id,
+          company_id,
+          type,
+          due_date,
+          amount,
+          amount_paid,
+          interest,
+          fine,
+          discount,
+          status
+        `)
+        .order("id")
+        .range(from, to)
+    ),
 
     supabase
       .from("delivery_routes")

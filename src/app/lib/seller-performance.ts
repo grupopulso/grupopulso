@@ -23,6 +23,7 @@
  *     -> sale_id -> edition_sales.seller_user_id.
  */
 
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import {
   competenceQueryRangeForYear,
   getEntryCompetenceMonth,
@@ -58,6 +59,62 @@ export async function fetchSellerCompetenceRecords(
       params.year
     );
 
+  type EntryRow = {
+    id: string;
+    company_id: string;
+    due_date: string;
+    competence_date: string | null;
+    amount: number | string;
+    status: string;
+    contract_id: string | null;
+    contract:
+      | {
+          billing_frequency: string | null;
+          start_date: string | null;
+        }
+      | {
+          billing_frequency: string | null;
+          start_date: string | null;
+        }[]
+      | null;
+  };
+
+  const entriesFetch =
+  fetchAllRows<EntryRow>((from, to) =>
+    supabase
+      .from("financial_entries")
+      .select(`
+        id,
+        company_id,
+        due_date,
+        competence_date,
+        amount,
+        status,
+        contract_id,
+
+        contract:contracts (
+          billing_frequency,
+          start_date
+        )
+      `)
+      .eq("type", "income")
+      .neq("status", "cancelled")
+      .gte(
+        "due_date",
+        dueRange.start
+      )
+      .lte(
+        "due_date",
+        dueRange.end
+      )
+      .in(
+        "company_id",
+        params.companyIds
+      )
+      .order("id")
+      .range(from, to)
+  );
+
   const [
     companiesResult,
     contractCommissionsResult,
@@ -89,36 +146,7 @@ export async function fetchSellerCompetenceRecords(
         params.userIds
       ),
 
-    supabase
-      .from("financial_entries")
-      .select(`
-        id,
-        company_id,
-        due_date,
-        competence_date,
-        amount,
-        status,
-        contract_id,
-
-        contract:contracts (
-          billing_frequency,
-          start_date
-        )
-      `)
-      .eq("type", "income")
-      .neq("status", "cancelled")
-      .gte(
-        "due_date",
-        dueRange.start
-      )
-      .lte(
-        "due_date",
-        dueRange.end
-      )
-      .in(
-        "company_id",
-        params.companyIds
-      ),
+    entriesFetch,
   ]);
 
   const slugByCompany = new Map<

@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -231,36 +232,40 @@ export default async function RelatorioMetasPage({
       );
 
     const { data: entriesData } =
-      await supabase
-        .from("financial_entries")
-        .select(`
-          company_id,
-          due_date,
-          competence_date,
-          amount,
-          status,
-          type,
-          contract_id,
+      await fetchAllRows((from, to) =>
+        supabase
+          .from("financial_entries")
+          .select(`
+            company_id,
+            due_date,
+            competence_date,
+            amount,
+            status,
+            type,
+            contract_id,
 
-          contract:contracts (
-            billing_frequency,
-            start_date
+            contract:contracts (
+              billing_frequency,
+              start_date
+            )
+          `)
+          .eq("type", "income")
+          .neq("status", "cancelled")
+          .gte(
+            "due_date",
+            dueRange.start
           )
-        `)
-        .eq("type", "income")
-        .neq("status", "cancelled")
-        .gte(
-          "due_date",
-          dueRange.start
-        )
-        .lte(
-          "due_date",
-          dueRange.end
-        )
-        .in(
-          "company_id",
-          companyIds
-        );
+          .lte(
+            "due_date",
+            dueRange.end
+          )
+          .in(
+            "company_id",
+            companyIds
+          )
+          .order("id")
+          .range(from, to)
+      );
 
     for (const entry of entriesData ??
       []) {

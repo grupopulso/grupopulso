@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 import { ArrowLeft, FileCheck2 } from "lucide-react";
 
@@ -141,9 +142,13 @@ export default async function NotasFiscaisPage({
   const {
     data: entriesData,
     error,
-  } = await query.order(
-    "invoice_issued_at",
-    { ascending: false }
+  } = await fetchAllRows((from, to) =>
+    query
+      .order("invoice_issued_at", {
+        ascending: false,
+      })
+      .order("id")
+      .range(from, to)
   );
 
   if (error) {

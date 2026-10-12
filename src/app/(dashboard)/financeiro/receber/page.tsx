@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 import { ArrowLeft, Plus } from "lucide-react";
 
@@ -164,9 +165,14 @@ export default async function ContasReceberPage({
   }
 
   const { data: entriesData, error } =
-    await query.order("due_date", {
-      ascending: true,
-    });
+    await fetchAllRows((from, to) =>
+      query
+        .order("due_date", {
+          ascending: true,
+        })
+        .order("id")
+        .range(from, to)
+    );
 
   if (error) {
     console.error(

@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import type { createClient } from "@/app/lib/supabase/server";
 
 import {
@@ -53,33 +54,37 @@ export async function loadBilledEntries(
     );
 
   const { data: entries, error } =
-    await supabase
-      .from("financial_entries")
-      .select(`
-        id,
-        company_id,
-        description,
-        due_date,
-        competence_date,
-        amount,
-        status,
-        contract_id,
+    await fetchAllRows((from, to) =>
+      supabase
+        .from("financial_entries")
+        .select(`
+          id,
+          company_id,
+          description,
+          due_date,
+          competence_date,
+          amount,
+          status,
+          contract_id,
 
-        client:clients (
-          name
-        ),
+          client:clients (
+            name
+          ),
 
-        contract:contracts (
-          title,
-          billing_frequency,
-          start_date
-        )
-      `)
-      .eq("type", "income")
-      .neq("status", "cancelled")
-      .gte("due_date", dueRange.start)
-      .lte("due_date", dueRange.end)
-      .in("company_id", input.companyIds);
+          contract:contracts (
+            title,
+            billing_frequency,
+            start_date
+          )
+        `)
+        .eq("type", "income")
+        .neq("status", "cancelled")
+        .gte("due_date", dueRange.start)
+        .lte("due_date", dueRange.end)
+        .in("company_id", input.companyIds)
+        .order("id")
+        .range(from, to)
+    );
 
   if (error) {
     console.error(
