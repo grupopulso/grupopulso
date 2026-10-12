@@ -3,7 +3,10 @@
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import { requireAuthenticatedUser } from "@/app/lib/permissions";
 import { hasAnsweredFeedback } from "@/app/lib/feedback";
-import { FEEDBACK_MODULES } from "@/app/lib/feedback-modules";
+import {
+  FEEDBACK_MODULES,
+  getFeedbackModulesForUser,
+} from "@/app/lib/feedback-modules";
 
 /*
  * Envio da avaliação do sistema: nota de 0 a 5 por módulo
@@ -51,15 +54,34 @@ export async function submitSystemFeedback(
     .trim()
     .slice(0, 1000);
 
-  const hasRating = Object.values(
-    ratings
-  ).some((value) => value > 0);
+  /*
+   * Obrigatória: precisa ter nota (0 vale, = não uso) em todos os
+   * módulos que o usuário enxerga; sem nenhum módulo, o comentário
+   * é obrigatório.
+   */
+  const expected = getFeedbackModulesForUser(
+    access.profile.role,
+    access.permissions
+  );
 
-  if (!hasRating && !comment) {
+  const missing = expected.filter(
+    (item) => ratings[item.key] === undefined
+  );
+
+  if (missing.length > 0) {
+    return {
+      success: false,
+      message: `Dê nota para todos os módulos (falta: ${missing
+        .map((item) => item.label)
+        .join(", ")}).`,
+    };
+  }
+
+  if (expected.length === 0 && !comment) {
     return {
       success: false,
       message:
-        "Dê nota para pelo menos um módulo ou escreva o que pode melhorar.",
+        "Escreva o que pode melhorar para enviar a avaliação.",
     };
   }
 

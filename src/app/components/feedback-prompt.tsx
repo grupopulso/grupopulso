@@ -6,21 +6,14 @@ import {
   useTransition,
 } from "react";
 
-import { X } from "lucide-react";
-
 import { submitSystemFeedback } from "@/app/lib/feedback-actions";
-
-const SNOOZE_KEY =
-  "pulso_feedback_snooze_until";
-
-const SNOOZE_MS = 12 * 60 * 60 * 1000;
 
 /*
  * Janela pedindo a avaliação do sistema na entrada: nota de 0 a 5
  * pra cada módulo que a pessoa usa (0 = não uso) + "o que pode
  * melhorar". O servidor só manda show=true pra quem ainda não
- * respondeu; "Responder depois" adia por 12h neste navegador e
- * volta a perguntar na próxima entrada, até a pessoa responder.
+ * respondeu. É obrigatória: não tem como fechar nem adiar, e o
+ * sistema fica bloqueado até a pessoa avaliar todos os módulos.
  */
 export default function FeedbackPrompt({
   show,
@@ -43,42 +36,13 @@ export default function FeedbackPrompt({
     useTransition();
 
   useEffect(() => {
-    if (!show) {
-      return;
-    }
-
-    let snoozedUntil = 0;
-
-    try {
-      snoozedUntil = Number(
-        window.localStorage.getItem(
-          SNOOZE_KEY
-        ) ?? 0
-      );
-    } catch {
-      snoozedUntil = 0;
-    }
-
-    if (Date.now() > snoozedUntil) {
+    if (show) {
       setOpen(true);
     }
   }, [show]);
 
   if (!open) {
     return null;
-  }
-
-  function handleLater() {
-    try {
-      window.localStorage.setItem(
-        SNOOZE_KEY,
-        String(Date.now() + SNOOZE_MS)
-      );
-    } catch {
-      // sem localStorage: só fecha
-    }
-
-    setOpen(false);
   }
 
   function handleSubmit() {
@@ -106,25 +70,19 @@ export default function FeedbackPrompt({
     });
   }
 
+  const missing = modules.filter(
+    (item) =>
+      ratings[item.key] === undefined
+  );
+
   const canSubmit =
-    Object.values(ratings).some(
-      (value) => value > 0
-    ) || comment.trim().length > 0;
+    missing.length === 0 &&
+    (modules.length > 0 ||
+      comment.trim().length > 0);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="relative flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
-        {!thanks && (
-          <button
-            type="button"
-            onClick={handleLater}
-            aria-label="Fechar"
-            className="absolute right-4 top-4 text-slate-400 hover:text-slate-700"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        )}
-
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-2xl bg-white shadow-xl">
         {thanks ? (
           <div className="px-6 py-12 text-center">
             <p className="text-lg font-semibold text-slate-900">
@@ -144,8 +102,8 @@ export default function FeedbackPrompt({
               </h2>
 
               <p className="mt-1 text-sm text-slate-500">
-                Dê uma nota de 0 a 5 para cada
-                parte que você usa.{" "}
+                A avaliação é obrigatória. Dê uma
+                nota de 0 a 5 para cada parte.{" "}
                 <strong>0</strong> = não uso /
                 sem opinião, <strong>5</strong> =
                 ótimo.
@@ -226,14 +184,14 @@ export default function FeedbackPrompt({
             </div>
 
             <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
-              <button
-                type="button"
-                onClick={handleLater}
-                disabled={isPending}
-                className="text-sm font-medium text-slate-500 hover:text-slate-900"
-              >
-                Responder depois
-              </button>
+              {missing.length > 0 && (
+                <span className="mr-auto text-xs text-slate-500">
+                  Falta dar nota em {missing.length}{" "}
+                  {missing.length === 1
+                    ? "módulo"
+                    : "módulos"}
+                </span>
+              )}
 
               <button
                 type="button"
