@@ -855,7 +855,7 @@ export function SaleForm({
         !Number.isFinite(
           unitPrice
         ) ||
-        unitPrice <=
+        unitPrice <
           0
       ) {
         setMessage({
@@ -937,27 +937,20 @@ export function SaleForm({
       }
     }
 
-    if (
-      subtotal <=
-      0
-    ) {
-      setMessage({
-        type:
-          "error",
-
-        text:
-          "O total da venda precisa ser maior que zero.",
-      });
-
-      return;
-    }
+    /*
+     * Venda de valor zero (permuta/cortesia): não tem parcelas
+     * nem conta a receber, então não valida o parcelamento.
+     */
+    const zeroValue =
+      subtotal <= 0;
 
     if (
-      schedule.length !==
+      !zeroValue &&
+      (schedule.length !==
         installments ||
-      schedule.some(
-        (row) => !row.dueDate
-      )
+        schedule.some(
+          (row) => !row.dueDate
+        ))
     ) {
       setMessage({
         type: "error",
@@ -967,7 +960,7 @@ export function SaleForm({
       return;
     }
 
-    if (!scheduleBalanced) {
+    if (!zeroValue && !scheduleBalanced) {
       setMessage({
         type: "error",
         text: `A soma das parcelas precisa ser ${formatCurrency(
@@ -995,12 +988,14 @@ export function SaleForm({
             firstDueDate,
 
             installmentSchedule:
-              schedule.map((row) => ({
-                dueDate: row.dueDate,
-                amount: parseMoney(
-                  row.amount
-                ),
-              })),
+              zeroValue
+                ? []
+                : schedule.map((row) => ({
+                    dueDate: row.dueDate,
+                    amount: parseMoney(
+                      row.amount
+                    ),
+                  })),
 
             notes:
               notes.trim() ||
@@ -1802,6 +1797,8 @@ export function SaleForm({
 
         <p className="mt-1 text-sm text-slate-500">
           Esses dados serão usados para gerar automaticamente a conta a receber no financeiro.
+          {subtotal <= 0 &&
+            " Com total R$ 0,00 (permuta ou cortesia) a venda é registrada sem conta a receber e sem comissão."}
         </p>
 
         <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -2087,11 +2084,7 @@ export function SaleForm({
 
             <button
               type="submit"
-              disabled={
-                isPending ||
-                subtotal <=
-                  0
-              }
+              disabled={isPending}
               className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-6 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-4 w-4" />

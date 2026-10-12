@@ -868,7 +868,7 @@ export default function EditSaleForm({
         !Number.isFinite(
           unitPrice
         ) ||
-        unitPrice <=
+        unitPrice <
           0
       ) {
         setMessage({
@@ -950,27 +950,20 @@ export default function EditSaleForm({
       }
     }
 
-    if (
-      subtotal <=
-      0
-    ) {
-      setMessage({
-        type:
-          "error",
-
-        text:
-          "O total da venda precisa ser maior que zero.",
-      });
-
-      return;
-    }
+    /*
+     * Venda de valor zero (permuta/cortesia): sem parcelas nem
+     * conta a receber, então não valida o parcelamento.
+     */
+    const zeroValue =
+      subtotal <= 0;
 
     if (
-      schedule.length !==
+      !zeroValue &&
+      (schedule.length !==
         installments ||
-      schedule.some(
-        (row) => !row.dueDate
-      )
+        schedule.some(
+          (row) => !row.dueDate
+        ))
     ) {
       setMessage({
         type: "error",
@@ -980,7 +973,7 @@ export default function EditSaleForm({
       return;
     }
 
-    if (!scheduleBalanced) {
+    if (!zeroValue && !scheduleBalanced) {
       setMessage({
         type: "error",
         text: `A soma das parcelas precisa ser ${formatCurrency(
@@ -1012,12 +1005,14 @@ export default function EditSaleForm({
             firstDueDate,
 
             installmentSchedule:
-              schedule.map((row) => ({
-                dueDate: row.dueDate,
-                amount: parseMoney(
-                  row.amount
-                ),
-              })),
+              zeroValue
+                ? []
+                : schedule.map((row) => ({
+                    dueDate: row.dueDate,
+                    amount: parseMoney(
+                      row.amount
+                    ),
+                  })),
 
             notes:
               notes.trim() ||
@@ -2132,11 +2127,7 @@ export default function EditSaleForm({
 
             <button
               type="submit"
-              disabled={
-                isPending ||
-                subtotal <=
-                  0
-              }
+              disabled={isPending}
               className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-[#15704f] px-6 text-sm font-semibold text-white transition hover:bg-[#105c41] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Save className="h-4 w-4" />

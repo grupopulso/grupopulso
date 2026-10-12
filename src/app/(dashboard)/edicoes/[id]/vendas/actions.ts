@@ -322,8 +322,16 @@ export async function createEditionSale(
     };
   }
 
+  /*
+   * Venda de valor zero (permuta/cortesia) não tem parcelas, então
+   * não precisa de vencimento.
+   */
   if (
-    !input.firstDueDate
+    !input.firstDueDate &&
+    input.items.some(
+      (item) =>
+        Number(item.unitPrice) > 0
+    )
   ) {
     return {
       success: false,
@@ -740,7 +748,8 @@ export async function createEditionSale(
           input.installments,
 
         first_due_date:
-          input.firstDueDate,
+          input.firstDueDate ||
+          edition.publication_date,
 
         financial_entry_id:
           null,
@@ -1108,8 +1117,16 @@ export async function updateEditionSale(
     };
   }
 
+  /*
+   * Venda de valor zero (permuta/cortesia) não tem parcelas, então
+   * não precisa de vencimento.
+   */
   if (
-    !input.firstDueDate
+    !input.firstDueDate &&
+    input.items.some(
+      (item) =>
+        Number(item.unitPrice) > 0
+    )
   ) {
     return {
       success: false,
@@ -1680,7 +1697,8 @@ export async function updateEditionSale(
           input.installments,
 
         first_due_date:
-          input.firstDueDate,
+          input.firstDueDate ||
+          edition.publication_date,
 
         notes:
           input.notes
@@ -2749,10 +2767,12 @@ async function createSaleCommissions(
         (
           rule
         ) =>
+          input.totalAmount >
+            0 &&
           Number(
             rule.percentage
           ) >
-          0
+            0
       )
       .map(
         (
@@ -2892,6 +2912,17 @@ async function createSaleFinancialEntries(
       message: string;
     }
 > {
+  /*
+   * Venda de valor zero (permuta/cortesia): não gera contas a
+   * receber.
+   */
+  if (input.totalAmount <= 0) {
+    return {
+      success: true,
+      firstFinancialEntryId: null,
+    };
+  }
+
   const hasSchedule =
     Array.isArray(input.schedule) &&
     input.schedule.length ===
@@ -3726,7 +3757,7 @@ function normalizeSaleItems(
             !Number.isFinite(
               unitPrice
             ) ||
-            unitPrice <=
+            unitPrice <
               0
           ) {
             throw new Error(
@@ -3787,15 +3818,19 @@ function normalizeSaleItems(
         )
       );
 
+    /*
+     * Venda de valor zero é permitida (permuta, cortesia): não
+     * gera parcelas, conta a receber nem comissão.
+     */
     if (
-      totalAmount <=
+      totalAmount <
       0
     ) {
       return {
         success: false,
 
         message:
-          "O total da venda deve ser maior que zero.",
+          "O total da venda não pode ser negativo.",
       };
     }
 
