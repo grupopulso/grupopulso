@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import { createAdminClient } from "@/app/lib/supabase/admin";
 import {
   requireEstafetaAccess,
@@ -147,11 +148,15 @@ export async function loadSaleFormData(
     paymentMethodsResult,
     sellerSettingsResult,
   ] = await Promise.all([
-    supabase
-      .from("clients")
-      .select("id, name")
-      .eq("active", true)
-      .order("name"),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("clients")
+        .select("id, name")
+        .eq("active", true)
+        .order("name")
+        .order("id")
+        .range(from, to)
+    ),
 
     supabase
       .from("products")

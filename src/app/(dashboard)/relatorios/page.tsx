@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -108,25 +109,33 @@ function canAccessCompany(
     financialResult,
     routesResult,
   ] = await Promise.all([
-    supabase
-      .from("clients")
-      .select(`
-        id,
+    fetchAllRows((from, to) =>
+      supabase
+        .from("clients")
+        .select(`
+          id,
 
-        client_companies (
+          client_companies (
+            company_id,
+            status
+          )
+        `)
+        .order("id")
+        .range(from, to)
+    ),
+
+    fetchAllRows((from, to) =>
+      supabase
+        .from("contracts")
+        .select(`
+          id,
           company_id,
-          status
-        )
-      `),
-
-    supabase
-      .from("contracts")
-      .select(`
-        id,
-        company_id,
-        status,
-        value
-      `),
+          status,
+          value
+        `)
+        .order("id")
+        .range(from, to)
+    ),
 
     supabase
       .from("financial_entries")

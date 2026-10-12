@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -64,35 +65,39 @@ export default async function AssinantesRotaPage({
   );
 
   const { data: clients, error: clientsError } =
-  await supabase
-    .from("clients")
-    .select(`
-      id,
-      name,
-      cpf_cnpj,
-      phone,
-      whatsapp,
-
-      client_companies!inner (
-        company_id,
-        status
-      ),
-
-      client_addresses (
+  await fetchAllRows((from, to) =>
+    supabase
+      .from("clients")
+      .select(`
         id,
-        street,
-        number,
-        complement,
-        neighborhood,
-        city,
-        state
+        name,
+        cpf_cnpj,
+        phone,
+        whatsapp,
+
+        client_companies!inner (
+          company_id,
+          status
+        ),
+
+        client_addresses (
+          id,
+          street,
+          number,
+          complement,
+          neighborhood,
+          city,
+          state
+        )
+      `)
+      .eq(
+        "client_companies.company_id",
+        route.company_id
       )
-    `)
-    .eq(
-      "client_companies.company_id",
-      route.company_id
-    )
-    .order("name");
+      .order("name")
+      .order("id")
+      .range(from, to)
+  );
 
   if (clientsError) {
     console.error(

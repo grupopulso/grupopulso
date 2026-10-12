@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 import { FilePlus2 } from "lucide-react";
 
@@ -70,37 +71,41 @@ export default async function AssinaturasPage({
    */
 
   const { data: contractsData, error } =
-    await supabase
-      .from("contracts")
-      .select(`
-        id,
-        title,
-        start_date,
-        end_date,
-        value,
-        billing_frequency,
-        status,
-        auto_renew,
-        legacy_subscription_number,
-
-        client:clients (
+    await fetchAllRows((from, to) =>
+      supabase
+        .from("contracts")
+        .select(`
           id,
-          name
-        ),
+          title,
+          start_date,
+          end_date,
+          value,
+          billing_frequency,
+          status,
+          auto_renew,
+          legacy_subscription_number,
 
-        product:products (
-          id,
-          name,
-          type
+          client:clients (
+            id,
+            name
+          ),
+
+          product:products (
+            id,
+            name,
+            type
+          )
+        `)
+        .eq(
+          "company_id",
+          access.estafetaCompany.id
         )
-      `)
-      .eq(
-        "company_id",
-        access.estafetaCompany.id
-      )
-      .order("created_at", {
-        ascending: false,
-      });
+        .order("created_at", {
+          ascending: false,
+        })
+        .order("id")
+        .range(from, to)
+    );
 
   if (error) {
     console.error(

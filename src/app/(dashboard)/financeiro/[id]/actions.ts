@@ -434,6 +434,192 @@ export async function registerGroupTransactions(
 
 /*
  * =====================================================
+ * BAIXA EM LOTE (CONTAS A PAGAR)
+ * =====================================================
+ *
+ * Quita o saldo em aberto de várias despesas de uma mesma
+ * empresa de uma vez, com a mesma data, forma, conta e
+ * observação. Tudo é validado antes de baixar a primeira - se
+ * algo estiver errado, nada é baixado.
+ */
+
+export async function getBatchPaymentFormData(
+  entryIds: string[]
+) {
+  const first = entryIds[0];
+
+  if (!first) {
+    return {
+      success: false as const,
+      error: "Nenhuma despesa selecionada.",
+    };
+  }
+
+  const data =
+    await getRegisterTransactionFormData(first);
+
+  if (!data.success) {
+    return data;
+  }
+
+  return {
+    success: true as const,
+    paymentMethods: data.paymentMethods,
+    financialAccounts: data.financialAccounts,
+  };
+}
+
+export async function registerBatchTransactions(
+  entryIds: string[],
+  input: {
+    date: string;
+    paymentMethod: string;
+    financialAccountId: string;
+    notes?: string;
+  }
+) {
+  await requireAuthenticatedUser();
+
+  const ids = Array.from(new Set(entryIds));
+
+  if (ids.length === 0 || ids.length > 100) {
+    return {
+      success: false as const,
+      message:
+        "Selecione de 1 a 100 despesas para dar baixa.",
+    };
+  }
+
+  const adminDb = createAdminClient();
+
+  const { data: entries } = await adminDb
+    .from("financial_entries")
+    .select(`
+      id,
+      company_id,
+      type,
+      description,
+      amount,
+      amount_paid,
+      interest,
+      fine,
+      discount,
+      status
+    `)
+    .in("id", ids);
+
+  if (!entries || entries.length !== ids.length) {
+    return {
+      success: false as const,
+      message:
+        "Alguma despesa selecionada não foi encontrada. Atualize a página e tente de novo.",
+    };
+  }
+
+  if (entries.some((item) => item.type !== "expense")) {
+    return {
+      success: false as const,
+      message:
+        "A baixa em lote vale só para despesas.",
+    };
+  }
+
+  const companyId = entries[0].company_id;
+
+  if (
+    entries.some(
+      (item) => item.company_id !== companyId
+    )
+  ) {
+    return {
+      success: false as const,
+      message:
+        "Só dá para baixar em lote despesas da mesma empresa.",
+    };
+  }
+
+  await requireFinancialEntryAccess(
+    "expense",
+    "edit"
+  );
+
+  await requireCompanyAccess(companyId);
+
+  const closed = entries.filter(
+    (item) =>
+      item.status === "cancelled" ||
+      calculateEntryOpenAmount(item) <= 0
+  );
+
+  if (closed.length > 0) {
+    return {
+      success: false as const,
+      message: `Já estão quitadas ou canceladas: ${closed
+        .map((item) => item.description)
+        .join(", ")}. Atualize a página e selecione de novo.`,
+    };
+  }
+
+  const { data: account } = await adminDb
+    .from("financial_accounts")
+    .select("id, company_id, active")
+    .eq("id", input.financialAccountId)
+    .maybeSingle();
+
+  if (
+    !account ||
+    !account.active ||
+    (account.company_id &&
+      account.company_id !== companyId)
+  ) {
+    return {
+      success: false as const,
+      message:
+        "Conta financeira inválida para a empresa das despesas.",
+    };
+  }
+
+  const paid: string[] = [];
+
+  for (const entry of entries) {
+    const result =
+      await registerFinancialTransaction(entry.id, {
+        amount: calculateEntryOpenAmount(entry),
+        date: input.date,
+        paymentMethod: input.paymentMethod,
+        financialAccountId: input.financialAccountId,
+        notes: input.notes,
+      });
+
+    if (!result.success) {
+      return {
+        success: false as const,
+        message: `${
+          paid.length > 0
+            ? `Já foi dada a baixa em ${paid.length} de ${entries.length}. `
+            : ""
+        }Falhou em "${entry.description}": ${
+          result.message ?? "erro ao registrar."
+        }${
+          paid.length > 0
+            ? " As demais continuam em aberto."
+            : ""
+        }`,
+        paidCount: paid.length,
+      };
+    }
+
+    paid.push(entry.id);
+  }
+
+  return {
+    success: true as const,
+    paidCount: paid.length,
+  };
+}
+
+/*
+ * =====================================================
  * REGISTRAR MOVIMENTAÇÃO FINANCEIRA
  * =====================================================
  */

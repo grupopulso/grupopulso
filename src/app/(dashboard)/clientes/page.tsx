@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Search, UserPlus } from "lucide-react";
 
 import { createClient } from "@/app/lib/supabase/server";
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 import {
   requireModulePermission,
@@ -44,29 +45,33 @@ export default async function ClientesPage({
   const {
     data: clientsData,
     error,
-  } = await supabase
-    .from("clients")
-    .select(`
-      id,
-      name,
-      cpf_cnpj,
-      email,
-      phone,
-      whatsapp,
-      type,
+  } = await fetchAllRows((from, to) =>
+    supabase
+      .from("clients")
+      .select(`
+        id,
+        name,
+        cpf_cnpj,
+        email,
+        phone,
+        whatsapp,
+        type,
 
-      client_companies (
-        company_id,
-        status,
+        client_companies (
+          company_id,
+          status,
 
-        company:companies (
-          id,
-          name,
-          color
+          company:companies (
+            id,
+            name,
+            color
+          )
         )
-      )
-    `)
-    .order("name");
+      `)
+      .order("name")
+      .order("id")
+      .range(from, to)
+  );
 
   if (error) {
     console.error(

@@ -3,6 +3,7 @@ import Link from "next/link";
 import FinancialDocumentControls from "./financial-document-controls";
 import BackButton from "./back-button";
 import DeleteExpenseButton from "./delete-expense-button";
+import { loadExpenseOrigins } from "@/app/lib/expense-origin";
 
 import {
   notFound,
@@ -239,6 +240,18 @@ charge_sent_at,
       ) ?? null;
   }
 
+  /*
+   * Despesa de comissão: do que se trata (cliente, venda/contrato).
+   */
+  const origin =
+    entry.type === "expense"
+      ? (
+          await loadExpenseOrigins(adminDb, [
+            entry.id,
+          ])
+        ).get(entry.id) ?? null
+      : null;
+
   const company = getFirst(entry.company);
   const client = getFirst(entry.client);
   const supplier = getFirst(entry.supplier);
@@ -432,6 +445,72 @@ charge_sent_at,
 
         <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
           <div className="space-y-6 xl:col-span-2">
+            {origin && (
+              <section className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-6">
+                <h2 className="font-semibold text-slate-900">
+                  Referente a
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Esta despesa é o pagamento de uma
+                  comissão.
+                </p>
+
+                <div className="mt-5 grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <InfoItem
+                    icon={UserRound}
+                    label="Cliente"
+                    value={
+                      origin.clientName ?? "—"
+                    }
+                  />
+
+                  <InfoItem
+                    icon={FileText}
+                    label={
+                      origin.kind === "sale"
+                        ? "Venda de anúncio"
+                        : "Contrato"
+                    }
+                    value={origin.reference}
+                  />
+
+                  <InfoItem
+                    icon={CircleDollarSign}
+                    label={
+                      origin.kind === "sale"
+                        ? "Valor da venda"
+                        : "Valor do contrato"
+                    }
+                    value={formatCurrency(
+                      origin.baseAmount
+                    )}
+                  />
+
+                  <InfoItem
+                    icon={CircleDollarSign}
+                    label="Comissão"
+                    value={`${origin.percentage.toLocaleString(
+                      "pt-BR"
+                    )}% = ${formatCurrency(
+                      origin.commissionAmount
+                    )}`}
+                  />
+                </div>
+
+                {origin.href && (
+                  <Link
+                    href={origin.href}
+                    className="mt-5 inline-block text-sm font-semibold text-[#15704f] hover:underline"
+                  >
+                    {origin.kind === "sale"
+                      ? "Ver venda"
+                      : "Ver contrato"}
+                  </Link>
+                )}
+              </section>
+            )}
+
             <section className="rounded-2xl border border-slate-200 bg-white p-6">
               <h2 className="font-semibold text-slate-900">
                 Informações do lançamento

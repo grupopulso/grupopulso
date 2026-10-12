@@ -9,6 +9,12 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 import DeleteExpenseButton from "../[id]/delete-expense-button";
+import { loadExpenseOrigins } from "@/app/lib/expense-origin";
+import {
+  BatchBar,
+  BatchSelectionProvider,
+  RowCheckbox,
+} from "./batch-payment";
 import {
   calculateEntryOpenAmount,
   calculateEntryTotal,
@@ -306,6 +312,15 @@ export default async function ContasPagarPage({
       pageStart + PAGE_SIZE
     );
 
+  /*
+   * Despesas de comissão: do que se trata (cliente + anúncio/contrato),
+   * mostrado embaixo da descrição.
+   */
+  const origins = await loadExpenseOrigins(
+    adminDb,
+    pagedEntries.map((entry) => entry.id)
+  );
+
   const buildStatusHref = (
     targetStatus: StatusFilter
   ) => {
@@ -524,10 +539,15 @@ export default async function ContasPagarPage({
             </div>
           </div>
 
+          <BatchSelectionProvider>
+          <BatchBar />
+
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-50">
                 <tr>
+                  <th className="w-10 px-5 py-3" />
+
                   <TableHeader>
                     Fornecedor
                   </TableHeader>
@@ -580,11 +600,38 @@ export default async function ContasPagarPage({
                     entry.category
                   );
 
+                  const origin = origins.get(entry.id);
+
+                  const openAmount =
+                    calculateEntryOpenAmount(entry);
+
+                  const canSelect =
+                    entry.calculatedStatus !==
+                      "cancelled" && openAmount > 0;
+
                   return (
                     <tr
                       key={entry.id}
                       className="transition hover:bg-slate-50"
                     >
+                      <td className="px-5 py-4">
+                        {canSelect && (
+                          <RowCheckbox
+                            entry={{
+                              id: entry.id,
+                              companyId:
+                                entry.company_id,
+                              companyName:
+                                company?.name ??
+                                "Empresa",
+                              description:
+                                entry.description,
+                              openAmount,
+                            }}
+                          />
+                        )}
+                      </td>
+
                       <td className="px-5 py-4">
                         <p className="text-sm font-semibold text-slate-900">
                           {supplier?.name ?? "—"}
@@ -598,6 +645,17 @@ export default async function ContasPagarPage({
                         >
                           {entry.description}
                         </Link>
+
+                        {origin && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            {[
+                              origin.clientName,
+                              origin.reference,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        )}
                       </td>
 
                       <td className="px-5 py-4">
@@ -716,7 +774,7 @@ export default async function ContasPagarPage({
                 {!pagedEntries.length && (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       className="px-5 py-14 text-center"
                     >
                       <p className="text-sm font-medium text-slate-500">
@@ -740,6 +798,7 @@ export default async function ContasPagarPage({
               </tbody>
             </table>
           </div>
+          </BatchSelectionProvider>
 
           <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
             <span>

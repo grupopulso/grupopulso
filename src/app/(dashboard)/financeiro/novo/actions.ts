@@ -1,5 +1,6 @@
 "use server";
 
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import {
   createAdminClient,
 } from "@/app/lib/supabase/admin";
@@ -41,19 +42,27 @@ export async function getFinancialEntryFormData() {
     financialAccountsResult,
     paymentMethodsResult,
   ] = await Promise.all([
-    adminDb
-      .from("clients")
-      .select("id, name")
-      .eq("active", true)
-      .order("name"),
+    fetchAllRows((from, to) =>
+      adminDb
+        .from("clients")
+        .select("id, name")
+        .eq("active", true)
+        .order("name")
+        .order("id")
+        .range(from, to)
+    ),
 
-    adminDb
-      .from("suppliers")
-      .select(
-        "id, name, trade_name, cpf_cnpj, email, phone"
-      )
-      .eq("active", true)
-      .order("name"),
+    fetchAllRows((from, to) =>
+      adminDb
+        .from("suppliers")
+        .select(
+          "id, name, trade_name, cpf_cnpj, email, phone"
+        )
+        .eq("active", true)
+        .order("name")
+        .order("id")
+        .range(from, to)
+    ),
 
     adminDb
       .from("companies")
@@ -61,20 +70,24 @@ export async function getFinancialEntryFormData() {
       .eq("active", true)
       .order("name"),
 
-    adminDb
-      .from("contracts")
-      .select(`
-        id,
-        client_id,
-        company_id,
-        product_id,
-        title,
-        value
-      `)
-      .neq("status", "cancelled")
-      .order("created_at", {
-        ascending: false,
-      }),
+    fetchAllRows((from, to) =>
+      adminDb
+        .from("contracts")
+        .select(`
+          id,
+          client_id,
+          company_id,
+          product_id,
+          title,
+          value
+        `)
+        .neq("status", "cancelled")
+        .order("created_at", {
+          ascending: false,
+        })
+        .order("id")
+        .range(from, to)
+    ),
 
     adminDb
       .from("financial_categories")

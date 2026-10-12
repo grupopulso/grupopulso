@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -66,33 +67,37 @@ export default async function RelatorioClientesPage() {
   const {
     data: clientsData,
     error,
-  } = await supabase
-    .from("clients")
-    .select(`
-      id,
-      name,
-      cpf_cnpj,
-      phone,
-      whatsapp,
-      email,
-      type,
-
-      client_companies (
-        company_id,
-        status
-      ),
-
-      client_addresses (
-        id
-      ),
-
-      contracts (
+  } = await fetchAllRows((from, to) =>
+    supabase
+      .from("clients")
+      .select(`
         id,
-        company_id,
-        status
-      )
-    `)
-    .order("name");
+        name,
+        cpf_cnpj,
+        phone,
+        whatsapp,
+        email,
+        type,
+
+        client_companies (
+          company_id,
+          status
+        ),
+
+        client_addresses (
+          id
+        ),
+
+        contracts (
+          id,
+          company_id,
+          status
+        )
+      `)
+      .order("name")
+      .order("id")
+      .range(from, to)
+  );
 
   if (error) {
     console.error(

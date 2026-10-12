@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 
 import {
@@ -114,12 +115,14 @@ export default async function RelatorioContratosPage() {
   const {
     data: contractsData,
     error,
-  } = await query.order(
-    "end_date",
-    {
-      ascending: true,
-      nullsFirst: false,
-    }
+  } = await fetchAllRows((from, to) =>
+    query
+      .order("end_date", {
+        ascending: true,
+        nullsFirst: false,
+      })
+      .order("id")
+      .range(from, to)
   );
 
   if (error) {

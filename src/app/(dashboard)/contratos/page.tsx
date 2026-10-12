@@ -1,3 +1,4 @@
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import Link from "next/link";
 import { FilePlus2 } from "lucide-react";
 
@@ -159,9 +160,14 @@ if (sellerId) {
     { data: sellersData },
     { data: allProfilesData },
   ] = await Promise.all([
-    query.order("created_at", {
-      ascending: false,
-    }),
+    fetchAllRows((from, to) =>
+      query
+        .order("created_at", {
+          ascending: false,
+        })
+        .order("id")
+        .range(from, to)
+    ),
 
     supabase
       .from("user_profiles")

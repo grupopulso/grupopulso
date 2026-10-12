@@ -178,6 +178,11 @@ async function paySaleCommission(
           company_id,
           edition_id,
 
+          client:clients (
+            id,
+            name
+          ),
+
           edition:newspaper_editions (
             id,
             name,
@@ -290,10 +295,23 @@ async function paySaleCommission(
       sale.edition
     );
 
+  const saleClient =
+    getFirst(
+      sale.client
+    );
+
+  /*
+   * O cliente vai na descrição pra quem paga saber do que se trata
+   * a comissão sem precisar abrir a venda.
+   */
   const description =
-    edition
-      ? `Comissão - ${beneficiaryName} - ${edition.name}`
-      : `Comissão - ${beneficiaryName}`;
+    [
+      `Comissão - ${beneficiaryName}`,
+      edition?.name,
+      saleClient?.name,
+    ]
+      .filter(Boolean)
+      .join(" - ");
 
   const financialEntryResult =
     await createCommissionFinancialEntry(
@@ -441,7 +459,12 @@ async function payContractCommission(
         contract:contracts (
           id,
           company_id,
-          title
+          title,
+
+          client:clients (
+            id,
+            name
+          )
         )
       `)
       .eq(
@@ -544,8 +567,19 @@ async function payContractCommission(
         .beneficiary_user_id
     );
 
+  const contractClient =
+    getFirst(
+      contract.client
+    );
+
   const description =
-    `Comissão - ${beneficiaryName} - ${contract.title}`;
+    [
+      `Comissão - ${beneficiaryName}`,
+      contract.title,
+      contractClient?.name,
+    ]
+      .filter(Boolean)
+      .join(" - ");
 
   const financialEntryResult =
     await createCommissionFinancialEntry(
