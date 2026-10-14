@@ -5,6 +5,7 @@ import {
   BadgePercent,
   CalendarDays,
   FileText,
+  Printer,
   ShoppingCart,
   WalletCards,
 } from "lucide-react";
@@ -730,6 +731,16 @@ export default async function SaleDetailPage({
 
   {/* LADO DIREITO */}
 
+  <div className="flex flex-col items-start gap-3 lg:items-end">
+  <Link
+    href={`/edicoes/${edition.id}/vendas/${sale.id}/recibo`}
+    className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+  >
+    <Printer className="h-4 w-4" />
+
+    PDF / Recibo
+  </Link>
+
   <SaleActions
     editionId={
       edition.id
@@ -751,6 +762,7 @@ export default async function SaleDetailPage({
       openEditionsForMove
     }
   />
+  </div>
 </div>
 
         {/* RESUMO */}
