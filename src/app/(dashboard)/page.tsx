@@ -1,5 +1,6 @@
 import DashboardClient from "@/app/components/dashboard-client";
 
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import { createClient } from "@/app/lib/supabase/server";
 
 import {
@@ -270,172 +271,7 @@ export default async function HomePage({
 
   /*
    * ==========================
-   * CLIENTES / SITUAÇÕES
-   * ==========================
-   */
-
-  let clientCompaniesQuery =
-    supabase
-      .from(
-        "client_companies"
-      )
-      .select(`
-        client_id,
-        company_id,
-        status
-      `);
-
-  if (
-    allowedCompanyIds.length
-  ) {
-    clientCompaniesQuery =
-      clientCompaniesQuery.in(
-        "company_id",
-        allowedCompanyIds
-      );
-  }
-
-  const {
-    data: clientCompaniesData,
-    error: clientCompaniesError,
-  } =
-    await clientCompaniesQuery;
-
-  if (
-    clientCompaniesError
-  ) {
-    console.error(
-      "Erro ao carregar vínculos de clientes:",
-      JSON.stringify(
-        clientCompaniesError,
-        null,
-        2
-      )
-    );
-  }
-
-  const clientCompanies =
-    (clientCompaniesData ??
-      []) as ClientCompany[];
-
-  /*
-   * ==========================
-   * CONTRATOS (para calcular o
-   * status real dos vínculos)
-   * ==========================
-   */
-
-  let contractsStatusQuery =
-    supabase
-      .from(
-        "contracts"
-      )
-      .select(`
-        client_id,
-        company_id,
-        status,
-        start_date,
-        end_date
-      `);
-
-  if (
-    allowedCompanyIds.length
-  ) {
-    contractsStatusQuery =
-      contractsStatusQuery.in(
-        "company_id",
-        allowedCompanyIds
-      );
-  }
-
-  const {
-    data: contractsStatusData,
-    error: contractsStatusError,
-  } =
-    await contractsStatusQuery;
-
-  if (
-    contractsStatusError
-  ) {
-    console.error(
-      "Erro ao carregar contratos para status dos vínculos:",
-      JSON.stringify(
-        contractsStatusError,
-        null,
-        2
-      )
-    );
-  }
-
-  const contractsForStatus =
-    (contractsStatusData ??
-      []) as ContractStatusRow[];
-
-  /*
-   * ==========================
-   * LANÇAMENTOS FINANCEIROS
-   * ==========================
-   */
-
-  let entriesQuery =
-    supabase
-      .from(
-        "financial_entries"
-      )
-      .select(`
-        id,
-        company_id,
-        type,
-        due_date,
-        competence_date,
-        amount,
-        amount_paid,
-        interest,
-        fine,
-        discount,
-        status,
-        contract_id,
-
-        contract:contracts (
-          billing_frequency,
-          start_date
-        )
-      `);
-
-  if (
-    allowedCompanyIds.length
-  ) {
-    entriesQuery =
-      entriesQuery.in(
-        "company_id",
-        allowedCompanyIds
-      );
-  }
-
-  const {
-    data: entriesData,
-    error: entriesError,
-  } =
-    await entriesQuery;
-
-  if (entriesError) {
-    console.error(
-      "Erro ao carregar financeiro:",
-      JSON.stringify(
-        entriesError,
-        null,
-        2
-      )
-    );
-  }
-
-  const entries =
-    (entriesData ??
-      []) as FinancialEntry[];
-
-  /*
-   * ==========================
-   * TRANSAÇÕES REALIZADAS
+   * PERÍODO
    * ==========================
    */
 
@@ -457,33 +293,230 @@ export default async function HomePage({
         : new Date(year, month, 0)
     );
 
-  const {
-    data: transactionsData,
-    error: transactionsError,
-  } = await supabase
-    .from(
-      "financial_transactions"
-    )
-    .select(`
-      id,
-      amount,
-      transaction_date,
+  /*
+   * ==========================
+   * CONSULTAS EM PARALELO
+   * ==========================
+   *
+   * Vínculos de clientes, contratos, lançamentos, transações e
+   * metas só dependem das empresas permitidas — rodam todas ao
+   * mesmo tempo (antes eram 5 idas ao banco em sequência).
+   */
 
-      financial_entry:financial_entries (
-        id,
-        company_id,
-        type,
-        product_id
+  let clientCompaniesQuery =
+    supabase
+      .from(
+        "client_companies"
       )
-    `)
-    .gte(
-      "transaction_date",
-      monthStart
-    )
-    .lte(
-      "transaction_date",
-      monthEnd
+      .select(`
+        client_id,
+        company_id,
+        status
+      `);
+
+  let contractsStatusQuery =
+    supabase
+      .from(
+        "contracts"
+      )
+      .select(`
+        client_id,
+        company_id,
+        status,
+        start_date,
+        end_date
+      `);
+
+  if (
+    allowedCompanyIds.length
+  ) {
+    clientCompaniesQuery =
+      clientCompaniesQuery.in(
+        "company_id",
+        allowedCompanyIds
+      );
+
+    contractsStatusQuery =
+      contractsStatusQuery.in(
+        "company_id",
+        allowedCompanyIds
+      );
+  }
+
+  const buildEntriesPage = (
+    from: number,
+    to: number
+  ) => {
+    let query =
+      supabase
+        .from(
+          "financial_entries"
+        )
+        .select(`
+          id,
+          company_id,
+          type,
+          due_date,
+          competence_date,
+          amount,
+          amount_paid,
+          interest,
+          fine,
+          discount,
+          status,
+          contract_id,
+
+          contract:contracts (
+            billing_frequency,
+            start_date
+          )
+        `);
+
+    if (
+      allowedCompanyIds.length
+    ) {
+      query = query.in(
+        "company_id",
+        allowedCompanyIds
+      );
+    }
+
+    return query
+      .order("id")
+      .range(from, to);
+  };
+
+  const transactionsQuery =
+    supabase
+      .from(
+        "financial_transactions"
+      )
+      .select(`
+        id,
+        amount,
+        transaction_date,
+
+        financial_entry:financial_entries (
+          id,
+          company_id,
+          type,
+          product_id
+        )
+      `)
+      .gte(
+        "transaction_date",
+        monthStart
+      )
+      .lte(
+        "transaction_date",
+        monthEnd
+      );
+
+  const goalsPromise = (async () => {
+    if (allowedCompanyIds.length === 0) {
+      return [] as {
+        company_id: string;
+        target_amount: number | string | null;
+      }[];
+    }
+
+    let goalQuery = supabase
+      .from("company_goals")
+      .select(
+        "company_id, target_amount"
+      )
+      .eq("year", year)
+      .in(
+        "company_id",
+        allowedCompanyIds
+      );
+
+    goalQuery = isAnnual
+      ? goalQuery
+          .gte("month", 1)
+          .lte("month", 12)
+      : goalQuery.eq("month", month);
+
+    const { data } = await goalQuery;
+
+    return data ?? [];
+  })();
+
+  const [
+    {
+      data: clientCompaniesData,
+      error: clientCompaniesError,
+    },
+    {
+      data: contractsStatusData,
+      error: contractsStatusError,
+    },
+    {
+      data: entriesData,
+      error: entriesError,
+    },
+    {
+      data: transactionsData,
+      error: transactionsError,
+    },
+    goalRows,
+  ] = await Promise.all([
+    clientCompaniesQuery,
+    contractsStatusQuery,
+    // Paginado: sem isso o PostgREST corta em 1000 linhas.
+    fetchAllRows(buildEntriesPage),
+    transactionsQuery,
+    goalsPromise,
+  ]);
+
+  if (
+    clientCompaniesError
+  ) {
+    console.error(
+      "Erro ao carregar vínculos de clientes:",
+      JSON.stringify(
+        clientCompaniesError,
+        null,
+        2
+      )
     );
+  }
+
+  const clientCompanies =
+    (clientCompaniesData ??
+      []) as ClientCompany[];
+
+  if (
+    contractsStatusError
+  ) {
+    console.error(
+      "Erro ao carregar contratos para status dos vínculos:",
+      JSON.stringify(
+        contractsStatusError,
+        null,
+        2
+      )
+    );
+  }
+
+  const contractsForStatus =
+    (contractsStatusData ??
+      []) as ContractStatusRow[];
+
+  if (entriesError) {
+    console.error(
+      "Erro ao carregar financeiro:",
+      JSON.stringify(
+        entriesError,
+        null,
+        2
+      )
+    );
+  }
+
+  const entries =
+    (entriesData ??
+      []) as FinancialEntry[];
 
   if (
     transactionsError
@@ -571,32 +604,12 @@ export default async function HomePage({
   }[] = [];
 
   if (allowedCompanyIds.length > 0) {
-    let goalQuery = supabase
-      .from("company_goals")
-      .select(
-        "company_id, target_amount"
-      )
-      .eq("year", year)
-      .in(
-        "company_id",
-        allowedCompanyIds
-      );
-
-    goalQuery = isAnnual
-      ? goalQuery
-          .gte("month", 1)
-          .lte("month", 12)
-      : goalQuery.eq("month", month);
-
-    const { data: goalRows } =
-      await goalQuery;
-
     const targetByCompany = new Map<
       string,
       number
     >();
 
-    for (const row of goalRows ?? []) {
+    for (const row of goalRows) {
       targetByCompany.set(
         row.company_id,
         (targetByCompany.get(

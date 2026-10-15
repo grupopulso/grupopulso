@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import {
   notFound,
 } from "next/navigation";
@@ -21,7 +23,13 @@ const ESTAFETA_MODULES = [
   "editions",
 ];
 
-export async function requireEstafetaAccess() {
+/*
+ * `cache()`: a mesma requisição (layout + página + actions de
+ * leitura) pode chamar isto várias vezes — reaproveita o
+ * resultado em vez de repetir a consulta da empresa.
+ */
+export const requireEstafetaAccess = cache(
+  async function requireEstafetaAccess() {
   const access =
     await requireAuthenticatedUser();
 
@@ -184,6 +192,7 @@ export async function requireEstafetaAccess() {
       company,
   };
 }
+);
 
 function getFirst<T>(
   value:

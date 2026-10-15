@@ -33,6 +33,10 @@ export default async function DashboardLayout({
   const user =
     access.user;
 
+  // Independente das empresas: dispara já, em paralelo.
+  const alreadyAnsweredPromise =
+    hasAnsweredFeedback(user.id);
+
   let companies: Company[] =
     [];
 
@@ -108,7 +112,7 @@ export default async function DashboardLayout({
   }
 
   const alreadyAnswered =
-    await hasAnsweredFeedback(user.id);
+    await alreadyAnsweredPromise;
 
   const cookieStore =
     await cookies();

@@ -299,6 +299,115 @@ export default async function MeuPainelPage({
 
   /*
    * =========================
+   * CONSULTAS EM PARALELO
+   * =========================
+   *
+   * Vendas, comissões e vínculos de vendedor não dependem dos
+   * contratos — disparam já, junto com eles (antes era tudo
+   * uma consulta depois da outra). Promise.resolve() força o
+   * builder do Supabase a iniciar a requisição imediatamente.
+   */
+
+  const adminDb = createAdminClient();
+
+  const salesPromise = Promise.resolve(
+    supabase
+    .from("edition_sales")
+    .select(
+      `
+      id,
+      status,
+      total_amount,
+      created_at,
+      edition:newspaper_editions ( id, name ),
+      client:clients ( id, name )
+    `
+    )
+    .eq("seller_user_id", userId)
+    .gte("created_at", periodStart)
+    .lt("created_at", periodEndExclusive)
+    .order("created_at", {
+      ascending: false,
+    })
+  );
+
+  const commissionsPromise = Promise.all([
+    adminDb
+      .from("sale_commissions")
+      .select(
+        `
+        id,
+        sale_id,
+        commission_type,
+        percentage,
+        base_amount,
+        amount,
+        amount_released,
+        amount_paid,
+        status,
+        created_at,
+        sale:edition_sales (
+          id,
+          client:clients ( id, name ),
+          edition:newspaper_editions ( id, name )
+        )
+      `
+      )
+      .eq("beneficiary_user_id", userId)
+      .gte("created_at", periodStart)
+      .lt("created_at", periodEndExclusive)
+      .order("created_at", { ascending: false }),
+
+    adminDb
+      .from("contract_commissions")
+      .select(
+        `
+        id,
+        contract_id,
+        percentage,
+        base_amount,
+        amount,
+        amount_released,
+        amount_paid,
+        status,
+        created_at,
+        contract:contracts (
+          id,
+          title,
+          client:clients ( id, name )
+        )
+      `
+      )
+      .eq("beneficiary_user_id", userId)
+      .gte("created_at", periodStart)
+      .lt("created_at", periodEndExclusive)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const myActiveSettingsPromise = Promise.resolve(
+    supabase
+      .from("seller_settings")
+      .select("company_id")
+      .eq("user_id", userId)
+      .eq("active", true)
+  );
+
+  const allSettingsPromise = isAdmin
+    ? Promise.resolve(
+        adminDb
+        .from("seller_settings")
+        .select(`
+          user_id,
+          company_id,
+          company:companies ( id, name, color )
+        `)
+        .eq("active", true)
+        .order("created_at")
+      )
+    : null;
+
+  /*
+   * =========================
    * MEUS CONTRATOS
    * =========================
    */
@@ -525,24 +634,7 @@ export default async function MeuPainelPage({
    * =========================
    */
 
-  const { data: salesRaw } = await supabase
-    .from("edition_sales")
-    .select(
-      `
-      id,
-      status,
-      total_amount,
-      created_at,
-      edition:newspaper_editions ( id, name ),
-      client:clients ( id, name )
-    `
-    )
-    .eq("seller_user_id", userId)
-    .gte("created_at", periodStart)
-    .lt("created_at", periodEndExclusive)
-    .order("created_at", {
-      ascending: false,
-    });
+  const { data: salesRaw } = await salesPromise;
 
   const mySales = (salesRaw ?? []).map(
     (sale) => ({
@@ -580,63 +672,10 @@ export default async function MeuPainelPage({
    * `userId` só pode ser o próprio usuário (ver acima).
    */
 
-  const adminDb = createAdminClient();
-
   const [
     saleCommissionsResult,
     contractCommissionsResult,
-  ] = await Promise.all([
-    adminDb
-      .from("sale_commissions")
-      .select(
-        `
-        id,
-        sale_id,
-        commission_type,
-        percentage,
-        base_amount,
-        amount,
-        amount_released,
-        amount_paid,
-        status,
-        created_at,
-        sale:edition_sales (
-          id,
-          client:clients ( id, name ),
-          edition:newspaper_editions ( id, name )
-        )
-      `
-      )
-      .eq("beneficiary_user_id", userId)
-      .gte("created_at", periodStart)
-      .lt("created_at", periodEndExclusive)
-      .order("created_at", { ascending: false }),
-
-    adminDb
-      .from("contract_commissions")
-      .select(
-        `
-        id,
-        contract_id,
-        percentage,
-        base_amount,
-        amount,
-        amount_released,
-        amount_paid,
-        status,
-        created_at,
-        contract:contracts (
-          id,
-          title,
-          client:clients ( id, name )
-        )
-      `
-      )
-      .eq("beneficiary_user_id", userId)
-      .gte("created_at", periodStart)
-      .lt("created_at", periodEndExclusive)
-      .order("created_at", { ascending: false }),
-  ]);
+  ] = await commissionsPromise;
 
   type MyCommission = {
     id: string;
@@ -751,11 +790,7 @@ export default async function MeuPainelPage({
    */
 
   const { data: myActiveSettings } =
-    await supabase
-      .from("seller_settings")
-      .select("company_id")
-      .eq("user_id", userId)
-      .eq("active", true);
+    await myActiveSettingsPromise;
 
   const myCompanyIds = [
     ...new Set(
@@ -787,6 +822,17 @@ export default async function MeuPainelPage({
           .lte("month", 12)
       : goalsQuery.eq("month", month);
 
+    // Meta e vendido não dependem um do outro: em paralelo.
+    const myRecordsPromise =
+      fetchSellerCompetenceRecords(
+        adminDb,
+        {
+          userIds: [userId],
+          companyIds: myCompanyIds,
+          year,
+        }
+      );
+
     const { data: myGoals } =
       await goalsQuery;
 
@@ -802,14 +848,7 @@ export default async function MeuPainelPage({
     }
 
     const myRecords =
-      await fetchSellerCompetenceRecords(
-        adminDb,
-        {
-          userIds: [userId],
-          companyIds: myCompanyIds,
-          year,
-        }
-      );
+      await myRecordsPromise;
 
     mySold = myRecords.reduce(
       (total, record) =>
@@ -854,15 +893,7 @@ export default async function MeuPainelPage({
 
   if (isAdmin) {
     const { data: allSettings } =
-      await adminDb
-        .from("seller_settings")
-        .select(`
-          user_id,
-          company_id,
-          company:companies ( id, name, color )
-        `)
-        .eq("active", true)
-        .order("created_at");
+      await allSettingsPromise!;
 
     const allSellerUserIds = [
       ...new Set(
@@ -951,6 +982,16 @@ export default async function MeuPainelPage({
       number
     >();
 
+    const allRecordsPromise =
+      fetchSellerCompetenceRecords(
+        adminDb,
+        {
+          userIds: allUserIds,
+          companyIds: allCompanyIds,
+          year,
+        }
+      );
+
     if (allUserIds.length > 0) {
       const { data: goals } =
         await adminDb
@@ -980,14 +1021,7 @@ export default async function MeuPainelPage({
     >();
 
     const allRecords =
-      await fetchSellerCompetenceRecords(
-        adminDb,
-        {
-          userIds: allUserIds,
-          companyIds: allCompanyIds,
-          year,
-        }
-      );
+      await allRecordsPromise;
 
     for (const record of allRecords) {
       const key = `${record.userId}:${record.month}`;

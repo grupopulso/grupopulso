@@ -214,6 +214,164 @@ export default async function EditionPage({
     await createClient();
 
   /*
+   * Consultas que só dependem do id da edição / da empresa:
+   * disparadas já, em paralelo com a consulta da edição
+   * (antes rodavam uma depois da outra). A edição é sempre
+   * do O Estafeta (filtro abaixo), então
+   * access.estafetaCompany.id == edition.company_id.
+   *
+   * Promise.resolve(): o builder do Supabase só dispara a
+   * requisição quando alguém chama .then() — isto força o
+   * início imediato.
+   */
+
+  const editionExtraPromise =
+    Promise.resolve(
+    supabase
+    .from("newspaper_editions")
+    .select("page_count")
+    .eq("id", id)
+    .maybeSingle()
+    );
+
+  const publicationsPromise =
+    Promise.resolve(
+    supabase
+      .from(
+        "contract_edition_publications"
+      )
+      .select(`
+        id,
+        contract_id,
+        edition_id,
+        section_id,
+        ad_position_id,
+        size_description,
+        amount,
+        notes,
+        active,
+        created_at
+      `)
+      .eq(
+        "edition_id",
+        id
+      )
+      .eq(
+        "active",
+        true
+      )
+      .order(
+        "created_at",
+        {
+          ascending:
+            true,
+        }
+      )
+    );
+
+  const activeContractsPromise =
+    Promise.resolve(
+    supabase
+      .from(
+        "contracts"
+      )
+      .select(`
+        id,
+        client_id,
+        product_id,
+        responsible_user_id,
+        title,
+        status,
+        value,
+        start_date,
+        end_date,
+
+        client:clients (
+          id,
+          name
+        ),
+
+        product:products (
+          id,
+          name
+        )
+      `)
+      .eq(
+        "company_id",
+        access.estafetaCompany.id
+      )
+      .eq(
+        "status",
+        "active"
+      )
+      .order(
+        "start_date",
+        {
+          ascending:
+            false,
+        }
+      )
+    );
+
+  const otherOpenEditionsPromise =
+    Promise.resolve(
+    supabase
+      .from(
+        "newspaper_editions"
+      )
+      .select(`
+        id,
+        name,
+        edition_number,
+        publication_date
+      `)
+      .eq(
+        "company_id",
+        access.estafetaCompany.id
+      )
+      .eq(
+        "status",
+        "open"
+      )
+      .neq(
+        "id",
+        id
+      )
+      .order(
+        "publication_date",
+        {
+          ascending: true,
+        }
+      )
+    );
+
+  const generalPositionsPromise =
+    Promise.resolve(
+    supabase
+      .from(
+        "edition_ad_positions"
+      )
+      .select(`
+        id,
+        section_id,
+        position_code,
+        name,
+        capacity,
+        manually_blocked,
+        blocked_reason,
+        active
+      `)
+      .eq(
+        "edition_id",
+        id
+      )
+      .is(
+        "section_id",
+        null
+      )
+    );
+
+  /*
    * =====================================================
    * EDIÇÃO
    * =====================================================
@@ -329,11 +487,7 @@ export default async function EditionPage({
    */
   let editionPageCount: number | null = null;
 
-  const { data: editionExtra } = await supabase
-    .from("newspaper_editions")
-    .select("page_count")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: editionExtra } = await editionExtraPromise;
 
   if (
     editionExtra &&
@@ -356,37 +510,7 @@ export default async function EditionPage({
     error:
       publicationError,
   } =
-    await supabase
-      .from(
-        "contract_edition_publications"
-      )
-      .select(`
-        id,
-        contract_id,
-        edition_id,
-        section_id,
-        ad_position_id,
-        size_description,
-        amount,
-        notes,
-        active,
-        created_at
-      `)
-      .eq(
-        "edition_id",
-        edition.id
-      )
-      .eq(
-        "active",
-        true
-      )
-      .order(
-        "created_at",
-        {
-          ascending:
-            true,
-        }
-      );
+    await publicationsPromise;
 
   if (
     publicationError
@@ -433,46 +557,7 @@ export default async function EditionPage({
     error:
       activeContractsError,
   } =
-    await supabase
-      .from(
-        "contracts"
-      )
-      .select(`
-        id,
-        client_id,
-        product_id,
-        responsible_user_id,
-        title,
-        status,
-        value,
-        start_date,
-        end_date,
-
-        client:clients (
-          id,
-          name
-        ),
-
-        product:products (
-          id,
-          name
-        )
-      `)
-      .eq(
-        "company_id",
-        edition.company_id
-      )
-      .eq(
-        "status",
-        "active"
-      )
-      .order(
-        "start_date",
-        {
-          ascending:
-            false,
-        }
-      );
+    await activeContractsPromise;
 
   if (
     activeContractsError
@@ -495,34 +580,7 @@ export default async function EditionPage({
     error:
       otherOpenEditionsError,
   } =
-    await supabase
-      .from(
-        "newspaper_editions"
-      )
-      .select(`
-        id,
-        name,
-        edition_number,
-        publication_date
-      `)
-      .eq(
-        "company_id",
-        edition.company_id
-      )
-      .eq(
-        "status",
-        "open"
-      )
-      .neq(
-        "id",
-        edition.id
-      )
-      .order(
-        "publication_date",
-        {
-          ascending: true,
-        }
-      );
+    await otherOpenEditionsPromise;
 
   if (
     otherOpenEditionsError
@@ -926,28 +984,7 @@ export default async function EditionPage({
     data:
       generalPositions,
   } =
-    await supabase
-      .from(
-        "edition_ad_positions"
-      )
-      .select(`
-        id,
-        section_id,
-        position_code,
-        name,
-        capacity,
-        manually_blocked,
-        blocked_reason,
-        active
-      `)
-      .eq(
-        "edition_id",
-        edition.id
-      )
-      .is(
-        "section_id",
-        null
-      );
+    await generalPositionsPromise;
 
   for (
     const position of
