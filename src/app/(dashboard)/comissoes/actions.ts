@@ -16,6 +16,14 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
+import {
+  createAdminClient,
+} from "@/app/lib/supabase/admin";
+
+import {
+  registerBatchTransactions,
+} from "../financeiro/[id]/actions";
+
 type CommissionOriginType =
   | "sale"
   | "contract";
@@ -138,6 +146,184 @@ export async function payCommission(
     access.estafetaCompany.id,
     input
   );
+}
+
+/*
+ * =====================================================
+ * PAGAMENTO EM LOTE
+ * =====================================================
+ *
+ * Gera de uma vez a conta a pagar de várias comissões (cada uma
+ * pelo valor disponível) e, se pedido, já dá a baixa em todas
+ * pela mesma conta/forma/data — sem abrir uma por uma. Cada
+ * comissão passa pela mesma validação do pagamento individual
+ * (payCommission), inclusive o limite do disponível.
+ */
+
+export async function getCommissionBatchFormData() {
+  const access =
+    await requireEstafetaAccess();
+
+  await requireModulePermission(
+    "financial",
+    "edit"
+  );
+
+  const adminDb =
+    createAdminClient();
+
+  const [
+    methodsResult,
+    accountsResult,
+  ] = await Promise.all([
+    adminDb
+      .from("financial_payment_methods")
+      .select(`
+        id,
+        name,
+        code,
+        usage_type,
+        active
+      `)
+      .eq("active", true)
+      .order("name"),
+
+    adminDb
+      .from("financial_accounts")
+      .select(`
+        id,
+        name,
+        current_balance
+      `)
+      .eq(
+        "company_id",
+        access.estafetaCompany.id
+      )
+      .eq("active", true)
+      .order("name"),
+  ]);
+
+  return {
+    paymentMethods:
+      methodsResult.data ?? [],
+
+    financialAccounts:
+      accountsResult.data ?? [],
+  };
+}
+
+export async function payCommissionsBatch(
+  items: {
+    commissionId: string;
+    originType: CommissionOriginType;
+    amount: number;
+  }[],
+  input: {
+    dueDate: string;
+    notes?: string;
+    settle?: {
+      date: string;
+      paymentMethod: string;
+      financialAccountId: string;
+    };
+  }
+) {
+  await requireEstafetaAccess();
+
+  await requireModulePermission(
+    "financial",
+    "edit"
+  );
+
+  if (
+    items.length === 0 ||
+    items.length > 100
+  ) {
+    return {
+      success: false as const,
+      message:
+        "Selecione de 1 a 100 comissões.",
+    };
+  }
+
+  const entryIds: string[] = [];
+
+  for (const item of items) {
+    const result =
+      await payCommission({
+        commissionId:
+          item.commissionId,
+        originType:
+          item.originType,
+        amount:
+          roundMoney(item.amount),
+        dueDate:
+          input.dueDate,
+        notes:
+          input.notes,
+      });
+
+    if (
+      !result.success ||
+      !("financialEntryId" in result) ||
+      !result.financialEntryId
+    ) {
+      return {
+        success: false as const,
+        message: `${
+          entryIds.length > 0
+            ? `${entryIds.length} de ${items.length} pagamentos já foram gerados (estão em Contas a pagar). `
+            : ""
+        }Falhou numa comissão: ${
+          ("message" in result &&
+            result.message) ||
+          "erro ao gerar o pagamento."
+        } Atualize a página e confira.`,
+      };
+    }
+
+    entryIds.push(
+      result.financialEntryId
+    );
+  }
+
+  if (!input.settle) {
+    revalidateCommissionPaths();
+
+    return {
+      success: true as const,
+      generated: entryIds.length,
+      settled: 0,
+    };
+  }
+
+  const settleResult =
+    await registerBatchTransactions(
+      entryIds,
+      {
+        date: input.settle.date,
+        paymentMethod:
+          input.settle.paymentMethod,
+        financialAccountId:
+          input.settle.financialAccountId,
+        notes: input.notes,
+      }
+    );
+
+  revalidateCommissionPaths();
+
+  if (!settleResult.success) {
+    return {
+      success: false as const,
+      message: `Os ${entryIds.length} pagamentos foram gerados, mas a baixa falhou: ${settleResult.message} Dá para concluir em Financeiro > Contas a pagar.`,
+    };
+  }
+
+  return {
+    success: true as const,
+    generated: entryIds.length,
+    settled: settleResult.paidCount,
+  };
 }
 
 /*

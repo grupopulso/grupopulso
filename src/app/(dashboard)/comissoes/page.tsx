@@ -35,6 +35,13 @@ import {
 
 import PayCommissionButton from "./pay-commission-button";
 
+import {
+  CommissionBatchBar,
+  CommissionCheckbox,
+  CommissionSelectionProvider,
+  SelectAllCommissions,
+} from "./batch-commission-payment";
+
 type Profile = {
   id: string;
   name: string | null;
@@ -1328,6 +1335,75 @@ export default async function CommissionsPage({
         )
       );
 
+  /*
+   * Comissões que podem ser pagas em lote (mesmo critério do
+   * botão "Gerar pagamento" de cada linha).
+   */
+  const batchItems =
+    canManageCommissions
+      ? filteredCommissions.flatMap(
+          (commission) => {
+            if (
+              commission.status ===
+              "cancelled"
+            ) {
+              return [];
+            }
+
+            const available =
+              Math.max(
+                roundMoney(
+                  commission.amountReleased -
+                    commission.amountPaid -
+                    calculateCommitted(
+                      getCommissionPayments(
+                        commission
+                      )
+                    )
+                ),
+                0
+              );
+
+            if (available <= 0) {
+              return [];
+            }
+
+            return [
+              {
+                key: `${commission.originType}-${commission.id}`,
+                commissionId:
+                  commission.id,
+                originType:
+                  commission.originType,
+                beneficiaryName:
+                  profilesById.get(
+                    commission.beneficiaryUserId
+                  )?.name ?? "Usuário",
+                reference: [
+                  commission.originType ===
+                  "sale"
+                    ? commission.editionName ??
+                      "Venda"
+                    : commission.contractTitle ??
+                      "Contrato",
+                  commission.clientName,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                available,
+              },
+            ];
+          }
+        )
+      : [];
+
+  const batchItemByKey = new Map(
+    batchItems.map((item) => [
+      item.key,
+      item,
+    ])
+  );
+
   return (
     <main className="min-h-screen bg-[#f5f7f6] p-8">
       <div className="mx-auto max-w-[1650px]">
@@ -1687,6 +1763,7 @@ export default async function CommissionsPage({
 
         {/* HISTÓRICO */}
 
+        <CommissionSelectionProvider>
         <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-6 py-5">
             <h2 className="font-semibold text-slate-900">
@@ -1695,14 +1772,26 @@ export default async function CommissionsPage({
 
             <p className="mt-1 text-sm text-slate-500">
               Vendas e contratos em um único histórico.
+              {batchItems.length > 0 &&
+                " Marque várias para pagar de uma vez."}
             </p>
           </div>
+
+          <CommissionBatchBar />
 
           {filteredCommissions.length ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead className="bg-slate-50">
                   <tr>
+                    {batchItems.length > 0 && (
+                      <th className="w-10 py-3 pl-6">
+                        <SelectAllCommissions
+                          items={batchItems}
+                        />
+                      </th>
+                    )}
+
                     <TableHeader>
                       Beneficiário
                     </TableHeader>
@@ -1797,6 +1886,11 @@ export default async function CommissionsPage({
                           0
                         );
 
+                      const batchItem =
+                        batchItemByKey.get(
+                          `${commission.originType}-${commission.id}`
+                        );
+
                       return (
                         <tr
                           key={`${commission.originType}-${commission.id}`}
@@ -1807,6 +1901,16 @@ export default async function CommissionsPage({
                               : ""
                           }
                         >
+                          {batchItems.length > 0 && (
+                            <td className="w-10 py-4 pl-6">
+                              {batchItem && (
+                                <CommissionCheckbox
+                                  item={batchItem}
+                                />
+                              )}
+                            </td>
+                          )}
+
                           <td className="px-6 py-4 text-sm font-semibold text-slate-900">
                             {beneficiary
                               ?.name ??
@@ -1972,6 +2076,7 @@ export default async function CommissionsPage({
             />
           )}
         </section>
+        </CommissionSelectionProvider>
       </div>
     </main>
   );
