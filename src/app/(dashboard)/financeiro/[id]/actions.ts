@@ -437,7 +437,7 @@ export async function registerGroupTransactions(
  * BAIXA EM LOTE (CONTAS A PAGAR)
  * =====================================================
  *
- * Quita o saldo em aberto de várias despesas de uma mesma
+ * Quita o saldo em aberto de várias despesas (ou receitas) de uma mesma
  * empresa de uma vez, com a mesma data, forma, conta e
  * observação. Tudo é validado antes de baixar a primeira - se
  * algo estiver errado, nada é baixado.
@@ -476,8 +476,14 @@ export async function registerBatchTransactions(
     paymentMethod: string;
     financialAccountId: string;
     notes?: string;
-  }
+  },
+  type: "expense" | "income" = "expense"
 ) {
+  const noun =
+    type === "income"
+      ? "receitas"
+      : "despesas";
+
   await requireAuthenticatedUser();
 
   const ids = Array.from(new Set(entryIds));
@@ -486,7 +492,7 @@ export async function registerBatchTransactions(
     return {
       success: false as const,
       message:
-        "Selecione de 1 a 100 despesas para dar baixa.",
+        `Selecione de 1 a 100 ${noun} para dar baixa.`,
     };
   }
 
@@ -512,15 +518,15 @@ export async function registerBatchTransactions(
     return {
       success: false as const,
       message:
-        "Alguma despesa selecionada não foi encontrada. Atualize a página e tente de novo.",
+        "Algum lançamento selecionado não foi encontrado. Atualize a página e tente de novo.",
     };
   }
 
-  if (entries.some((item) => item.type !== "expense")) {
+  if (entries.some((item) => item.type !== type)) {
     return {
       success: false as const,
       message:
-        "A baixa em lote vale só para despesas.",
+        `Selecione só ${noun} nesta baixa em lote.`,
     };
   }
 
@@ -534,12 +540,12 @@ export async function registerBatchTransactions(
     return {
       success: false as const,
       message:
-        "Só dá para baixar em lote despesas da mesma empresa.",
+        `Só dá para baixar em lote ${noun} da mesma empresa.`,
     };
   }
 
   await requireFinancialEntryAccess(
-    "expense",
+    type,
     "edit"
   );
 
@@ -575,7 +581,7 @@ export async function registerBatchTransactions(
     return {
       success: false as const,
       message:
-        "Conta financeira inválida para a empresa das despesas.",
+        `Conta financeira inválida para a empresa das ${noun}.`,
     };
   }
 

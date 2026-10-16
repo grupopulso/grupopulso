@@ -216,7 +216,10 @@ export async function payCommissionsBatch(
   items: {
     commissionId: string;
     originType: CommissionOriginType;
+    /* valor ainda sem conta a pagar (gera uma nova) */
     amount: number;
+    /* contas a pagar já geradas e ainda em aberto */
+    openEntryIds: string[];
   }[],
   input: {
     dueDate: string;
@@ -246,9 +249,91 @@ export async function payCommissionsBatch(
     };
   }
 
-  const entryIds: string[] = [];
+  const toGenerate = items.filter(
+    (item) => item.amount > 0
+  );
 
-  for (const item of items) {
+  const existingEntryIds = [
+    ...new Set(
+      items.flatMap(
+        (item) => item.openEntryIds ?? []
+      )
+    ),
+  ];
+
+  if (
+    !input.settle &&
+    toGenerate.length === 0
+  ) {
+    return {
+      success: false as const,
+      message:
+        "As comissões selecionadas já têm pagamento gerado. Marque \"Já dar baixa\" para quitar.",
+    };
+  }
+
+  /*
+   * As contas a pagar já existentes precisam ser mesmo de
+   * pagamento DESTAS comissões (não aceita qualquer id vindo do
+   * navegador).
+   */
+  if (
+    input.settle &&
+    existingEntryIds.length > 0
+  ) {
+    const adminDb =
+      createAdminClient();
+
+    const saleIds = items
+      .filter((item) => item.originType === "sale")
+      .map((item) => item.commissionId);
+
+    const contractIds = items
+      .filter((item) => item.originType === "contract")
+      .map((item) => item.commissionId);
+
+    const [salePayments, contractPayments] =
+      await Promise.all([
+        saleIds.length > 0
+          ? adminDb
+              .from("commission_payments")
+              .select("financial_entry_id")
+              .in("commission_id", saleIds)
+              .in("financial_entry_id", existingEntryIds)
+          : Promise.resolve({ data: [] }),
+
+        contractIds.length > 0
+          ? adminDb
+              .from("contract_commission_payments")
+              .select("financial_entry_id")
+              .in("commission_id", contractIds)
+              .in("financial_entry_id", existingEntryIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+    const valid = new Set(
+      [
+        ...(salePayments.data ?? []),
+        ...(contractPayments.data ?? []),
+      ].map((row) => row.financial_entry_id)
+    );
+
+    if (
+      existingEntryIds.some(
+        (id) => !valid.has(id)
+      )
+    ) {
+      return {
+        success: false as const,
+        message:
+          "Algum pagamento selecionado não pertence às comissões. Atualize a página e tente de novo.",
+      };
+    }
+  }
+
+  const generatedIds: string[] = [];
+
+  for (const item of toGenerate) {
     const result =
       await payCommission({
         commissionId:
@@ -268,11 +353,13 @@ export async function payCommissionsBatch(
       !("financialEntryId" in result) ||
       !result.financialEntryId
     ) {
+      revalidateCommissionPaths();
+
       return {
         success: false as const,
         message: `${
-          entryIds.length > 0
-            ? `${entryIds.length} de ${items.length} pagamentos já foram gerados (estão em Contas a pagar). `
+          generatedIds.length > 0
+            ? `${generatedIds.length} de ${toGenerate.length} pagamentos já foram gerados (estão em Contas a pagar). `
             : ""
         }Falhou numa comissão: ${
           ("message" in result &&
@@ -282,7 +369,7 @@ export async function payCommissionsBatch(
       };
     }
 
-    entryIds.push(
+    generatedIds.push(
       result.financialEntryId
     );
   }
@@ -292,14 +379,17 @@ export async function payCommissionsBatch(
 
     return {
       success: true as const,
-      generated: entryIds.length,
+      generated: generatedIds.length,
       settled: 0,
     };
   }
 
   const settleResult =
     await registerBatchTransactions(
-      entryIds,
+      [
+        ...existingEntryIds,
+        ...generatedIds,
+      ],
       {
         date: input.settle.date,
         paymentMethod:
@@ -315,13 +405,17 @@ export async function payCommissionsBatch(
   if (!settleResult.success) {
     return {
       success: false as const,
-      message: `Os ${entryIds.length} pagamentos foram gerados, mas a baixa falhou: ${settleResult.message} Dá para concluir em Financeiro > Contas a pagar.`,
+      message: `${
+        generatedIds.length > 0
+          ? `Os ${generatedIds.length} pagamentos novos foram gerados, mas a`
+          : "A"
+      } baixa falhou: ${settleResult.message} Dá para concluir em Financeiro > Contas a pagar.`,
     };
   }
 
   return {
     success: true as const,
-    generated: entryIds.length,
+    generated: generatedIds.length,
     settled: settleResult.paidCount,
   };
 }

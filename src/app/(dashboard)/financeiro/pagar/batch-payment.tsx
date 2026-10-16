@@ -114,7 +114,32 @@ export function RowCheckbox({
   );
 }
 
-export function BatchBar() {
+type Kind = "expense" | "income";
+
+const KIND_LABELS = {
+  expense: {
+    one: "despesa",
+    many: "despesas",
+    selectedOne: "despesa selecionada",
+    selectedMany: "despesas selecionadas",
+    account: "Pagar pela conta",
+  },
+  income: {
+    one: "receita",
+    many: "receitas",
+    selectedOne: "receita selecionada",
+    selectedMany: "receitas selecionadas",
+    account: "Receber na conta",
+  },
+} as const;
+
+export function BatchBar({
+  kind = "expense",
+}: {
+  kind?: Kind;
+}) {
+  const labels = KIND_LABELS[kind];
+
   const router = useRouter();
 
   const { selected, clear } = useSelection();
@@ -137,8 +162,8 @@ export function BatchBar() {
           <strong className="text-slate-900">
             {selected.length}{" "}
             {selected.length === 1
-              ? "despesa selecionada"
-              : "despesas selecionadas"}
+              ? labels.selectedOne
+              : labels.selectedMany}
           </strong>{" "}
           de {selected[0].companyName} ·{" "}
           {formatCurrency(total)}
@@ -166,6 +191,7 @@ export function BatchBar() {
 
       {open && (
         <BatchDialog
+          kind={kind}
           entries={selected}
           total={total}
           onClose={() => setOpen(false)}
@@ -195,11 +221,13 @@ type FinancialAccount = {
 };
 
 function BatchDialog({
+  kind,
   entries,
   total,
   onClose,
   onDone,
 }: {
+  kind: Kind;
   entries: SelectedEntry[];
   total: number;
   onClose: () => void;
@@ -253,7 +281,7 @@ function BatchDialog({
         (item) =>
           item.active &&
           (item.usage_type === "both" ||
-            item.usage_type === "expense")
+            item.usage_type === kind)
       );
 
       const loadedAccounts =
@@ -325,7 +353,8 @@ function BatchDialog({
           paymentMethod: method,
           financialAccountId: accountId,
           notes: notes.trim() || undefined,
-        }
+        },
+        kind
       );
 
       if (!result.success) {
@@ -357,8 +386,8 @@ function BatchDialog({
             <h2 className="text-xl font-semibold text-slate-900">
               Dar baixa em {entries.length}{" "}
               {entries.length === 1
-                ? "despesa"
-                : "despesas"}
+                ? KIND_LABELS[kind].one
+                : KIND_LABELS[kind].many}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
@@ -401,11 +430,12 @@ function BatchDialog({
         </ul>
 
         <p className="mt-2 text-xs text-slate-500">
-          Cada despesa é quitada pelo saldo em aberto.
+          Cada {KIND_LABELS[kind].one} é quitada pelo
+          saldo em aberto.
         </p>
 
         <div className="mt-5 space-y-5">
-          <Field label="Pagar pela conta">
+          <Field label={KIND_LABELS[kind].account}>
             <div className="relative">
               <Landmark className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
@@ -495,7 +525,7 @@ function BatchDialog({
                 setNotes(event.target.value)
               }
               disabled={loading}
-              placeholder="Vale para todas as despesas selecionadas..."
+              placeholder={`Vale para todas as ${KIND_LABELS[kind].many} selecionadas...`}
               className="input min-h-[80px] disabled:bg-slate-50"
             />
           </Field>

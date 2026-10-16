@@ -23,7 +23,11 @@ type SelectedCommission = {
   originType: "sale" | "contract";
   beneficiaryName: string;
   reference: string;
+  /* liberado sem conta a pagar ainda (gera nova) */
   available: number;
+  /* já gerado e em aberto ("Em pagamento") */
+  committed: number;
+  openEntryIds: string[];
 };
 
 type Selection = {
@@ -181,7 +185,8 @@ export function CommissionBatchBar() {
   }
 
   const total = selected.reduce(
-    (sum, item) => sum + item.available,
+    (sum, item) =>
+      sum + item.available + item.committed,
     0
   );
 
@@ -272,6 +277,13 @@ function BatchDialog({
   >([]);
 
   const [settleNow, setSettleNow] = useState(true);
+
+  // Tudo já tem pagamento gerado: só resta dar a baixa.
+  const onlyCommitted = items.every(
+    (item) => item.available <= 0
+  );
+
+  const settle = settleNow || onlyCommitted;
 
   const [method, setMethod] = useState("");
 
@@ -374,13 +386,13 @@ function BatchDialog({
       return;
     }
 
-    if (settleNow && !accountId) {
+    if (settle && !accountId) {
       setError("Selecione a conta usada no pagamento.");
 
       return;
     }
 
-    if (settleNow && !method) {
+    if (settle && !method) {
       setError("Selecione a forma de pagamento.");
 
       return;
@@ -395,11 +407,12 @@ function BatchDialog({
           commissionId: item.commissionId,
           originType: item.originType,
           amount: item.available,
+          openEntryIds: item.openEntryIds,
         })),
         {
           dueDate: date,
           notes: notes.trim() || undefined,
-          settle: settleNow
+          settle: settle
             ? {
                 date,
                 paymentMethod: method,
@@ -495,25 +508,38 @@ function BatchDialog({
                 </span>
               </span>
 
-              <span className="shrink-0 font-medium text-slate-900">
-                {formatCurrency(item.available)}
+              <span className="shrink-0 text-right">
+                <span className="block font-medium text-slate-900">
+                  {formatCurrency(
+                    item.available + item.committed
+                  )}
+                </span>
+
+                {item.committed > 0 && (
+                  <span className="block text-xs text-amber-700">
+                    {item.available > 0
+                      ? `${formatCurrency(item.committed)} já em pagamento`
+                      : "já em pagamento"}
+                  </span>
+                )}
               </span>
             </li>
           ))}
         </ul>
 
         <p className="mt-2 text-xs text-slate-500">
-          Cada comissão é paga pelo valor disponível.
+          Cada comissão é paga pelo valor liberado
+          (disponível + o que já está em pagamento).
         </p>
 
         <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4">
           <input
             type="checkbox"
-            checked={settleNow}
+            checked={settle}
             onChange={(event) =>
               setSettleNow(event.target.checked)
             }
-            disabled={loading}
+            disabled={loading || onlyCommitted}
             className="mt-0.5 h-4 w-4 accent-[#15704f]"
           />
 
@@ -523,8 +549,9 @@ function BatchDialog({
             </span>
 
             <span className="mt-0.5 block text-xs text-slate-500">
-              Desmarcado, só gera as contas a pagar para
-              baixar depois no Financeiro.
+              {onlyCommitted
+                ? "Todas já têm conta a pagar gerada — aqui é só dar a baixa."
+                : "Desmarcado, só gera as contas a pagar para baixar depois no Financeiro."}
             </span>
           </span>
         </label>
@@ -532,7 +559,7 @@ function BatchDialog({
         <div className="mt-5 space-y-5">
           <Field
             label={
-              settleNow
+              settle
                 ? "Data do pagamento"
                 : "Vencimento"
             }
@@ -549,7 +576,7 @@ function BatchDialog({
             />
           </Field>
 
-          {settleNow && (
+          {settle && (
             <>
               <Field label="Pagar pela conta">
                 <div className="relative">
@@ -651,7 +678,7 @@ function BatchDialog({
             type="submit"
             disabled={
               loading ||
-              (settleNow &&
+              (settle &&
                 (loadingData ||
                   methods.length === 0 ||
                   accounts.length === 0))
@@ -660,7 +687,7 @@ function BatchDialog({
           >
             {loading
               ? "Processando..."
-              : settleNow
+              : settle
                 ? `Pagar ${formatCurrency(total)}`
                 : `Gerar ${formatCurrency(total)}`}
           </button>

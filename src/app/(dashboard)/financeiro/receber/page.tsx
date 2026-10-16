@@ -17,6 +17,11 @@ import {
   getFinancialEntryStatus,
 } from "@/app/lib/financial-entry-status";
 import { getCompanyShareFactor } from "@/app/lib/tv-indoor";
+import {
+  BatchBar,
+  BatchSelectionProvider,
+  RowCheckbox,
+} from "../pagar/batch-payment";
 
 const PAGE_SIZE = 20;
 
@@ -533,10 +538,14 @@ export default async function ContasReceberPage({
             </div>
           </div>
 
+          <BatchSelectionProvider>
+          <BatchBar kind="income" />
+
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead className="bg-slate-50">
                 <tr>
+                  <th className="w-10 px-5 py-3" />
                   <TableHeader>Cliente</TableHeader>
                   <TableHeader>Descrição</TableHeader>
                   <TableHeader>Empresa</TableHeader>
@@ -554,11 +563,36 @@ export default async function ContasReceberPage({
                   const company = getFirst(entry.company);
                   const category = getFirst(entry.category);
 
+                  const openAmount =
+                    calculateEntryOpenAmount(entry);
+
+                  const canSelect =
+                    entry.calculatedStatus !==
+                      "cancelled" && openAmount > 0;
+
                   return (
                     <tr
                       key={entry.id}
                       className="transition hover:bg-slate-50"
                     >
+                      <td className="px-5 py-4">
+                        {canSelect && (
+                          <RowCheckbox
+                            entry={{
+                              id: entry.id,
+                              companyId:
+                                entry.company_id,
+                              companyName:
+                                company?.name ??
+                                "Empresa",
+                              description:
+                                entry.description,
+                              openAmount,
+                            }}
+                          />
+                        )}
+                      </td>
+
                       <td className="px-5 py-4">
                         {client ? (
                           <Link
@@ -660,7 +694,7 @@ export default async function ContasReceberPage({
                 {!pagedEntries.length && (
                   <tr>
                     <td
-                      colSpan={8}
+                      colSpan={9}
                       className="px-5 py-14 text-center"
                     >
                       <p className="text-sm font-medium text-slate-500">
@@ -684,6 +718,7 @@ export default async function ContasReceberPage({
               </tbody>
             </table>
           </div>
+          </BatchSelectionProvider>
 
           <div className="flex flex-col gap-3 border-t border-slate-100 px-5 py-4 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between">
             <span>

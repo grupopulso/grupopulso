@@ -1336,8 +1336,9 @@ export default async function CommissionsPage({
       );
 
   /*
-   * Comissões que podem ser pagas em lote (mesmo critério do
-   * botão "Gerar pagamento" de cada linha).
+   * Comissões que podem ser pagas em lote: com valor disponível
+   * (mesmo critério do botão "Gerar pagamento") e/ou com
+   * pagamento já gerado ainda em aberto.
    */
   const batchItems =
     canManageCommissions
@@ -1350,21 +1351,51 @@ export default async function CommissionsPage({
               return [];
             }
 
+            const payments =
+              getCommissionPayments(
+                commission
+              );
+
+            const committed =
+              calculateCommitted(
+                payments
+              );
+
             const available =
               Math.max(
                 roundMoney(
                   commission.amountReleased -
                     commission.amountPaid -
-                    calculateCommitted(
-                      getCommissionPayments(
-                        commission
-                      )
-                    )
+                    committed
                 ),
                 0
               );
 
-            if (available <= 0) {
+            /*
+             * Pagamentos já gerados e ainda em aberto ("Em
+             * pagamento"): dá pra dar a baixa neles daqui.
+             */
+            const openEntryIds = payments
+              .filter(
+                (payment) =>
+                  payment.status !==
+                    "cancelled" &&
+                  Number(payment.amount ?? 0) -
+                    Number(
+                      payment.amount_applied ??
+                        0
+                    ) >
+                    0
+              )
+              .map(
+                (payment) =>
+                  payment.financial_entry_id
+              );
+
+            if (
+              available <= 0 &&
+              openEntryIds.length === 0
+            ) {
               return [];
             }
 
@@ -1391,6 +1422,11 @@ export default async function CommissionsPage({
                   .filter(Boolean)
                   .join(" · "),
                 available,
+                committed:
+                  openEntryIds.length > 0
+                    ? committed
+                    : 0,
+                openEntryIds,
               },
             ];
           }
@@ -1773,7 +1809,7 @@ export default async function CommissionsPage({
             <p className="mt-1 text-sm text-slate-500">
               Vendas e contratos em um único histórico.
               {batchItems.length > 0 &&
-                " Marque várias para pagar de uma vez."}
+                " Marque várias para pagar ou dar baixa de uma vez."}
             </p>
           </div>
 
