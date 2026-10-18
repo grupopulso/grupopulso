@@ -4,8 +4,14 @@ import { fetchAllRows } from "@/app/lib/fetch-all";
 import { createClient } from "@/app/lib/supabase/server";
 
 import {
+  canAccessModule,
   requireModulePermission,
 } from "@/app/lib/permissions";
+
+import {
+  calculateEntryOpenAmount,
+  calculateEntryTotal,
+} from "@/app/lib/financial-entry-status";
 
 import {
   getMostUrgentContractStatus,
@@ -52,6 +58,7 @@ type FinancialEntry = {
   discount: number | string;
   status: string;
   contract_id: string | null;
+  charge_sent: boolean | null;
 
   contract:
     | {
@@ -365,6 +372,7 @@ export default async function HomePage({
           discount,
           status,
           contract_id,
+          charge_sent,
 
           contract:contracts (
             billing_frequency,
@@ -786,6 +794,96 @@ export default async function HomePage({
     annualHref: `/?periodo=ano&ano=${year}`,
   };
 
+  /*
+   * ==========================
+   * ANDAMENTO DAS COBRANÇAS
+   * ==========================
+   *
+   * Retrato de AGORA (não segue o período do dashboard), com o
+   * mesmo critério de /financeiro/cobrancas no prazo padrão:
+   * receitas vencendo nos próximos 30 dias (ou já vencidas) —
+   * falta cobrar / cobrado aguardando / vencido. Só pra quem
+   * enxerga contas a receber.
+   */
+
+  const canSeeCharges =
+    access.profile.role === "admin" ||
+    ["financial", "accounts_receivable", "receipts"].some(
+      (module) =>
+        canAccessModule(access, module, "view")
+    );
+
+  const chargesToday = new Intl.DateTimeFormat(
+    "en-CA",
+    { timeZone: "America/Sao_Paulo" }
+  ).format(new Date());
+
+  const chargesHorizonDate = new Date(
+    `${chargesToday}T12:00:00Z`
+  );
+
+  chargesHorizonDate.setUTCDate(
+    chargesHorizonDate.getUTCDate() + 30
+  );
+
+  const chargesHorizon = chargesHorizonDate
+    .toISOString()
+    .slice(0, 10);
+
+  const emptyStage = () => ({ count: 0, amount: 0 });
+
+  const chargeSummaryFor = (
+    companyId: string | null
+  ) => {
+    const summary = {
+      companyId,
+      stalled: emptyStage(),
+      charged: emptyStage(),
+      overdue: emptyStage(),
+    };
+
+    for (const entry of entries) {
+      if (
+        entry.type !== "income" ||
+        entry.status === "cancelled" ||
+        entry.due_date > chargesHorizon ||
+        (companyId &&
+          entry.company_id !== companyId)
+      ) {
+        continue;
+      }
+
+      const total = calculateEntryTotal(entry);
+
+      const open = calculateEntryOpenAmount(entry);
+
+      if (Number(entry.amount_paid) >= total && total > 0) {
+        continue;
+      }
+
+      const stage =
+        entry.due_date < chargesToday
+          ? summary.overdue
+          : entry.charge_sent
+            ? summary.charged
+            : summary.stalled;
+
+      stage.count += 1;
+      stage.amount += open;
+    }
+
+    return summary;
+  };
+
+  const charges = canSeeCharges
+    ? {
+        consolidated: chargeSummaryFor(null),
+        byCompany: companies.map((company) =>
+          chargeSummaryFor(company.id)
+        ),
+      }
+    : null;
+
   return (
     <DashboardClient
       period={period}
@@ -816,6 +914,7 @@ export default async function HomePage({
       goalsByCompany={
         goalsByCompany
       }
+      charges={charges}
     />
   );
 }

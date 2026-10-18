@@ -10,6 +10,7 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ChevronLeft,
+  ListChecks,
   ChevronRight,
   CircleDollarSign,
   Target,
@@ -93,6 +94,24 @@ type DashboardClientProps = {
   metricsByCompany: DashboardMetrics[];
 
   goalsByCompany: CompanyGoal[];
+
+  /* null = usuário sem acesso a contas a receber */
+  charges: {
+    consolidated: ChargeSummary;
+    byCompany: ChargeSummary[];
+  } | null;
+};
+
+type ChargeStage = {
+  count: number;
+  amount: number;
+};
+
+type ChargeSummary = {
+  companyId: string | null;
+  stalled: ChargeStage;
+  charged: ChargeStage;
+  overdue: ChargeStage;
 };
 
 export default function DashboardClient({
@@ -102,6 +121,7 @@ export default function DashboardClient({
   consolidatedMetrics,
   metricsByCompany,
   goalsByCompany,
+  charges,
 }: DashboardClientProps) {
 const {
   selectedCompanyId,
@@ -337,6 +357,72 @@ const {
             href="/financeiro/pagar?status=overdue"
           />
         </div>
+
+        {/* ANDAMENTO DAS COBRANÇAS */}
+
+        {charges && (() => {
+          const summary =
+            selectedCompanyId === "all"
+              ? charges.consolidated
+              : charges.byCompany.find(
+                  (item) =>
+                    item.companyId ===
+                    selectedCompanyId
+                ) ?? charges.consolidated;
+
+          return (
+            <section className="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <ListChecks className="h-5 w-5 text-[#15704f]" />
+
+                    <h2 className="font-semibold text-slate-900">
+                      Andamento das cobranças
+                    </h2>
+                  </div>
+
+                  <p className="mt-1 text-xs text-slate-400">
+                    Hoje · vencidas e as que vencem nos próximos 30 dias
+                  </p>
+                </div>
+
+                <Link
+                  href="/financeiro/cobrancas"
+                  className="text-sm font-semibold text-[#15704f] hover:underline"
+                >
+                  Ver andamento
+                </Link>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
+                <ChargeStageCard
+                  href="/financeiro/cobrancas?etapa=parado"
+                  label="Falta cobrar"
+                  hint="Sem cobrança enviada"
+                  stage={summary.stalled}
+                  tone="amber"
+                />
+
+                <ChargeStageCard
+                  href="/financeiro/cobrancas?etapa=cobrado"
+                  label="Cobrado, aguardando"
+                  hint="Dentro do vencimento"
+                  stage={summary.charged}
+                  tone="blue"
+                />
+
+                <ChargeStageCard
+                  href="/financeiro/cobrancas?etapa=vencido"
+                  label="Vencido"
+                  hint="Passou do vencimento"
+                  stage={summary.overdue}
+                  tone="red"
+                />
+              </div>
+            </section>
+          );
+        })()}
 
         {/* METAS DO MÊS */}
 
@@ -797,4 +883,44 @@ function formatCurrency(
       currency: "BRL",
     }
   ).format(value);
+}
+
+function ChargeStageCard({
+  href,
+  label,
+  hint,
+  stage,
+  tone,
+}: {
+  href: string;
+  label: string;
+  hint: string;
+  stage: ChargeStage;
+  tone: "amber" | "blue" | "red";
+}) {
+  const color = {
+    amber: "text-amber-700",
+    blue: "text-blue-700",
+    red: "text-red-600",
+  }[tone];
+
+  return (
+    <Link
+      href={href}
+      className="block rounded-xl border border-slate-200 p-4 transition hover:border-slate-300 hover:bg-slate-50"
+    >
+      <p className="text-sm font-semibold text-slate-900">
+        {label}
+      </p>
+
+      <p className={`mt-2 text-lg font-semibold ${color}`}>
+        {formatCurrency(stage.amount)}
+      </p>
+
+      <p className="mt-1 text-xs text-slate-400">
+        {stage.count}{" "}
+        {stage.count === 1 ? "conta" : "contas"} · {hint}
+      </p>
+    </Link>
+  );
 }
