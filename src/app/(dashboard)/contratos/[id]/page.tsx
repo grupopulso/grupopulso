@@ -11,6 +11,7 @@ import {
   FileText,
   MapPin,
   Monitor,
+  Newspaper,
   Pencil,
   Plus,
   Printer,
@@ -1284,6 +1285,17 @@ const commissionProfilesById =
                 contract.title
               }
             />
+
+            {canPublishInEditions && (
+              <Link
+                href={`/contratos/${contract.id}/acompanhamento`}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                <Newspaper className="h-4 w-4" />
+
+                Acompanhar contrato
+              </Link>
+            )}
 
             <Link
               href={`/contratos/${contract.id}/recibo`}

@@ -15,6 +15,7 @@ import {
   CircleDollarSign,
   FileText,
   HandCoins,
+  ListChecks,
   LayoutDashboard,
   LogOut,
   Package,
@@ -152,6 +153,15 @@ const navigation: NavigationItem[] = [
     href: "/financeiro",
     icon: CircleDollarSign,
     module: "financial",
+  },
+
+  {
+    // Mapa das cobranças (falta cobrar / cobrado / vencido /
+    // pago) — também pra quem não opera o financeiro no dia a dia.
+    label: "Andamento das cobranças",
+    href: "/financeiro/cobrancas",
+    icon: ListChecks,
+    module: "accounts_receivable",
   },
 
   {

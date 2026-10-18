@@ -115,7 +115,8 @@ export default async function ContratosPage({
       company:companies (
         id,
         name,
-        color
+        color,
+        slug
       ),
 
       product:products (
@@ -533,6 +534,15 @@ if (sellerId) {
 >
   {contract.title}
 </Link>
+
+                        {company?.slug === "o-estafeta" && (
+                          <Link
+                            href={`/contratos/${contract.id}/acompanhamento`}
+                            className="mt-1 inline-block text-xs text-slate-500 hover:text-[#15704f] hover:underline"
+                          >
+                            Acompanhar contrato
+                          </Link>
+                        )}
                       </td>
 
                       <td className="px-5 py-4 text-sm text-slate-600">

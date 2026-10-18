@@ -75,11 +75,13 @@ type ContractCompany = {
   id: string;
   name: string;
   color: string | null;
+  slug?: string | null;
 };
 
 type Product = {
   id: string;
   name: string;
+  type?: string | null;
 };
 
 type Contract = {
@@ -92,6 +94,7 @@ type Contract = {
     | string
     | null;
   status: string;
+  legacy_subscription_number?: string | null;
 
   company:
     | ContractCompany[]
@@ -267,15 +270,19 @@ export default async function ClientPage({
       status,
       company_id,
 
+      legacy_subscription_number,
+
       company:companies (
         id,
         name,
-        color
+        color,
+        slug
       ),
 
       product:products (
         id,
-        name
+        name,
+        type
       )
     `)
     .eq(
@@ -867,11 +874,20 @@ export default async function ClientPage({
                           contract.product
                         );
 
+                      const canTrack =
+                        company?.slug ===
+                          "o-estafeta" &&
+                        product?.type !==
+                          "subscription" &&
+                        !contract.legacy_subscription_number;
+
                       return (
-                        <Link
+                        <div
                           key={
                             contract.id
                           }
+                        >
+                        <Link
                           href={`/contratos/${contract.id}`}
                           className="block rounded-xl border border-slate-200 p-4 transition hover:border-[#15704f]/40 hover:bg-slate-50"
                         >
@@ -934,6 +950,16 @@ export default async function ClientPage({
                             </div>
                           </div>
                         </Link>
+
+                        {canTrack && (
+                          <Link
+                            href={`/contratos/${contract.id}/acompanhamento`}
+                            className="ml-1 mt-1.5 inline-block text-xs font-medium text-[#15704f] hover:underline"
+                          >
+                            Acompanhar contrato
+                          </Link>
+                        )}
+                        </div>
                       );
                     }
                   )

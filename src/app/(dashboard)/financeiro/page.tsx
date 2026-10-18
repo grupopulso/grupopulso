@@ -654,6 +654,11 @@ export default async function FinanceiroPage({
 
         <div className="mt-7 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <FinanceShortcut
+            href="/financeiro/cobrancas"
+            label="Andamento das cobranças"
+          />
+
+          <FinanceShortcut
             href="/financeiro/receber"
             label="Contas a receber"
           />
