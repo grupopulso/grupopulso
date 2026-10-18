@@ -71,11 +71,19 @@ const STAGES: {
     value: "pago",
     label: "Pago",
     description:
-      "Recebido — vencimentos dos últimos 60 dias.",
+      "Recebido no período do filtro (padrão: vencimentos dos últimos 60 dias).",
   },
 ];
 
+/*
+ * Recorte por vencimento. "Últimos N dias" olha pra trás (o que
+ * venceu nesse intervalo e pode ter ficado sem cobrança);
+ * "Próximos N dias" pega tudo o que já venceu + o que vence até lá.
+ */
 const HORIZONS = [
+  { value: "-30", label: "Últimos 30 dias" },
+  { value: "-60", label: "Últimos 60 dias" },
+  { value: "-90", label: "Últimos 90 dias" },
   { value: "7", label: "Próximos 7 dias" },
   { value: "30", label: "Próximos 30 dias" },
   { value: "60", label: "Próximos 60 dias" },
@@ -125,12 +133,23 @@ export default async function ChargesProgressPage({
 
   const today = toDateOnly(new Date());
 
+  const isPastWindow = horizon.startsWith("-");
+
+  const horizonStart = isPastWindow
+    ? addDays(today, Number(horizon))
+    : null;
+
   const horizonEnd =
     horizon === "todos"
       ? null
-      : addDays(today, Number(horizon));
+      : isPastWindow
+        ? today
+        : addDays(today, Number(horizon));
 
-  const paidFrom = addDays(today, -60);
+  // Pagos: no recorte "Últimos N dias" segue o recorte; nos
+  // demais, vencimentos dos últimos 60 dias.
+  const paidFrom =
+    horizonStart ?? addDays(today, -60);
 
   const in7Days = addDays(today, 7);
 
@@ -190,6 +209,10 @@ export default async function ChargesProgressPage({
           ? access.companyIds
           : ["00000000-0000-0000-0000-000000000000"]
       );
+    }
+
+    if (horizonStart) {
+      query = query.gte("due_date", horizonStart);
     }
 
     if (horizonEnd) {
