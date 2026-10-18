@@ -909,6 +909,8 @@ export default async function MeuPainelPage({
             .from("user_profiles")
             .select("id, name")
             .in("id", allSellerUserIds)
+            // Quem saiu (usuário inativo) não aparece na lista.
+            .eq("active", true)
         : { data: [] };
 
     const allProfileById = new Map(
@@ -1359,6 +1361,18 @@ export default async function MeuPainelPage({
                 );
               })}
             </div>
+
+            <p className="mt-4 text-xs text-slate-400">
+              Só aparecem os usuários ativos. Quando alguém sair,
+              desmarque &quot;Usuário ativo&quot; no cadastro dele em{" "}
+              <Link
+                href="/configuracoes/usuarios"
+                className="font-medium text-[#15704f] hover:underline"
+              >
+                Configurações → Usuários
+              </Link>
+              .
+            </p>
           </Panel>
         )}
 
