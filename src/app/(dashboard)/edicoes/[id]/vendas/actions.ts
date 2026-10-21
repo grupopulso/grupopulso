@@ -16,6 +16,14 @@ import {
   isValidDateOnly,
 } from "@/app/lib/date-utils";
 
+import {
+  requireFinancialEntryAccess,
+} from "@/app/lib/permissions";
+
+import {
+  createAuditLog,
+} from "@/app/lib/audit";
+
 /*
  * =====================================================
  * TIPOS
@@ -2016,6 +2024,267 @@ export async function updateEditionSale(
  * CANCELAR VENDA
  * =====================================================
  */
+
+/*
+ * =====================================================
+ * ALTERAR PARCELAS (BOLETOS) DA VENDA
+ * =====================================================
+ *
+ * Muda vencimento e valor das parcelas AINDA NÃO PAGAS — vale
+ * mesmo com a edição fechada ou com outras parcelas já
+ * recebidas (ex.: cliente pediu pra trocar a data do boleto).
+ * A soma das parcelas alteradas tem que continuar igual: o
+ * total da venda (e portanto comissão e fechamento da edição)
+ * não muda. Para mudar o valor da venda, use "Editar venda".
+ */
+
+export async function updateSaleInstallments(
+  saleId: string,
+  editionId: string,
+  changes: {
+    installmentId: string;
+    dueDate: string;
+    amount: number;
+  }[]
+) {
+  const access =
+    await requireEstafetaAccess();
+
+  // Mexe em contas a receber: exige poder editar receitas.
+  await requireFinancialEntryAccess(
+    "income",
+    "edit"
+  );
+
+  if (!saleId || !editionId || changes.length === 0) {
+    return {
+      success: false as const,
+      message: "Nenhuma parcela para alterar.",
+    };
+  }
+
+  for (const change of changes) {
+    if (!isValidDateOnly(change.dueDate)) {
+      return {
+        success: false as const,
+        message: "Informe um vencimento válido em todas as parcelas.",
+      };
+    }
+
+    if (
+      !Number.isFinite(change.amount) ||
+      roundMoney(change.amount) <= 0
+    ) {
+      return {
+        success: false as const,
+        message: "Todas as parcelas precisam ter valor maior que zero.",
+      };
+    }
+  }
+
+  const supabase = createAdminClient();
+
+  const { data: sale } = await supabase
+    .from("edition_sales")
+    .select("id, company_id, edition_id, status")
+    .eq("id", saleId)
+    .eq("edition_id", editionId)
+    .eq("company_id", access.estafetaCompany.id)
+    .maybeSingle();
+
+  if (!sale) {
+    return {
+      success: false as const,
+      message: "Venda não encontrada.",
+    };
+  }
+
+  if (sale.status === "cancelled") {
+    return {
+      success: false as const,
+      message: "Venda cancelada não pode ter parcelas alteradas.",
+    };
+  }
+
+  const { data: installments } = await supabase
+    .from("edition_sale_installments")
+    .select(`
+      id,
+      installment_number,
+      due_date,
+      amount,
+      financial_entry_id,
+
+      entry:financial_entries (
+        id,
+        amount_paid,
+        status
+      )
+    `)
+    .eq("sale_id", sale.id);
+
+  const byId = new Map(
+    (installments ?? []).map((item) => [
+      item.id,
+      item,
+    ])
+  );
+
+  let oldTotal = 0;
+  let newTotal = 0;
+
+  for (const change of changes) {
+    const installment = byId.get(
+      change.installmentId
+    );
+
+    if (!installment) {
+      return {
+        success: false as const,
+        message:
+          "Alguma parcela não pertence a esta venda. Atualize a página.",
+      };
+    }
+
+    const entry = Array.isArray(installment.entry)
+      ? installment.entry[0]
+      : installment.entry;
+
+    if (
+      !entry ||
+      entry.status === "cancelled" ||
+      Number(entry.amount_paid ?? 0) > 0
+    ) {
+      return {
+        success: false as const,
+        message: `A parcela ${installment.installment_number} já tem recebimento (ou foi cancelada) e não pode ser alterada.`,
+      };
+    }
+
+    oldTotal += Number(installment.amount);
+    newTotal += change.amount;
+  }
+
+  if (roundMoney(oldTotal) !== roundMoney(newTotal)) {
+    return {
+      success: false as const,
+      message: `A soma das parcelas alteradas precisa continuar ${formatMoneyBR(
+        oldTotal
+      )} (está ${formatMoneyBR(newTotal)}). Para mudar o valor da venda, use "Editar venda".`,
+    };
+  }
+
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date());
+
+  for (const change of changes) {
+    const installment = byId.get(
+      change.installmentId
+    )!;
+
+    const amount = roundMoney(change.amount);
+
+    const { error: installmentError } =
+      await supabase
+        .from("edition_sale_installments")
+        .update({
+          due_date: change.dueDate,
+          amount,
+        })
+        .eq("id", installment.id);
+
+    if (installmentError) {
+      return {
+        success: false as const,
+        message: `Erro ao salvar a parcela ${installment.installment_number}: ${installmentError.message}`,
+      };
+    }
+
+    const { error: entryError } = await supabase
+      .from("financial_entries")
+      .update({
+        due_date: change.dueDate,
+        amount,
+        status:
+          change.dueDate < today
+            ? "overdue"
+            : "pending",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", installment.financial_entry_id);
+
+    if (entryError) {
+      return {
+        success: false as const,
+        message: `Erro ao salvar o lançamento da parcela ${installment.installment_number}: ${entryError.message}`,
+      };
+    }
+  }
+
+  // "Primeiro vencimento" da venda acompanha a parcela mais cedo.
+  const dueDates = (installments ?? []).map(
+    (item) =>
+      changes.find(
+        (change) =>
+          change.installmentId === item.id
+      )?.dueDate ?? item.due_date
+  );
+
+  if (dueDates.length > 0) {
+    await supabase
+      .from("edition_sales")
+      .update({
+        first_due_date: [...dueDates].sort()[0],
+      })
+      .eq("id", sale.id);
+  }
+
+  await createAuditLog({
+    module: "editions",
+    action: "update",
+    entityType: "edition_sale",
+    entityId: sale.id,
+    description: `Parcelas da venda de publicidade alteradas (${changes.length}).`,
+    oldData: {
+      installments: changes.map((change) => {
+        const installment = byId.get(
+          change.installmentId
+        )!;
+
+        return {
+          number: installment.installment_number,
+          dueDate: installment.due_date,
+          amount: Number(installment.amount),
+        };
+      }),
+    },
+    newData: {
+      installments: changes.map((change) => ({
+        number: byId.get(change.installmentId)!
+          .installment_number,
+        dueDate: change.dueDate,
+        amount: roundMoney(change.amount),
+      })),
+    },
+  });
+
+  revalidateSalePaths(editionId, sale.id);
+
+  revalidatePath("/financeiro/receber");
+  revalidatePath("/financeiro/cobrancas");
+
+  return {
+    success: true as const,
+  };
+}
+
+function formatMoneyBR(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
 
 export async function cancelEditionSale(
   saleId: string,

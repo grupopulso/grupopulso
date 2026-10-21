@@ -27,9 +27,12 @@ import {
 import { getSelectedCompanyId } from "@/app/lib/company-filter";
 
 import {
+  canAccessFinancialEntry,
   requireAnyCompanyAccess,
   requireModulePermission,
 } from "@/app/lib/permissions";
+
+import { createAdminClient } from "@/app/lib/supabase/admin";
 
 import {
   getContractStatus,
@@ -324,10 +327,19 @@ export default async function ClientPage({
    * =========================
    */
 
+  /*
+   * Service role: a RLS de financial_entries só libera quem tem
+   * o módulo geral "financial" — quem só tem Contas a Receber /
+   * a Pagar (ex.: Lely) via a lista vazia. O acesso é filtrado
+   * abaixo por empresa (canSeeCompany) e por natureza
+   * (canAccessFinancialEntry).
+   */
+  const adminDb = createAdminClient();
+
   const {
     data: financialData,
     error: financialError,
-  } = await supabase
+  } = await adminDb
     .from(
       "financial_entries"
     )
@@ -371,8 +383,51 @@ export default async function ClientPage({
       []) as (FinancialEntry & {
       company_id: string | null;
     })[]
-  ).filter((entry) =>
-    canSeeCompany(entry.company_id)
+  ).filter(
+    (entry) =>
+      canSeeCompany(entry.company_id) &&
+      canAccessFinancialEntry(
+        access,
+        entry.type === "expense"
+          ? "expense"
+          : "income",
+        "view"
+      )
+  );
+
+  /*
+   * =========================
+   * VENDAS DE PUBLICIDADE
+   * =========================
+   *
+   * Vendas avulsas em edições do jornal (não são contratos).
+   * Service role pelo mesmo motivo do financeiro; escopo de
+   * empresa via canSeeCompany.
+   */
+
+  const { data: salesData } = await adminDb
+    .from("edition_sales")
+    .select(`
+      id,
+      company_id,
+      edition_id,
+      status,
+      total_amount,
+      created_at,
+
+      edition:newspaper_editions (
+        id,
+        name,
+        publication_date
+      )
+    `)
+    .eq("client_id", id)
+    .order("created_at", {
+      ascending: false,
+    });
+
+  const editionSales = (salesData ?? []).filter(
+    (sale) => canSeeCompany(sale.company_id)
   );
 
   /*
@@ -968,6 +1023,77 @@ export default async function ClientPage({
                 )}
               </div>
             </section>
+
+            {/* VENDAS DE PUBLICIDADE */}
+
+            {editionSales.length > 0 && (
+              <section className="rounded-2xl border border-slate-200 bg-white p-6">
+                <h2 className="font-semibold text-slate-900">
+                  Vendas de publicidade
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Anúncios vendidos avulsos nas edições do jornal.
+                </p>
+
+                <div className="mt-6 space-y-3">
+                  {editionSales.map((sale) => {
+                    const edition = getFirst(
+                      sale.edition
+                    );
+
+                    return (
+                      <Link
+                        key={sale.id}
+                        href={`/edicoes/${sale.edition_id}/vendas/${sale.id}`}
+                        className="flex flex-col justify-between gap-4 rounded-xl border border-slate-200 p-4 transition hover:bg-slate-50 sm:flex-row sm:items-center"
+                      >
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {edition?.name ?? "Edição"}
+                          </p>
+
+                          <p className="mt-1 text-xs text-slate-500">
+                            Publicação{" "}
+                            {edition?.publication_date
+                              ? formatDateOnly(
+                                  edition.publication_date
+                                )
+                              : "—"}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <p className="text-sm font-semibold text-slate-900">
+                            {formatCurrency(
+                              Number(
+                                sale.total_amount ?? 0
+                              )
+                            )}
+                          </p>
+
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                              sale.status === "cancelled"
+                                ? "bg-red-50 text-red-600"
+                                : sale.status === "draft"
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-emerald-50 text-emerald-700"
+                            }`}
+                          >
+                            {sale.status === "cancelled"
+                              ? "Cancelada"
+                              : sale.status === "draft"
+                                ? "Rascunho"
+                                : "Confirmada"}
+                          </span>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {/* FINANCEIRO */}
 

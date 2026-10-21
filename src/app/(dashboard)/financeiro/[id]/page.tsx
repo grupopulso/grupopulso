@@ -276,6 +276,9 @@ charge_sent_at,
    */
   let sellerUserId: string | null = null;
 
+  // Venda de publicidade de origem (pra "Alterar parcelas").
+  let saleHref: string | null = null;
+
   if (entry.contract_id) {
     const { data: contractRow } = await adminDb
       .from("contracts")
@@ -295,12 +298,16 @@ charge_sent_at,
     if (saleIdMatch) {
       const { data: saleRow } = await adminDb
         .from("edition_sales")
-        .select("seller_user_id")
+        .select("id, edition_id, seller_user_id")
         .eq("id", saleIdMatch[1])
         .maybeSingle();
 
       sellerUserId =
         saleRow?.seller_user_id ?? null;
+
+      saleHref = saleRow
+        ? `/edicoes/${saleRow.edition_id}/vendas/${saleRow.id}`
+        : null;
     }
   }
 
@@ -371,6 +378,18 @@ charge_sent_at,
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            {saleHref &&
+              entry.type === "income" &&
+              calculatedStatus !== "cancelled" && (
+                <Link
+                  href={saleHref}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Ver venda / alterar parcelas
+                </Link>
+              )}
+
             {entry.type === "expense" &&
               calculatedStatus !== "cancelled" && (
                 <Link

@@ -16,6 +16,12 @@ import {
 
 import SaleActions from "./sale-actions";
 
+import InstallmentsEditor from "./installments-editor";
+
+import {
+  canAccessFinancialEntry,
+} from "@/app/lib/permissions";
+
 import {
   createAdminClient,
 } from "@/app/lib/supabase/admin";
@@ -588,6 +594,39 @@ export default async function SaleDetailPage({
       : 0;
 
   /*
+   * Parcelas que ainda dá pra alterar (vencimento/valor): sem
+   * nenhum recebimento. Vale mesmo com a edição fechada.
+   */
+  const editableInstallments =
+    sale.status !== "cancelled" &&
+    canAccessFinancialEntry(
+      access,
+      "income",
+      "edit"
+    )
+      ? (saleInstallments ?? [])
+          .filter((installment) => {
+            const entry =
+              financialEntriesById.get(
+                installment.financial_entry_id
+              );
+
+            return (
+              entry &&
+              entry.status !== "cancelled" &&
+              Number(entry.amount_paid ?? 0) <= 0
+            );
+          })
+          .map((installment) => ({
+            id: installment.id,
+            number:
+              installment.installment_number,
+            dueDate: installment.due_date,
+            amount: Number(installment.amount),
+          }))
+      : [];
+
+  /*
    * =========================
    * OUTRAS EDIÇÕES ABERTAS
    * =========================
@@ -868,17 +907,33 @@ export default async function SaleDetailPage({
 
         <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-6 py-5">
-            <div className="flex items-center gap-2">
-              <WalletCards className="h-5 w-5 text-[#15704f]" />
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <div className="flex items-center gap-2">
+                  <WalletCards className="h-5 w-5 text-[#15704f]" />
 
-              <h2 className="font-semibold text-slate-900">
-                Pagamento
-              </h2>
+                  <h2 className="font-semibold text-slate-900">
+                    Pagamento
+                  </h2>
+                </div>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Acompanhe os recebimentos gerados por esta venda.
+                </p>
+              </div>
+
+              {editableInstallments.length > 0 && (
+                <InstallmentsEditor
+                  saleId={sale.id}
+                  editionId={edition.id}
+                  installments={editableInstallments}
+                  totalCount={
+                    saleInstallments?.length ??
+                    editableInstallments.length
+                  }
+                />
+              )}
             </div>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Acompanhe os recebimentos gerados por esta venda.
-            </p>
           </div>
 
           <div className="grid gap-4 p-6 md:grid-cols-3">
