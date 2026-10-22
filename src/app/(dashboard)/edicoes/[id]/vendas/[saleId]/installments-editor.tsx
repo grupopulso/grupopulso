@@ -42,6 +42,8 @@ export default function InstallmentsEditor({
     toRows(installments)
   );
 
+  const [note, setNote] = useState("");
+
   const [error, setError] = useState("");
 
   const [saving, setSaving] = useState(false);
@@ -66,6 +68,7 @@ export default function InstallmentsEditor({
 
   function handleOpen() {
     setRows(toRows(installments));
+    setNote("");
     setError("");
     setOpen(true);
   }
@@ -114,7 +117,8 @@ export default function InstallmentsEditor({
           installmentId: row.id,
           dueDate: row.dueDate,
           amount: parseMoney(row.amount),
-        }))
+        })),
+        note.trim() || undefined
       );
 
       if (!result.success) {
@@ -247,6 +251,29 @@ export default function InstallmentsEditor({
                   difference > 0 ? "faltam" : "sobram"
                 } ${formatCurrency(Math.abs(difference))}`}
             </div>
+
+            <label className="mt-5 block">
+              <span className="mb-2 block text-sm font-medium text-slate-700">
+                Observação (opcional)
+              </span>
+
+              <textarea
+                rows={3}
+                value={note}
+                onChange={(event) =>
+                  setNote(event.target.value)
+                }
+                disabled={saving}
+                maxLength={1000}
+                placeholder="Ex.: boleto único junto com a venda da edição 1801, total R$ 400,00"
+                className="w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
+              />
+
+              <span className="mt-1 block text-xs text-slate-400">
+                Fica nas observações da venda e de cada parcela,
+                com a data e quem alterou.
+              </span>
+            </label>
 
             <div className="mt-6 flex justify-end gap-3 border-t border-slate-100 pt-5">
               <button

@@ -2045,7 +2045,8 @@ export async function updateSaleInstallments(
     installmentId: string;
     dueDate: string;
     amount: number;
-  }[]
+  }[],
+  note?: string
 ) {
   const access =
     await requireEstafetaAccess();
@@ -2086,7 +2087,7 @@ export async function updateSaleInstallments(
 
   const { data: sale } = await supabase
     .from("edition_sales")
-    .select("id, company_id, edition_id, status")
+    .select("id, company_id, edition_id, status, notes")
     .eq("id", saleId)
     .eq("edition_id", editionId)
     .eq("company_id", access.estafetaCompany.id)
@@ -2118,7 +2119,8 @@ export async function updateSaleInstallments(
       entry:financial_entries (
         id,
         amount_paid,
-        status
+        status,
+        notes
       )
     `)
     .eq("sale_id", sale.id);
@@ -2178,6 +2180,27 @@ export async function updateSaleInstallments(
     timeZone: "America/Sao_Paulo",
   }).format(new Date());
 
+  /*
+   * Registro da alteração (com a observação opcional de quem
+   * alterou) acrescentado às observações da venda e de cada
+   * parcela — sem apagar o que já havia. O texto original do
+   * lançamento ("Venda de publicidade <id>. ...") fica no
+   * início: é dele que a tela do lançamento acha a venda.
+   */
+  const cleanNote = (note ?? "").trim().slice(0, 1000);
+
+  const changeLog = `Parcelas alteradas em ${today
+    .split("-")
+    .reverse()
+    .join("/")} por ${
+    access.profile.name ?? "usuário"
+  }${cleanNote ? `: ${cleanNote}` : "."}`;
+
+  const appendNote = (current: string | null) =>
+    current?.trim()
+      ? `${current.trim()}\n\n${changeLog}`
+      : changeLog;
+
   for (const change of changes) {
     const installment = byId.get(
       change.installmentId
@@ -2210,6 +2233,12 @@ export async function updateSaleInstallments(
           change.dueDate < today
             ? "overdue"
             : "pending",
+        notes: appendNote(
+          (Array.isArray(installment.entry)
+            ? installment.entry[0]
+            : installment.entry
+          )?.notes ?? null
+        ),
         updated_at: new Date().toISOString(),
       })
       .eq("id", installment.financial_entry_id);
@@ -2236,6 +2265,7 @@ export async function updateSaleInstallments(
       .from("edition_sales")
       .update({
         first_due_date: [...dueDates].sort()[0],
+        notes: appendNote(sale.notes),
       })
       .eq("id", sale.id);
   }
@@ -2245,7 +2275,9 @@ export async function updateSaleInstallments(
     action: "update",
     entityType: "edition_sale",
     entityId: sale.id,
-    description: `Parcelas da venda de publicidade alteradas (${changes.length}).`,
+    description: `Parcelas da venda de publicidade alteradas (${changes.length}).${
+      cleanNote ? ` Observação: ${cleanNote}` : ""
+    }`,
     oldData: {
       installments: changes.map((change) => {
         const installment = byId.get(

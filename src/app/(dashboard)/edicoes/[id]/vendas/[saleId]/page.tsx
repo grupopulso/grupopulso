@@ -1498,7 +1498,7 @@ function Info({
         className={`mt-1 ${
           strong
             ? "text-base font-semibold text-slate-900"
-            : "text-sm text-slate-700"
+            : "whitespace-pre-wrap text-sm text-slate-700"
         }`}
       >
         {value}
