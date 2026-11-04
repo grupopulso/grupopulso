@@ -4629,3 +4629,123 @@ export async function moveEditionSale(
       targetEdition.name,
   };
 }
+
+/*
+ * Cliente avulso: quem anuncia uma vez só (ex.: encarte numa
+ * edição) e não justifica o cadastro completo. Cria um cliente
+ * mínimo — só o nome é obrigatório — vinculado ao O Estafeta,
+ * pra venda, parcelas, recibo e cobrança continuarem ligados a
+ * um cliente como sempre. Dá pra completar o cadastro depois.
+ */
+export async function createWalkInClient(input: {
+  name: string;
+  phone?: string | null;
+  cpfCnpj?: string | null;
+}) {
+  const access =
+    await requireEstafetaAccess();
+
+  const name = input.name?.trim() ?? "";
+
+  if (name.length < 2) {
+    return {
+      success: false as const,
+      message: "Informe o nome do cliente.",
+    };
+  }
+
+  if (name.length > 200) {
+    return {
+      success: false as const,
+      message: "Nome muito longo.",
+    };
+  }
+
+  const phone =
+    input.phone?.trim().slice(0, 40) || null;
+
+  const cpfCnpj =
+    input.cpfCnpj?.trim().slice(0, 30) || null;
+
+  const digits = (cpfCnpj ?? "").replace(/\D/g, "");
+
+  /*
+   * Service role: vendedor pode não ter o módulo Clientes.
+   * Acesso ao O Estafeta validado acima.
+   */
+  const supabase = createAdminClient();
+
+  const today = new Date().toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+  });
+
+  const { data: client, error: clientError } =
+    await supabase
+      .from("clients")
+      .insert({
+        type: digits.length > 11 ? "company" : "person",
+        name,
+        cpf_cnpj: cpfCnpj,
+        phone,
+        notes: `Cliente avulso — cadastrado direto na venda de publicidade em ${today} por ${
+          access.profile.name ?? "usuário"
+        }. Cadastro incompleto.`,
+      })
+      .select("id, name")
+      .single();
+
+  if (clientError || !client) {
+    console.error(
+      "Erro ao cadastrar cliente avulso:",
+      clientError
+    );
+
+    return {
+      success: false as const,
+      message:
+        clientError?.message ??
+        "Não foi possível cadastrar o cliente.",
+    };
+  }
+
+  const { error: relationError } = await supabase
+    .from("client_companies")
+    .insert({
+      client_id: client.id,
+      company_id: access.estafetaCompany.id,
+      status: "active",
+    });
+
+  if (relationError) {
+    await supabase
+      .from("clients")
+      .delete()
+      .eq("id", client.id);
+
+    console.error(
+      "Erro ao vincular cliente avulso:",
+      relationError
+    );
+
+    return {
+      success: false as const,
+      message: relationError.message,
+    };
+  }
+
+  await createAuditLog({
+    module: "clients",
+    action: "create",
+    entityType: "client",
+    entityId: client.id,
+    description: `Cliente avulso cadastrado pela venda de publicidade: ${name}.`,
+    newData: { name, phone, cpfCnpj },
+  });
+
+  revalidatePath("/clientes");
+
+  return {
+    success: true as const,
+    client: { id: client.id, name: client.name },
+  };
+}

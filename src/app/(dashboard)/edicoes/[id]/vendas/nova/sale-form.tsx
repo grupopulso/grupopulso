@@ -15,6 +15,7 @@ import {
   Plus,
   Save,
   Trash2,
+  UserPlus,
 } from "lucide-react";
 
 import {
@@ -23,6 +24,7 @@ import {
 
 import {
   createEditionSale,
+  createWalkInClient,
 } from "../actions";
 
 import {
@@ -163,6 +165,82 @@ export function SaleForm({
     setClientId,
   ] =
     useState("");
+
+  /*
+   * Lista local: o cliente avulso criado aqui entra nela e já
+   * fica selecionado, sem recarregar a página.
+   */
+  const [
+    clientOptions,
+    setClientOptions,
+  ] = useState(clients);
+
+  const [walkInOpen, setWalkInOpen] =
+    useState(false);
+
+  const [walkInName, setWalkInName] =
+    useState("");
+
+  const [walkInPhone, setWalkInPhone] =
+    useState("");
+
+  const [walkInDocument, setWalkInDocument] =
+    useState("");
+
+  const [walkInError, setWalkInError] =
+    useState("");
+
+  const [walkInSaving, setWalkInSaving] =
+    useState(false);
+
+  async function handleCreateWalkIn() {
+    if (walkInSaving) {
+      return;
+    }
+
+    if (walkInName.trim().length < 2) {
+      setWalkInError("Informe o nome do cliente.");
+
+      return;
+    }
+
+    setWalkInSaving(true);
+    setWalkInError("");
+
+    try {
+      const result = await createWalkInClient({
+        name: walkInName,
+        phone: walkInPhone || null,
+        cpfCnpj: walkInDocument || null,
+      });
+
+      if (!result.success) {
+        setWalkInError(result.message);
+
+        return;
+      }
+
+      setClientOptions((current) =>
+        [...current, result.client].sort((a, b) =>
+          a.name.localeCompare(b.name, "pt-BR")
+        )
+      );
+
+      setClientId(result.client.id);
+      setWalkInOpen(false);
+      setWalkInName("");
+      setWalkInPhone("");
+      setWalkInDocument("");
+    } catch (err) {
+      console.error("Erro ao cadastrar cliente avulso:", err);
+
+      setWalkInError(
+        "Não foi possível cadastrar. Tente novamente."
+      );
+    } finally {
+      setWalkInSaving(false);
+    }
+  }
 
   const [
     sellerUserId,
@@ -1105,7 +1183,7 @@ export function SaleForm({
                 Selecione o cliente
               </option>
 
-              {clients.map(
+              {clientOptions.map(
                 (
                   client
                 ) => (
@@ -1124,6 +1202,103 @@ export function SaleForm({
                 )
               )}
             </select>
+
+            {!walkInOpen ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setWalkInError("");
+                  setWalkInOpen(true);
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[#15704f] hover:underline"
+              >
+                <UserPlus className="h-4 w-4" />
+                Cliente avulso (sem cadastro completo)
+              </button>
+            ) : (
+              <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <p className="text-sm font-medium text-slate-800">
+                  Cliente avulso
+                </p>
+
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Pra quem anuncia uma vez só. Só o nome é
+                  obrigatório; dá pra completar o cadastro
+                  depois em Clientes.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  <input
+                    type="text"
+                    value={walkInName}
+                    onChange={(event) =>
+                      setWalkInName(event.target.value)
+                    }
+                    disabled={walkInSaving}
+                    maxLength={200}
+                    placeholder="Nome do cliente *"
+                    aria-label="Nome do cliente avulso"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
+                  />
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input
+                      type="text"
+                      value={walkInPhone}
+                      onChange={(event) =>
+                        setWalkInPhone(event.target.value)
+                      }
+                      disabled={walkInSaving}
+                      maxLength={40}
+                      placeholder="Telefone (opcional)"
+                      aria-label="Telefone do cliente avulso"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
+                    />
+
+                    <input
+                      type="text"
+                      value={walkInDocument}
+                      onChange={(event) =>
+                        setWalkInDocument(event.target.value)
+                      }
+                      disabled={walkInSaving}
+                      maxLength={30}
+                      placeholder="CPF/CNPJ (opcional)"
+                      aria-label="CPF ou CNPJ do cliente avulso"
+                      className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
+                    />
+                  </div>
+                </div>
+
+                {walkInError && (
+                  <p className="mt-2 text-sm text-red-600">
+                    {walkInError}
+                  </p>
+                )}
+
+                <div className="mt-3 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWalkInOpen(false)}
+                    disabled={walkInSaving}
+                    className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCreateWalkIn}
+                    disabled={walkInSaving}
+                    className="h-9 rounded-xl bg-[#15704f] px-4 text-sm font-semibold text-white hover:bg-[#105c41] disabled:opacity-60"
+                  >
+                    {walkInSaving
+                      ? "Salvando..."
+                      : "Usar este cliente"}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div>
