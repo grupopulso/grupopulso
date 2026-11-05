@@ -4683,7 +4683,7 @@ export async function createWalkInClient(input: {
     await supabase
       .from("clients")
       .insert({
-        type: digits.length > 11 ? "company" : "person",
+        type: digits.length > 11 ? "company" : "individual",
         name,
         cpf_cnpj: cpfCnpj,
         phone,
