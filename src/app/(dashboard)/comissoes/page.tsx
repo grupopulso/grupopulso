@@ -1392,8 +1392,24 @@ export default async function CommissionsPage({
                   payment.financial_entry_id
               );
 
+            /*
+             * O que falta pagar e ainda não foi liberado (cliente
+             * não pagou): só entra se o usuário escolher antecipar.
+             */
+            const advance =
+              Math.max(
+                roundMoney(
+                  commission.amount -
+                    commission.amountPaid -
+                    committed -
+                    available
+                ),
+                0
+              );
+
             if (
               available <= 0 &&
+              advance <= 0 &&
               openEntryIds.length === 0
             ) {
               return [];
@@ -1427,6 +1443,7 @@ export default async function CommissionsPage({
                     ? committed
                     : 0,
                 openEntryIds,
+                advance,
               },
             ];
           }

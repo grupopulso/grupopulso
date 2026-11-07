@@ -28,6 +28,8 @@ type SelectedCommission = {
   /* já gerado e em aberto ("Em pagamento") */
   committed: number;
   openEntryIds: string[];
+  /* ainda não liberado (cliente não pagou) — só se antecipar */
+  advance: number;
 };
 
 type Selection = {
@@ -151,8 +153,8 @@ export function SelectAllCommissions({
       type="checkbox"
       checked={allChecked}
       onChange={() => setMany(items, !allChecked)}
-      title="Marcar todas as disponíveis"
-      aria-label="Marcar todas as comissões disponíveis"
+      title="Marcar todas"
+      aria-label="Marcar todas as comissões"
       className="h-4 w-4 cursor-pointer accent-[#15704f]"
     />
   );
@@ -190,6 +192,11 @@ export function CommissionBatchBar() {
     0
   );
 
+  const advanceTotal = selected.reduce(
+    (sum, item) => sum + item.advance,
+    0
+  );
+
   return (
     <>
       <div className="sticky top-0 z-20 flex flex-col gap-3 border-b border-emerald-200 bg-emerald-50 px-6 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -200,7 +207,13 @@ export function CommissionBatchBar() {
               ? "comissão selecionada"
               : "comissões selecionadas"}
           </strong>{" "}
-          · {formatCurrency(total)}
+          · {formatCurrency(total)} liberado
+          {advanceTotal > 0 && (
+            <span className="text-slate-500">
+              {" "}
+              + {formatCurrency(advanceTotal)} a liberar
+            </span>
+          )}
         </p>
 
         <div className="flex items-center gap-3">
@@ -229,7 +242,6 @@ export function CommissionBatchBar() {
       {open && (
         <BatchDialog
           items={selected}
-          total={total}
           onClose={() => setOpen(false)}
           onDone={(message) => {
             setOpen(false);
@@ -258,13 +270,11 @@ type FinancialAccount = {
 };
 
 function BatchDialog({
-  items,
-  total,
+  items: selectedItems,
   onClose,
   onDone,
 }: {
   items: SelectedCommission[];
-  total: number;
   onClose: () => void;
   onDone: (message: string) => void;
 }) {
@@ -278,9 +288,50 @@ function BatchDialog({
 
   const [settleNow, setSettleNow] = useState(true);
 
+  const hasAdvance = selectedItems.some(
+    (item) => item.advance > 0
+  );
+
+  // Nada liberado nas selecionadas: só faz sentido antecipando.
+  const onlyAdvance = selectedItems.every(
+    (item) =>
+      item.available <= 0 && item.committed <= 0
+  );
+
+  const [advanceNow, setAdvanceNow] =
+    useState(onlyAdvance);
+
+  const advance =
+    hasAdvance && (advanceNow || onlyAdvance);
+
+  /*
+   * Sem antecipar, as que não têm nada liberado ficam de fora;
+   * antecipando, o valor a liberar entra no que vai ser gerado.
+   */
+  const items = selectedItems
+    .map((item) => ({
+      ...item,
+      toGenerate:
+        item.available +
+        (advance ? item.advance : 0),
+    }))
+    .filter(
+      (item) =>
+        item.toGenerate > 0 || item.committed > 0
+    );
+
+  const skipped =
+    selectedItems.length - items.length;
+
+  const total = items.reduce(
+    (sum, item) =>
+      sum + item.toGenerate + item.committed,
+    0
+  );
+
   // Tudo já tem pagamento gerado: só resta dar a baixa.
   const onlyCommitted = items.every(
-    (item) => item.available <= 0
+    (item) => item.toGenerate <= 0
   );
 
   const settle = settleNow || onlyCommitted;
@@ -386,6 +437,14 @@ function BatchDialog({
       return;
     }
 
+    if (items.length === 0) {
+      setError(
+        "Nenhuma das selecionadas tem valor liberado. Marque \"Antecipar\" para pagar mesmo assim."
+      );
+
+      return;
+    }
+
     if (settle && !accountId) {
       setError("Selecione a conta usada no pagamento.");
 
@@ -406,8 +465,9 @@ function BatchDialog({
         items.map((item) => ({
           commissionId: item.commissionId,
           originType: item.originType,
-          amount: item.available,
+          amount: item.toGenerate,
           openEntryIds: item.openEntryIds,
+          advance: advance && item.advance > 0,
         })),
         {
           dueDate: date,
@@ -511,9 +571,15 @@ function BatchDialog({
               <span className="shrink-0 text-right">
                 <span className="block font-medium text-slate-900">
                   {formatCurrency(
-                    item.available + item.committed
+                    item.toGenerate + item.committed
                   )}
                 </span>
+
+                {advance && item.advance > 0 && (
+                  <span className="block text-xs text-sky-700">
+                    {formatCurrency(item.advance)} antecipado
+                  </span>
+                )}
 
                 {item.committed > 0 && (
                   <span className="block text-xs text-amber-700">
@@ -528,9 +594,42 @@ function BatchDialog({
         </ul>
 
         <p className="mt-2 text-xs text-slate-500">
-          Cada comissão é paga pelo valor liberado
-          (disponível + o que já está em pagamento).
+          {advance
+            ? "Cada comissão é paga pelo que falta pagar dela, liberado ou não."
+            : "Cada comissão é paga pelo valor liberado (disponível + o que já está em pagamento)."}
+          {skipped > 0 &&
+            ` ${skipped} ${
+              skipped === 1
+                ? "selecionada ficou de fora por não ter"
+                : "selecionadas ficaram de fora por não terem"
+            } nada liberado.`}
         </p>
+
+        {hasAdvance && (
+          <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-sky-200 bg-sky-50/60 p-4">
+            <input
+              type="checkbox"
+              checked={advance}
+              onChange={(event) =>
+                setAdvanceNow(event.target.checked)
+              }
+              disabled={loading || onlyAdvance}
+              className="mt-0.5 h-4 w-4 accent-[#15704f]"
+            />
+
+            <span>
+              <span className="block text-sm font-semibold text-slate-800">
+                Antecipar o que ainda não foi liberado
+              </span>
+
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Paga a comissão inteira mesmo sem o cliente ter
+                pago. Quando o cliente pagar, nada é gerado de
+                novo — a comissão já fica quitada.
+              </span>
+            </span>
+          </label>
+        )}
 
         <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4">
           <input

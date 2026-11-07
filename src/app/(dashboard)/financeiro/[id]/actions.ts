@@ -3793,10 +3793,16 @@ async function syncSaleCommissionPayment(
       )
     );
 
+  /*
+   * O limite é o total da comissão, não o liberado: a comissão
+   * pode ser antecipada (paga antes de o cliente pagar). Se o
+   * pago ficasse travado no liberado, o valor antecipado
+   * voltaria a aparecer como "disponível" e seria pago de novo.
+   */
   const availableToApply =
     Math.max(
       roundMoney(
-        releasedCommission -
+        totalCommission -
           currentCommissionPaid
       ),
       0
@@ -3814,7 +3820,6 @@ async function syncSaleCommissionPayment(
         currentCommissionPaid +
           applicableDelta
       ),
-      releasedCommission,
       totalCommission
     );
 
@@ -3837,7 +3842,9 @@ async function syncSaleCommissionPayment(
     commissionFullyPaid
       ? "paid"
       : releasedCommission >
-          0
+            0 ||
+          newCommissionPaid >
+            0
         ? "generated"
         : "pending";
 
@@ -4135,10 +4142,16 @@ async function syncContractCommissionPayment(
       )
     );
 
+  /*
+   * O limite é o total da comissão, não o liberado: a comissão
+   * pode ser antecipada (paga antes de o cliente pagar). Se o
+   * pago ficasse travado no liberado, o valor antecipado
+   * voltaria a aparecer como "disponível" e seria pago de novo.
+   */
   const availableToApply =
     Math.max(
       roundMoney(
-        releasedCommission -
+        totalCommission -
           currentCommissionPaid
       ),
       0
@@ -4156,7 +4169,6 @@ async function syncContractCommissionPayment(
         currentCommissionPaid +
           applicableDelta
       ),
-      releasedCommission,
       totalCommission
     );
 
@@ -4179,7 +4191,9 @@ async function syncContractCommissionPayment(
     commissionFullyPaid
       ? "paid"
       : releasedCommission >
-          0
+            0 ||
+          newCommissionPaid >
+            0
         ? "generated"
         : "pending";
 

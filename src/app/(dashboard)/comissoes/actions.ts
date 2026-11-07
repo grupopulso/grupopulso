@@ -39,6 +39,12 @@ type PayCommissionInput = {
   dueDate: string;
 
   notes?: string;
+
+  /*
+   * Antecipar: paga além do liberado (cliente ainda não pagou),
+   * até o total da comissão.
+   */
+  advance?: boolean;
 };
 
 export async function payCommission(
@@ -220,6 +226,8 @@ export async function payCommissionsBatch(
     amount: number;
     /* contas a pagar já geradas e ainda em aberto */
     openEntryIds: string[];
+    /* inclui valor ainda não liberado (antecipação) */
+    advance?: boolean;
   }[],
   input: {
     dueDate: string;
@@ -346,6 +354,8 @@ export async function payCommissionsBatch(
           input.dueDate,
         notes:
           input.notes,
+        advance:
+          item.advance === true,
       });
 
     if (
@@ -541,7 +551,8 @@ async function paySaleCommission(
         commission
           .amount_paid ??
           0
-      )
+      ),
+      input.advance === true
     );
 
   if (
@@ -818,7 +829,8 @@ async function payContractCommission(
         commission
           .amount_paid ??
           0
-      )
+      ),
+      input.advance === true
     );
 
   if (
@@ -982,7 +994,8 @@ async function calculateSaleAvailability(
   commissionId: string,
   expectedAmount: number,
   releasedAmount: number,
-  paidAmount: number
+  paidAmount: number,
+  allowAdvance = false
 ): Promise<
   | {
       success: true;
@@ -1056,10 +1069,16 @@ async function calculateSaleAvailability(
       )
     );
 
+  /*
+   * Antecipação: a base passa a ser o total da comissão, não só
+   * o que o recebimento do cliente já liberou.
+   */
   const available =
     Math.max(
       roundMoney(
-        released -
+        (allowAdvance
+          ? expected
+          : released) -
           paid -
           committed
       ),
@@ -1099,7 +1118,8 @@ async function calculateContractAvailability(
   commissionId: string,
   expectedAmount: number,
   releasedAmount: number,
-  paidAmount: number
+  paidAmount: number,
+  allowAdvance = false
 ): Promise<
   | {
       success: true;
@@ -1173,10 +1193,16 @@ async function calculateContractAvailability(
       )
     );
 
+  /*
+   * Antecipação: a base passa a ser o total da comissão, não só
+   * o que o recebimento do cliente já liberou.
+   */
   const available =
     Math.max(
       roundMoney(
-        released -
+        (allowAdvance
+          ? expected
+          : released) -
           paid -
           committed
       ),
