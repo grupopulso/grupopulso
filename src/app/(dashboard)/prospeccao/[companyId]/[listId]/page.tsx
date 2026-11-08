@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, BarChart3 } from "lucide-react";
 
 import { createAdminClient } from "@/app/lib/supabase/admin";
+import { fetchAllRows } from "@/app/lib/fetch-all";
 import {
   requireCompanyAccess,
   requireModulePermission,
@@ -81,14 +82,22 @@ export default async function ProspeccaoListaPage({
   let showKind =
     companyId === POTTENCIALIZA_COMPANY_ID;
 
+  /*
+   * Paginado: o PostgREST corta em 1000 linhas sem avisar, e há
+   * listas maiores que isso (ex.: Natal).
+   */
   const loadLeads = async (
     columns: string
   ) =>
-    (await adminDb
-      .from("prospecting_leads")
-      .select(columns)
-      .eq("list_id", listId)
-      .order("client_name")) as unknown as {
+    (await fetchAllRows((from, to) =>
+      adminDb
+        .from("prospecting_leads")
+        .select(columns)
+        .eq("list_id", listId)
+        .order("client_name")
+        .order("id")
+        .range(from, to)
+    )) as unknown as {
       data: Lead[] | null;
       error: unknown;
     };

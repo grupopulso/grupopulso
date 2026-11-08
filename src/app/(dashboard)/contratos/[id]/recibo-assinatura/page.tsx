@@ -6,8 +6,9 @@ import {
   requireModulePermission,
 } from "@/app/lib/permissions";
 
-import PrintButton from "../recibo/print-button";
 import PrintLandscape from "@/app/components/print-landscape";
+
+import FichaForm from "./ficha-form";
 
 type PageProps = {
   params: Promise<{ id: string }>;
@@ -33,41 +34,6 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
-}
-
-const BILLING_LABELS: Record<string, string> =
-  {
-    one_time: "único",
-    monthly: "mensal",
-    quarterly: "trimestral",
-    semiannual: "semestral",
-    annual: "anual",
-    custom: "personalizado",
-  };
-
-/*
- * Marca a forma de pagamento a partir do nome / código.
- */
-function paymentFlags(name: string) {
-  const n = name
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
-
-  return {
-    pix: n.includes("pix"),
-    boleto:
-      n.includes("boleto") ||
-      n.includes("bancario"),
-    cartao:
-      n.includes("cartao") ||
-      n.includes("credito") ||
-      n.includes("debito"),
-    direto:
-      n.includes("direto") ||
-      n.includes("dinheiro") ||
-      n.includes("especie"),
-  };
 }
 
 export default async function ReciboAssinaturaPage({
@@ -98,10 +64,12 @@ export default async function ReciboAssinaturaPage({
         notes,
         responsible_user_id,
         legacy_subscription_number,
+        title,
 
         client:clients (
           id,
           name,
+          legacy_code,
           cpf_cnpj,
           phone,
           whatsapp,
@@ -143,6 +111,7 @@ export default async function ReciboAssinaturaPage({
   const client = getFirst(contract.client) as
     | {
         name: string | null;
+        legacy_code: string | null;
         cpf_cnpj: string | null;
         phone: string | null;
         whatsapp: string | null;
@@ -168,10 +137,6 @@ export default async function ReciboAssinaturaPage({
         cnpj: string | null;
       }
     | null;
-
-  const paymentMethod = getFirst(
-    contract.payment_method
-  ) as { name: string | null } | null;
 
   const addresses =
     client?.client_addresses ?? [];
@@ -206,10 +171,6 @@ export default async function ReciboAssinaturaPage({
     contract.notes ?? ""
   );
 
-  const flags = paymentFlags(
-    paymentMethod?.name ?? ""
-  );
-
   const enderecoLinha = [
     address?.street,
     address?.number,
@@ -218,188 +179,17 @@ export default async function ReciboAssinaturaPage({
     .filter(Boolean)
     .join(", ");
 
-  const conditionLabel = `${
-    contract.installments ?? 1
-  }x · ${
-    BILLING_LABELS[
-      contract.billing_frequency
-    ] ?? contract.billing_frequency
-  }`;
-
-  const via = (
-    <div className="via">
-      {/* CABEÇALHO */}
-      <div className="head">
-        <div className="brand">
-          <p className="brand-name">
-            O ESTAFETA
-          </p>
-          <p className="brand-legal">
-            {company?.legal_name ??
-              "PULSO SOLUÇÕES EM COMUNICAÇÃO E CULTURA LTDA"}
-          </p>
-          <p className="brand-sub">
-            Av. Osvaldo Aranha, 975 — Sala 209 · Centro · Veranópolis
-          </p>
-          <p className="brand-sub">
-            www.oestafeta.com.br · @oestafeta ·
-            WhatsApp (54) 9 9680-8359
-          </p>
-          <p className="brand-sub">
-            Chave PIX: CNPJ{" "}
-            {company?.cnpj ??
-              "59.549.786/0001-43"}
-          </p>
-        </div>
-
-        <div className="tipo">
-          <span
-            className={`box ${
-              !isRenewal ? "on" : ""
-            }`}
-          >
-            {!isRenewal ? "X" : ""}
-          </span>
-          <span>NOVA</span>
-
-          <span
-            className={`box ${
-              isRenewal ? "on" : ""
-            }`}
-          >
-            {isRenewal ? "X" : ""}
-          </span>
-          <span>RENOVAÇÃO</span>
-        </div>
-      </div>
-
-      {/* CORPO */}
-      <div className="grid">
-        <Field
-          label="INÍCIO"
-          value={formatDate(
-            contract.start_date
-          )}
-        />
-        <Field
-          label="VENCIMENTO"
-          value={formatDate(
-            contract.end_date
-          )}
-        />
-
-        <Field
-          label="CLIENTE"
-          value={client?.name ?? ""}
-          wide
-        />
-
-        <Field
-          label="CPF/CNPJ"
-          value={client?.cpf_cnpj ?? ""}
-          wide
-        />
-
-        <Field
-          label="ENDEREÇO"
-          value={enderecoLinha}
-        />
-        <Field
-          label="CIDADE"
-          value={address?.city ?? ""}
-        />
-
-        <Field
-          label="BAIRRO"
-          value={
-            address?.neighborhood ?? ""
-          }
-        />
-        <Field
-          label="FONE"
-          value={
-            client?.phone ||
-            client?.whatsapp ||
-            ""
-          }
-        />
-
-        <Field
-          label="VENDEDOR"
-          value={vendorName}
-          wide
-        />
-
-        <Field
-          label="OBS"
-          value={contract.notes ?? ""}
-          wide
-        />
-      </div>
-
-      {/* PAGAMENTO */}
-      <div className="pgto">
-        <div className="pgto-formas">
-          <span className="pgto-title">
-            FORMA DE PAGAMENTO
-          </span>
-
-          <span className="opt">
-            <span
-              className={`radio ${
-                flags.pix ? "on" : ""
-              }`}
-            />
-            PIX
-          </span>
-          <span className="opt">
-            <span
-              className={`radio ${
-                flags.boleto ? "on" : ""
-              }`}
-            />
-            BOLETO
-          </span>
-          <span className="opt">
-            <span
-              className={`radio ${
-                flags.cartao ? "on" : ""
-              }`}
-            />
-            CARTÃO
-          </span>
-          <span className="opt">
-            <span
-              className={`radio ${
-                flags.direto ? "on" : ""
-              }`}
-            />
-            DIRETO
-          </span>
-        </div>
-
-        <div className="pgto-cond">
-          <Field
-            label="CONDIÇÃO"
-            value={conditionLabel}
-          />
-          <Field
-            label="TOTAL R$"
-            value={formatCurrency(
-              Number(contract.value ?? 0)
-            )}
-          />
-        </div>
-      </div>
-
-      <p className="footer">
-        Sua assinatura vale prêmios semanais. Fique de olho na versão impressa!
-        {contract.legacy_subscription_number
-          ? ` · Assinatura nº ${contract.legacy_subscription_number}`
-          : ""}
-      </p>
-    </div>
-  );
+  /*
+   * Nº da assinatura: o contrato renovado nem sempre herda o
+   * campo — cai no "#000000" do título ou na nota do legado.
+   */
+  const subscriptionNumber =
+    contract.legacy_subscription_number ||
+    (contract.title ?? "").match(/#(\d+)/)?.[1] ||
+    (contract.notes ?? "").match(
+      /Assinatura legado:\s*(\d+)/
+    )?.[1] ||
+    "";
 
   return (
     <main className="recibo-page">
@@ -407,43 +197,32 @@ export default async function ReciboAssinaturaPage({
 
       <style>{RECIBO_CSS}</style>
 
-      <div className="controls">
-        <PrintButton />
-      </div>
-
-      <div className="folha">
-        {via}
-        <div className="corte">
-          — — — — — — — — — — — — — — — — — — — — — — — — — — — — — —
-        </div>
-        {via}
-      </div>
+      <FichaForm
+        contractId={contract.id}
+        initial={{
+          isRenewal,
+          start: formatDate(contract.start_date),
+          end: formatDate(contract.end_date),
+          client: client?.name ?? "",
+          document: client?.cpf_cnpj ?? "",
+          address: enderecoLinha,
+          city: address?.city ?? "",
+          neighborhood: address?.neighborhood ?? "",
+          phone: client?.phone || client?.whatsapp || "",
+          vendor: vendorName,
+          total: formatCurrency(
+            Number(contract.value ?? 0)
+          ),
+          clientCode: client?.legacy_code ?? "",
+          subscriptionNumber,
+          companyLegalName:
+            company?.legal_name ??
+            "PULSO SOLUÇÕES EM COMUNICAÇÃO E CULTURA LTDA",
+          companyCnpj:
+            company?.cnpj ?? "59.549.786/0001-43",
+        }}
+      />
     </main>
-  );
-}
-
-function Field({
-  label,
-  value,
-  wide,
-}: {
-  label: string;
-  value: string;
-  wide?: boolean;
-}) {
-  return (
-    <div
-      className={`fld ${
-        wide ? "fld-wide" : ""
-      }`}
-    >
-      <span className="fld-label">
-        {label}
-      </span>
-      <span className="fld-value">
-        {value}
-      </span>
-    </div>
   );
 }
 
@@ -453,7 +232,57 @@ const RECIBO_CSS = `
   background: #f1f5f9;
   padding: 24px;
 }
-.controls { max-width: 1000px; margin: 0 auto 12px; }
+.controls {
+  max-width: 1000px;
+  margin: 0 auto 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hint { font-size: 13px; color: #475569; max-width: 560px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn-primary, .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.btn-primary { background: #15704f; color: #fff; }
+.btn-primary:hover { background: #105c41; }
+.btn-secondary { background: #fff; color: #334155; border: 1px solid #e2e8f0; }
+.head-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.codes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 10px;
+  font-weight: 700;
+}
+.fld-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: #fefce8;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  outline: none;
+  padding: 0 2px;
+}
+.fld-input:focus { background: #fef9c3; }
+.box, .opt { cursor: pointer; background: transparent; color: inherit; }
 .folha {
   max-width: 1000px;
   margin: 0 auto;
@@ -565,6 +394,7 @@ const RECIBO_CSS = `
 @media print {
   .recibo-page { background: #fff; padding: 0; }
   .controls { display: none; }
+  .fld-input { background: transparent; }
   .folha { max-width: none; margin: 0; padding: 6mm; }
   .via { border-color: #000; }
 }

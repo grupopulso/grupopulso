@@ -2,7 +2,8 @@ export type ContractStatus =
   | "active"
   | "expiring"
   | "expired"
-  | "cancelled";
+  | "cancelled"
+  | "renewed";
 
 /*
  * Janela (em dias) usada para considerar um contrato "a vencer".
@@ -15,7 +16,25 @@ type ContractStatusInput = {
   status: string;
   start_date: string;
   end_date: string | null;
+  /*
+   * Opcional: com as notas dá pra saber se o contrato já foi
+   * renovado (a renovação grava "Renovado em ... pelo contrato
+   * <novo>" no contrato antigo). Sem elas, cai na regra das datas.
+   */
+  notes?: string | null;
 };
+
+const RENEWED_PATTERN = /Renovado em \S+ pelo contrato /;
+
+/*
+ * Contrato antigo que já ganhou um contrato de renovação: não é
+ * "vencido" (o cliente continua assinante pelo contrato novo).
+ */
+export function isRenewedContract(
+  notes: string | null | undefined
+) {
+  return RENEWED_PATTERN.test(notes ?? "");
+}
 
 /**
  * Calcula o status real de um contrato/assinatura a partir de
@@ -59,7 +78,9 @@ export function getContractStatus(
   );
 
   if (end < today) {
-    return "expired";
+    return isRenewedContract(contract.notes)
+      ? "renewed"
+      : "expired";
   }
 
   const millisecondsPerDay =
@@ -88,6 +109,7 @@ const STATUS_PRIORITY: ContractStatus[] = [
   "expiring",
   "active",
   "cancelled",
+  "renewed",
 ];
 
 /**
@@ -148,6 +170,7 @@ export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   expiring: "A vencer",
   expired: "Vencido",
   cancelled: "Cancelado",
+  renewed: "Renovado",
 };
 
 export const CONTRACT_STATUS_STYLES: Record<ContractStatus, string> = {
@@ -155,4 +178,5 @@ export const CONTRACT_STATUS_STYLES: Record<ContractStatus, string> = {
   expiring: "bg-amber-50 text-amber-700",
   expired: "bg-red-50 text-red-700",
   cancelled: "bg-slate-100 text-slate-600",
+  renewed: "bg-sky-50 text-sky-700",
 };

@@ -272,6 +272,7 @@ export default async function ClientPage({
       billing_frequency,
       status,
       company_id,
+      notes,
 
       legacy_subscription_number,
 
@@ -1408,6 +1409,9 @@ function StatusBadge({
 
     cancelled:
       "bg-slate-100 text-slate-600 border-slate-200",
+
+    renewed:
+      "bg-sky-50 text-sky-700 border-sky-100",
   };
 
   const labels: Record<
@@ -1425,6 +1429,9 @@ function StatusBadge({
 
     cancelled:
       "Cancelado",
+
+    renewed:
+      "Renovado",
   };
 
   return (

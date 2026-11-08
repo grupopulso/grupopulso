@@ -439,6 +439,7 @@ export default async function MeuPainelPage({
       status: contract.status,
       start_date: contract.start_date,
       end_date: contract.end_date,
+      notes: contract.notes,
     });
 
     const alreadyRenewed = (

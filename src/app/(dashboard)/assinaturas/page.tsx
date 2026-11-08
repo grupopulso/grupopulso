@@ -29,6 +29,7 @@ const STATUS_FILTER_OPTIONS: {
   { value: "expiring", label: CONTRACT_STATUS_LABELS.expiring },
   { value: "expired", label: CONTRACT_STATUS_LABELS.expired },
   { value: "cancelled", label: CONTRACT_STATUS_LABELS.cancelled },
+  { value: "renewed", label: CONTRACT_STATUS_LABELS.renewed },
 ];
 
 type PageProps = {
@@ -84,6 +85,7 @@ export default async function AssinaturasPage({
           status,
           auto_renew,
           legacy_subscription_number,
+          notes,
 
           client:clients (
             id,

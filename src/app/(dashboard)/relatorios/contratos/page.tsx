@@ -87,6 +87,7 @@ export default async function RelatorioContratosPage() {
       billing_frequency,
       status,
       auto_renew,
+      notes,
 
       company:companies (
         id,
