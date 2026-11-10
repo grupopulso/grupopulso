@@ -579,6 +579,78 @@ export async function updateContract(
 
   /*
    * =========================
+   * COMISSÕES x NOVO VALOR
+   * =========================
+   *
+   * A comissão é gravada com base no valor do contrato na
+   * criação. Mudou o valor (ex.: digitado errado), ela é
+   * recalculada na mesma proporção — preserva o percentual e
+   * o fator da base (ex.: TV Indoor 50%, cortesia zero).
+   */
+  const oldValue = Number(
+    currentContract.value ?? 0
+  );
+
+  const newValue = Number(input.value);
+
+  const valueChanged =
+    Math.abs(oldValue - newValue) >= 0.005;
+
+  type CommissionRow = {
+    id: string;
+    base_amount: number | string | null;
+    amount: number | string | null;
+    amount_paid: number | string | null;
+    status: string;
+  };
+
+  let commissionsToRescale: CommissionRow[] = [];
+
+  if (valueChanged && oldValue > 0) {
+    const {
+      data: commissionRows,
+      error: commissionRowsError,
+    } = await supabase
+      .from("contract_commissions")
+      .select(
+        "id, base_amount, amount, amount_paid, status"
+      )
+      .eq("contract_id", input.contractId)
+      .neq("status", "cancelled");
+
+    if (commissionRowsError) {
+      return {
+        success: false,
+        error:
+          "Não foi possível consultar as comissões do contrato.",
+      };
+    }
+
+    commissionsToRescale =
+      (commissionRows ?? []) as CommissionRow[];
+
+    const ratio = newValue / oldValue;
+
+    const overpaid = commissionsToRescale.find(
+      (row) =>
+        Number(row.amount_paid ?? 0) >
+        roundCommission(
+          Number(row.amount ?? 0) * ratio
+        ) +
+          0.005
+    );
+
+    if (overpaid) {
+      return {
+        success: false,
+        error:
+          "Já foi paga comissão acima do que o novo valor do contrato gera. Ajuste o pagamento da comissão antes de reduzir o valor.",
+      };
+    }
+  }
+
+  /*
+   * =========================
    * ATUALIZAR CONTRATO
    * =========================
    */
@@ -657,6 +729,49 @@ export async function updateContract(
       error:
         updateError.message,
     };
+  }
+
+  if (commissionsToRescale.length > 0) {
+    const ratio = newValue / oldValue;
+
+    for (const row of commissionsToRescale) {
+      const amount = roundCommission(
+        Number(row.amount ?? 0) * ratio
+      );
+
+      const paid = Number(row.amount_paid ?? 0);
+
+      const { error: commissionUpdateError } =
+        await supabase
+          .from("contract_commissions")
+          .update({
+            base_amount: roundCommission(
+              Number(row.base_amount ?? 0) * ratio
+            ),
+            amount,
+            status:
+              amount > 0 && paid >= amount
+                ? "paid"
+                : row.status === "paid"
+                  ? "generated"
+                  : row.status,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", row.id);
+
+      if (commissionUpdateError) {
+        console.error(
+          "Erro ao recalcular comissão do contrato:",
+          commissionUpdateError
+        );
+
+        return {
+          success: false,
+          error:
+            "O contrato foi salvo, mas a comissão não pôde ser recalculada. Avise o suporte.",
+        };
+      }
+    }
   }
 
   /*
@@ -1052,4 +1167,10 @@ export async function updateContract(
   return {
     success: true,
   };
+}
+
+function roundCommission(value: number) {
+  return (
+    Math.round((value + Number.EPSILON) * 100) / 100
+  );
 }
