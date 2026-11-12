@@ -24,6 +24,10 @@ import {
 } from "@/app/lib/supabase/client";
 
 import {
+  fetchAllRows,
+} from "@/app/lib/fetch-all";
+
+import {
   updateContract,
 } from "./actions";
 
@@ -515,20 +519,23 @@ export default function EditContractForm({
         tvsResult,
       ] =
         await Promise.all([
-          supabase
-            .from(
-              "clients"
-            )
-            .select(
-              "id, name"
-            )
-            .eq(
-              "active",
-              true
-            )
-            .order(
-              "name"
-            ),
+          /*
+           * Paginado: sem isso o PostgREST corta em 1000 e os
+           * clientes do fim do alfabeto (ex.: "Terezinha") somem —
+           * o campo mostrava outro cliente no lugar.
+           */
+          fetchAllRows<{
+            id: string;
+            name: string;
+          }>((from, to) =>
+            supabase
+              .from("clients")
+              .select("id, name")
+              .eq("active", true)
+              .order("name")
+              .order("id")
+              .range(from, to)
+          ),
 
           supabase
             .from(

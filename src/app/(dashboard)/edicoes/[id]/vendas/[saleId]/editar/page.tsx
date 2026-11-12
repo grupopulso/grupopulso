@@ -14,6 +14,10 @@ import {
 } from "@/app/lib/supabase/admin";
 
 import {
+  fetchAllRows,
+} from "@/app/lib/fetch-all";
+
+import {
   requireEstafetaAccess,
 } from "@/app/lib/estafeta-access";
 
@@ -328,21 +332,22 @@ export default async function EditEditionSalePage({
     data: clients,
     error: clientsError,
   } =
-    await supabase
-      .from(
-        "clients"
-      )
-      .select(`
-        id,
-        name
-      `)
-      .eq(
-        "active",
-        true
-      )
-      .order(
-        "name"
-      );
+    /*
+     * Paginado: o PostgREST corta em 1000 linhas e os clientes
+     * do fim do alfabeto sumiam da lista.
+     */
+    await fetchAllRows((from, to) =>
+      supabase
+        .from("clients")
+        .select(`
+          id,
+          name
+        `)
+        .eq("active", true)
+        .order("name")
+        .order("id")
+        .range(from, to)
+    );
 
   if (
     clientsError
