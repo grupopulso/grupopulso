@@ -11,6 +11,7 @@ import {
 
 import NewListForm from "./new-list-form";
 import DeleteListButton from "./delete-list-button";
+import DuplicateListButton from "./duplicate-list-button";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -169,6 +170,12 @@ export default async function ProspeccaoEmpresaPage({
                   <LegendDot
                     count={counts.none}
                     className="border border-slate-300 bg-white"
+                  />
+
+                  <DuplicateListButton
+                    companyId={companyId}
+                    listId={list.id}
+                    listName={list.name}
                   />
 
                   <DeleteListButton
