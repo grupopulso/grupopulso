@@ -234,3 +234,151 @@ export async function deleteProspectingLead(
 
   return { success: true };
 }
+
+export type BulkClearFields = {
+  seller: boolean;
+  value: boolean;
+  size: boolean;
+  status: boolean;
+  billingNote: boolean;
+};
+
+const BULK_CHUNK = 200;
+
+function chunk<T>(items: T[], size: number) {
+  const out: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+
+  return out;
+}
+
+/*
+ * Limpa de uma vez os dados das linhas marcadas (ex.: caderno
+ * duplicado pro ano seguinte): vendedor, valor, tamanho,
+ * situação ("Sem contato") e observações — o nome do cliente
+ * fica.
+ */
+export async function bulkClearProspectingLeads(
+  companyId: string,
+  listId: string,
+  leadIds: string[],
+  fields: BulkClearFields
+): Promise<
+  { success: true; count: number } | Failure
+> {
+  await requireModulePermission(
+    "prospecting",
+    "edit"
+  );
+
+  await requireCompanyAccess(companyId);
+
+  const ids = Array.from(new Set(leadIds));
+
+  if (ids.length === 0) {
+    return {
+      success: false,
+      error: "Selecione pelo menos uma linha.",
+    };
+  }
+
+  const update: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+
+  if (fields.seller) update.seller_user_id = null;
+  if (fields.value) update.value = null;
+  if (fields.size) update.size = null;
+  if (fields.status) update.status = "none";
+  if (fields.billingNote) update.billing_note = null;
+
+  if (Object.keys(update).length === 1) {
+    return {
+      success: false,
+      error: "Marque o que deve ser apagado.",
+    };
+  }
+
+  const adminDb = createAdminClient();
+
+  for (const part of chunk(ids, BULK_CHUNK)) {
+    const { error } = await adminDb
+      .from("prospecting_leads")
+      .update(update)
+      .eq("list_id", listId)
+      .in("id", part);
+
+    if (error) {
+      revalidatePath(
+        `/prospeccao/${companyId}/${listId}`
+      );
+
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  revalidatePath(
+    `/prospeccao/${companyId}/${listId}`
+  );
+  revalidatePath(`/prospeccao/${companyId}`);
+
+  return { success: true, count: ids.length };
+}
+
+export async function bulkDeleteProspectingLeads(
+  companyId: string,
+  listId: string,
+  leadIds: string[]
+): Promise<
+  { success: true; count: number } | Failure
+> {
+  await requireModulePermission(
+    "prospecting",
+    "delete"
+  );
+
+  await requireCompanyAccess(companyId);
+
+  const ids = Array.from(new Set(leadIds));
+
+  if (ids.length === 0) {
+    return {
+      success: false,
+      error: "Selecione pelo menos uma linha.",
+    };
+  }
+
+  const adminDb = createAdminClient();
+
+  for (const part of chunk(ids, BULK_CHUNK)) {
+    const { error } = await adminDb
+      .from("prospecting_leads")
+      .delete()
+      .eq("list_id", listId)
+      .in("id", part);
+
+    if (error) {
+      revalidatePath(
+        `/prospeccao/${companyId}/${listId}`
+      );
+
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+
+  revalidatePath(
+    `/prospeccao/${companyId}/${listId}`
+  );
+  revalidatePath(`/prospeccao/${companyId}`);
+
+  return { success: true, count: ids.length };
+}

@@ -71,12 +71,16 @@ export default function LeadRow({
   lead,
   sellers,
   showKind = false,
+  selected = false,
+  onToggle,
 }: {
   companyId: string;
   listId: string;
   lead: Lead;
   sellers: Seller[];
   showKind?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
 }) {
   const router = useRouter();
 
@@ -201,6 +205,16 @@ export default function LeadRow({
           ] ?? "bg-white"
         }
       >
+        <td className="w-10 py-3 pl-4">
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggle?.()}
+            aria-label={`Selecionar ${lead.client_name}`}
+            className="h-4 w-4 cursor-pointer accent-[#15704f]"
+          />
+        </td>
+
         <td className="px-4 py-3 text-sm font-medium text-slate-800">
           {lead.client_name}
         </td>
@@ -283,6 +297,8 @@ export default function LeadRow({
 
   return (
     <tr className="bg-slate-50">
+      <td className="w-10 py-2 pl-4" />
+
       <td className="px-4 py-2">
         <input
           value={clientName}

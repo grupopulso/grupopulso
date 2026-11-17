@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 
+import BulkBar from "./bulk-bar";
 import LeadRow from "./lead-row";
 import {
   KIND_OPTIONS,
@@ -55,6 +56,10 @@ export default function LeadsTable({
   const [kindFilter, setKindFilter] =
     useState("");
 
+  const [selected, setSelected] = useState<
+    Set<string>
+  >(() => new Set());
+
   const filteredLeads = useMemo(() => {
     const term = normalize(search);
 
@@ -99,6 +104,60 @@ export default function LeadsTable({
     statusFilter,
     kindFilter,
   ]);
+
+  /*
+   * "Marcar todos" vale para o que está na tela (respeita os
+   * filtros) — dá pra filtrar por situação/vendedor e limpar
+   * só aquele grupo.
+   */
+  const visibleIds = filteredLeads.map(
+    (lead) => lead.id
+  );
+
+  const allVisibleSelected =
+    visibleIds.length > 0 &&
+    visibleIds.every((id) => selected.has(id));
+
+  function toggle(id: string) {
+    setSelected((current) => {
+      const next = new Set(current);
+
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleAllVisible() {
+    setSelected((current) => {
+      const next = new Set(current);
+
+      for (const id of visibleIds) {
+        if (allVisibleSelected) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      }
+
+      return next;
+    });
+  }
+
+  /*
+   * Só conta o que ainda existe (linha excluída some da seleção).
+   */
+  const leadIds = new Set(
+    leads.map((lead) => lead.id)
+  );
+
+  const selectedIds = Array.from(selected).filter(
+    (id) => leadIds.has(id)
+  );
 
   const hasActiveFilters =
     Boolean(search) ||
@@ -216,11 +275,29 @@ export default function LeadsTable({
 
       {children}
 
+      <BulkBar
+        companyId={companyId}
+        listId={listId}
+        selectedIds={selectedIds}
+        onClear={() => setSelected(new Set())}
+      />
+
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50">
               <tr>
+                <th className="w-10 py-3 pl-4">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                    disabled={visibleIds.length === 0}
+                    title="Marcar todos da lista"
+                    aria-label="Marcar todos da lista"
+                    className="h-4 w-4 cursor-pointer accent-[#15704f]"
+                  />
+                </th>
                 <Header>Cliente</Header>
                 {showKind && (
                   <Header>Tipo</Header>
@@ -246,7 +323,9 @@ export default function LeadsTable({
               {filteredLeads.map(
                 (lead) => (
                   <LeadRow
-                    key={lead.id}
+                    key={`${lead.id}:${lead.status}:${lead.seller_user_id ?? ""}:${lead.value ?? ""}:${lead.size ?? ""}:${lead.billing_note ?? ""}`}
+                    selected={selected.has(lead.id)}
+                    onToggle={() => toggle(lead.id)}
                     companyId={
                       companyId
                     }
@@ -262,7 +341,7 @@ export default function LeadsTable({
                 0 && (
                 <tr>
                   <td
-                    colSpan={showKind ? 8 : 7}
+                    colSpan={showKind ? 9 : 8}
                     className="px-4 py-12 text-center text-sm text-slate-400"
                   >
                     {leads.length === 0
