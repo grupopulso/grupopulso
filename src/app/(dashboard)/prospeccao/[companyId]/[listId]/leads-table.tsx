@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 
-import BulkBar from "./bulk-bar";
+import ColumnClearBar from "./column-clear-bar";
 import LeadRow from "./lead-row";
+import type { BulkClearFields } from "./actions";
 import {
   KIND_OPTIONS,
   STATUS_OPTIONS,
@@ -23,6 +24,14 @@ type Lead = {
   status: string;
   billing_note: string | null;
   kind?: string | null;
+};
+
+const NO_COLUMNS: BulkClearFields = {
+  seller: false,
+  value: false,
+  size: false,
+  status: false,
+  billingNote: false,
 };
 
 function normalize(value: string) {
@@ -56,9 +65,33 @@ export default function LeadsTable({
   const [kindFilter, setKindFilter] =
     useState("");
 
-  const [selected, setSelected] = useState<
-    Set<string>
-  >(() => new Set());
+  /*
+   * Colunas marcadas pra apagar (no cabeçalho). Vale para todas
+   * as linhas que estão na tela (respeita os filtros).
+   */
+  const [columns, setColumns] =
+    useState<BulkClearFields>(NO_COLUMNS);
+
+  function toggleColumn(key: keyof BulkClearFields) {
+    setColumns((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  }
+
+  const columnCheckbox = (
+    key: keyof BulkClearFields,
+    label: string
+  ) => (
+    <input
+      type="checkbox"
+      checked={columns[key]}
+      onChange={() => toggleColumn(key)}
+      title={`Marcar a coluna ${label} para apagar`}
+      aria-label={`Marcar a coluna ${label} para apagar`}
+      className="mr-2 h-3.5 w-3.5 cursor-pointer align-middle accent-[#15704f]"
+    />
+  );
 
   const filteredLeads = useMemo(() => {
     const term = normalize(search);
@@ -104,60 +137,6 @@ export default function LeadsTable({
     statusFilter,
     kindFilter,
   ]);
-
-  /*
-   * "Marcar todos" vale para o que está na tela (respeita os
-   * filtros) — dá pra filtrar por situação/vendedor e limpar
-   * só aquele grupo.
-   */
-  const visibleIds = filteredLeads.map(
-    (lead) => lead.id
-  );
-
-  const allVisibleSelected =
-    visibleIds.length > 0 &&
-    visibleIds.every((id) => selected.has(id));
-
-  function toggle(id: string) {
-    setSelected((current) => {
-      const next = new Set(current);
-
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-
-      return next;
-    });
-  }
-
-  function toggleAllVisible() {
-    setSelected((current) => {
-      const next = new Set(current);
-
-      for (const id of visibleIds) {
-        if (allVisibleSelected) {
-          next.delete(id);
-        } else {
-          next.add(id);
-        }
-      }
-
-      return next;
-    });
-  }
-
-  /*
-   * Só conta o que ainda existe (linha excluída some da seleção).
-   */
-  const leadIds = new Set(
-    leads.map((lead) => lead.id)
-  );
-
-  const selectedIds = Array.from(selected).filter(
-    (id) => leadIds.has(id)
-  );
 
   const hasActiveFilters =
     Boolean(search) ||
@@ -275,11 +254,14 @@ export default function LeadsTable({
 
       {children}
 
-      <BulkBar
+      <ColumnClearBar
         companyId={companyId}
         listId={listId}
-        selectedIds={selectedIds}
-        onClear={() => setSelected(new Set())}
+        columns={columns}
+        leadIds={filteredLeads.map((lead) => lead.id)}
+        totalCount={leads.length}
+        filtered={hasActiveFilters}
+        onDone={() => setColumns(NO_COLUMNS)}
       />
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -287,32 +269,31 @@ export default function LeadsTable({
           <table className="w-full text-left">
             <thead className="bg-slate-50">
               <tr>
-                <th className="w-10 py-3 pl-4">
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={toggleAllVisible}
-                    disabled={visibleIds.length === 0}
-                    title="Marcar todos da lista"
-                    aria-label="Marcar todos da lista"
-                    className="h-4 w-4 cursor-pointer accent-[#15704f]"
-                  />
-                </th>
                 <Header>Cliente</Header>
                 {showKind && (
                   <Header>Tipo</Header>
                 )}
                 <Header>
+                  {columnCheckbox("seller", "Vendedor")}
                   Vendedor
                 </Header>
-                <Header>Valor</Header>
                 <Header>
+                  {columnCheckbox("value", "Valor")}
+                  Valor
+                </Header>
+                <Header>
+                  {columnCheckbox("size", "Tamanho")}
                   Tamanho
                 </Header>
                 <Header>
+                  {columnCheckbox("status", "Situação")}
                   Situação
                 </Header>
                 <Header>
+                  {columnCheckbox(
+                    "billingNote",
+                    "Observações"
+                  )}
                   Observações
                 </Header>
                 <Header>{""}</Header>
@@ -324,8 +305,6 @@ export default function LeadsTable({
                 (lead) => (
                   <LeadRow
                     key={`${lead.id}:${lead.status}:${lead.seller_user_id ?? ""}:${lead.value ?? ""}:${lead.size ?? ""}:${lead.billing_note ?? ""}`}
-                    selected={selected.has(lead.id)}
-                    onToggle={() => toggle(lead.id)}
                     companyId={
                       companyId
                     }
@@ -341,7 +320,7 @@ export default function LeadsTable({
                 0 && (
                 <tr>
                   <td
-                    colSpan={showKind ? 9 : 8}
+                    colSpan={showKind ? 8 : 7}
                     className="px-4 py-12 text-center text-sm text-slate-400"
                   >
                     {leads.length === 0
@@ -364,7 +343,7 @@ function Header({
   children: React.ReactNode;
 }) {
   return (
-    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <th className="whitespace-nowrap px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
       {children}
     </th>
   );
