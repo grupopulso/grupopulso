@@ -623,19 +623,16 @@ export default async function EditionPage({
       })
     );
 
+  /*
+   * Contrato já publicado nesta edição continua na lista: o
+   * cliente pode ter dois anúncios na mesma edição (posições
+   * diferentes) — a action já aceita.
+   */
   const availableContracts =
     (
       activeContractsData ??
       []
     )
-      .filter(
-        (
-          contract
-        ) =>
-          !linkedContractIds.includes(
-            contract.id
-          )
-      )
       .map(
         (
           contract

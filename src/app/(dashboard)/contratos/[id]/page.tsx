@@ -253,6 +253,7 @@ export default async function ContractDetailPage({
     id: string;
     name: string;
     editionNumber: number | null;
+    alreadyLinked: boolean;
   }[] = [];
 
   /*
@@ -558,21 +559,21 @@ export default async function ContractDetailPage({
       }
     }
 
+    /*
+     * Edição em que o contrato já está continua na lista (um
+     * segundo anúncio na mesma edição, em outra posição).
+     */
     openEditionsForPublish = (
       openEditionsResult.data ?? []
-    )
-      .filter(
-        (edition) =>
-          !linkedEditionIds.has(
-            edition.id
-          )
-      )
-      .map((edition) => ({
-        id: edition.id,
-        name: edition.name,
-        editionNumber:
-          edition.edition_number,
-      }));
+    ).map((edition) => ({
+      id: edition.id,
+      name: edition.name,
+      editionNumber:
+        edition.edition_number,
+      alreadyLinked: linkedEditionIds.has(
+        edition.id
+      ),
+    }));
   }
 
   /*
@@ -1580,6 +1581,12 @@ const commissionProfilesById =
                           {edition.editionNumber
                             ? ` • Nº ${edition.editionNumber}`
                             : ""}
+
+                          {edition.alreadyLinked && (
+                            <span className="mt-0.5 block text-xs text-emerald-700">
+                              Já tem anúncio — adicionar outro
+                            </span>
+                          )}
                         </Link>
                       )
                     )}
