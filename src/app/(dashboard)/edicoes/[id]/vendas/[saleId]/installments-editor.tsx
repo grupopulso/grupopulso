@@ -7,7 +7,13 @@ import {
 
 import { useRouter } from "next/navigation";
 
-import { CalendarClock, X } from "lucide-react";
+import {
+  CalendarClock,
+  Plus,
+  Split,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { updateSaleInstallments } from "../actions";
 
@@ -18,10 +24,18 @@ type EditableInstallment = {
   amount: number;
 };
 
+type Row = {
+  key: string;
+  id: string | null;
+  dueDate: string;
+  amount: string;
+};
+
 /*
- * Botão + janela para trocar vencimento/valor das parcelas
- * (boletos) ainda não pagas da venda. A soma tem que fechar com
- * a soma original — o total da venda não muda.
+ * Botão + janela para refazer as parcelas (boletos) ainda não
+ * pagas da venda: trocar vencimento/valor, incluir ou tirar
+ * parcelas, ou dividir de novo em N vezes. A soma tem que fechar
+ * com a soma original — o total da venda não muda.
  */
 export default function InstallmentsEditor({
   saleId,
@@ -43,6 +57,8 @@ export default function InstallmentsEditor({
   );
 
   const [note, setNote] = useState("");
+
+  const [splitCount, setSplitCount] = useState("");
 
   const [error, setError] = useState("");
 
@@ -66,24 +82,109 @@ export default function InstallmentsEditor({
     originalTotal - currentTotal
   );
 
+  // Parcelas já pagas ficam fora da janela, mas contam no número.
+  const paidCount = Math.max(
+    totalCount - installments.length,
+    0
+  );
+
+  const finalCount = paidCount + rows.length;
+
   function handleOpen() {
     setRows(toRows(installments));
     setNote("");
+    setSplitCount(String(installments.length));
     setError("");
     setOpen(true);
   }
 
   function updateRow(
-    id: string,
+    key: string,
     field: "dueDate" | "amount",
     value: string
   ) {
     setRows((current) =>
       current.map((row) =>
-        row.id === id
+        row.key === key
           ? { ...row, [field]: value }
           : row
       )
+    );
+  }
+
+  function addRow() {
+    setError("");
+
+    setRows((current) => {
+      const last = current[current.length - 1];
+
+      const missing = roundMoney(
+        originalTotal -
+          current.reduce(
+            (sum, row) => sum + parseMoney(row.amount),
+            0
+          )
+      );
+
+      return [
+        ...current,
+        {
+          key: newKey(),
+          id: null,
+          dueDate: last
+            ? addMonths(last.dueDate, 1)
+            : todayDate(),
+          amount:
+            missing > 0
+              ? formatEditableMoney(missing)
+              : "",
+        },
+      ];
+    });
+  }
+
+  function removeRow(key: string) {
+    setError("");
+
+    setRows((current) =>
+      current.length > 1
+        ? current.filter((row) => row.key !== key)
+        : current
+    );
+  }
+
+  /*
+   * Divide o total em aberto em N parcelas iguais, mês a mês, a
+   * partir do 1º vencimento atual. Reaproveita as parcelas que já
+   * existem; as que sobrarem saem, as que faltarem são criadas.
+   */
+  function splitEvenly() {
+    const count = Number(splitCount);
+
+    if (
+      !Number.isInteger(count) ||
+      count < 1 ||
+      count > 60
+    ) {
+      setError("Informe de 1 a 60 parcelas.");
+
+      return;
+    }
+
+    setError("");
+
+    const firstDate =
+      rows[0]?.dueDate || todayDate();
+
+    const values = distribute(originalTotal, count);
+
+    setRows((current) =>
+      values.map((value, index) => ({
+        key: current[index]?.key ?? newKey(),
+        id: current[index]?.id ?? null,
+        dueDate: addMonths(firstDate, index),
+        amount: formatEditableMoney(value),
+      }))
     );
   }
 
@@ -155,7 +256,7 @@ export default function InstallmentsEditor({
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
           <form
             onSubmit={handleSubmit}
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
           >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -164,8 +265,14 @@ export default function InstallmentsEditor({
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Só as parcelas ainda não pagas. O total
-                  delas continua {formatCurrency(originalTotal)}.
+                  Só as parcelas ainda não pagas
+                  {paidCount > 0 &&
+                    ` (${paidCount} já ${
+                      paidCount === 1 ? "paga fica" : "pagas ficam"
+                    } como está)`}
+                  . Pode mudar data e valor, incluir ou tirar
+                  parcelas. O total delas continua{" "}
+                  {formatCurrency(originalTotal)}.
                 </p>
               </div>
 
@@ -186,14 +293,61 @@ export default function InstallmentsEditor({
               </div>
             )}
 
+            <div className="mt-5 flex flex-wrap items-end gap-3 rounded-2xl bg-slate-50 p-4">
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-slate-600">
+                  Dividir {formatCurrency(originalTotal)} em
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={splitCount}
+                    onChange={(event) =>
+                      setSplitCount(event.target.value)
+                    }
+                    disabled={saving}
+                    aria-label="Quantidade de parcelas"
+                    className="h-10 w-20 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
+                  />
+
+                  <span className="text-sm text-slate-600">
+                    parcelas
+                  </span>
+                </div>
+              </label>
+
+              <button
+                type="button"
+                onClick={splitEvenly}
+                disabled={saving}
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-[#15704f] hover:text-[#15704f] disabled:opacity-50"
+              >
+                <Split className="h-4 w-4" />
+                Dividir
+              </button>
+
+              <span className="basis-full text-xs text-slate-500">
+                Valores iguais, um por mês, a partir do 1º
+                vencimento. Depois dá pra ajustar cada linha.
+              </span>
+            </div>
+
             <div className="mt-5 space-y-3">
-              {rows.map((row) => (
+              {rows.map((row, index) => (
                 <div
-                  key={row.id}
-                  className="grid grid-cols-[70px_1fr_1fr] items-center gap-3"
+                  key={row.key}
+                  className="grid grid-cols-[56px_1fr_1fr_36px] items-center gap-2 sm:gap-3"
                 >
                   <span className="text-sm font-semibold text-slate-700">
-                    {row.number}/{totalCount}
+                    {paidCount + index + 1}/{finalCount}
+                    {!row.id && (
+                      <span className="block text-[10px] font-medium uppercase text-[#15704f]">
+                        nova
+                      </span>
+                    )}
                   </span>
 
                   <input
@@ -201,14 +355,14 @@ export default function InstallmentsEditor({
                     value={row.dueDate}
                     onChange={(event) =>
                       updateRow(
-                        row.id,
+                        row.key,
                         "dueDate",
                         event.target.value
                       )
                     }
                     required
                     disabled={saving}
-                    aria-label={`Vencimento da parcela ${row.number}`}
+                    aria-label={`Vencimento da parcela ${index + 1}`}
                     className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
                   />
 
@@ -223,20 +377,41 @@ export default function InstallmentsEditor({
                       value={row.amount}
                       onChange={(event) =>
                         updateRow(
-                          row.id,
+                          row.key,
                           "amount",
                           event.target.value
                         )
                       }
                       required
                       disabled={saving}
-                      aria-label={`Valor da parcela ${row.number}`}
+                      aria-label={`Valor da parcela ${index + 1}`}
                       className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm text-slate-700 outline-none transition focus:border-[#15704f]"
                     />
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => removeRow(row.key)}
+                    disabled={saving || rows.length <= 1}
+                    title="Tirar esta parcela"
+                    aria-label={`Tirar a parcela ${index + 1}`}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={addRow}
+              disabled={saving || rows.length >= 60}
+              className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-[#15704f] transition hover:text-[#105c41] disabled:opacity-50"
+            >
+              <Plus className="h-4 w-4" />
+              Adicionar parcela
+            </button>
 
             <div
               className={`mt-4 rounded-xl px-4 py-3 text-sm ${
@@ -300,13 +475,77 @@ export default function InstallmentsEditor({
   );
 }
 
-function toRows(installments: EditableInstallment[]) {
-  return installments.map((item) => ({
-    id: item.id,
-    number: item.number,
-    dueDate: item.dueDate,
-    amount: formatEditableMoney(item.amount),
-  }));
+function toRows(
+  installments: EditableInstallment[]
+): Row[] {
+  return [...installments]
+    .sort((a, b) => a.number - b.number)
+    .map((item) => ({
+      key: item.id,
+      id: item.id,
+      dueDate: item.dueDate,
+      amount: formatEditableMoney(item.amount),
+    }));
+}
+
+let keySeq = 0;
+
+function newKey() {
+  keySeq += 1;
+
+  return `new-${keySeq}`;
+}
+
+function todayDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date());
+}
+
+/*
+ * Soma meses mantendo o dia; se o mês não tem o dia (31/01 →
+ * fevereiro), cai no último dia do mês.
+ */
+function addMonths(date: string, months: number) {
+  const [year, month, day] = date
+    .split("-")
+    .map(Number);
+
+  if (!year || !month || !day) {
+    return todayDate();
+  }
+
+  const target = new Date(
+    Date.UTC(year, month - 1 + months, 1)
+  );
+
+  const lastDay = new Date(
+    Date.UTC(
+      target.getUTCFullYear(),
+      target.getUTCMonth() + 1,
+      0
+    )
+  ).getUTCDate();
+
+  target.setUTCDate(Math.min(day, lastDay));
+
+  return target.toISOString().slice(0, 10);
+}
+
+/*
+ * Divide em centavos; a sobra vai nas primeiras parcelas
+ * (R$ 100 em 3x = 33,34 + 33,33 + 33,33).
+ */
+function distribute(total: number, count: number) {
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / count);
+  const rest = cents - base * count;
+
+  return Array.from(
+    { length: count },
+    (_, index) =>
+      (base + (index < rest ? 1 : 0)) / 100
+  );
 }
 
 function parseMoney(value: string) {

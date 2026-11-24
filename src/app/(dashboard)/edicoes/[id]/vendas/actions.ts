@@ -2030,19 +2030,24 @@ export async function updateEditionSale(
  * ALTERAR PARCELAS (BOLETOS) DA VENDA
  * =====================================================
  *
- * Muda vencimento e valor das parcelas AINDA NÃO PAGAS — vale
- * mesmo com a edição fechada ou com outras parcelas já
- * recebidas (ex.: cliente pediu pra trocar a data do boleto).
- * A soma das parcelas alteradas tem que continuar igual: o
- * total da venda (e portanto comissão e fechamento da edição)
- * não muda. Para mudar o valor da venda, use "Editar venda".
+ * Refaz o carnê das parcelas AINDA NÃO PAGAS: muda vencimento e
+ * valor, inclui parcelas novas e remove as que sobrarem (ex.:
+ * R$ 198 em 1x vira 3x de R$ 66). Vale mesmo com a edição
+ * fechada ou com outras parcelas já recebidas — essas ficam
+ * como estão. A soma das parcelas em aberto tem que continuar
+ * igual: o total da venda (comissão, fechamento da edição) não
+ * muda. Para mudar o valor da venda, use "Editar venda".
+ *
+ * `rows` é o carnê novo das parcelas em aberto: com
+ * `installmentId` = parcela existente (atualiza); sem = parcela
+ * nova. Parcela em aberto que não vier em `rows` é removida.
  */
 
 export async function updateSaleInstallments(
   saleId: string,
   editionId: string,
-  changes: {
-    installmentId: string;
+  rows: {
+    installmentId?: string | null;
     dueDate: string;
     amount: number;
   }[],
@@ -2057,15 +2062,22 @@ export async function updateSaleInstallments(
     "edit"
   );
 
-  if (!saleId || !editionId || changes.length === 0) {
+  if (!saleId || !editionId || rows.length === 0) {
     return {
       success: false as const,
-      message: "Nenhuma parcela para alterar.",
+      message: "Informe pelo menos uma parcela.",
     };
   }
 
-  for (const change of changes) {
-    if (!isValidDateOnly(change.dueDate)) {
+  if (rows.length > 60) {
+    return {
+      success: false as const,
+      message: "Máximo de 60 parcelas.",
+    };
+  }
+
+  for (const row of rows) {
+    if (!isValidDateOnly(row.dueDate)) {
       return {
         success: false as const,
         message: "Informe um vencimento válido em todas as parcelas.",
@@ -2073,8 +2085,8 @@ export async function updateSaleInstallments(
     }
 
     if (
-      !Number.isFinite(change.amount) ||
-      roundMoney(change.amount) <= 0
+      !Number.isFinite(row.amount) ||
+      roundMoney(row.amount) <= 0
     ) {
       return {
         success: false as const,
@@ -2087,7 +2099,16 @@ export async function updateSaleInstallments(
 
   const { data: sale } = await supabase
     .from("edition_sales")
-    .select("id, company_id, edition_id, status, notes")
+    .select(`
+      id,
+      company_id,
+      edition_id,
+      client_id,
+      seller_user_id,
+      payment_method_id,
+      status,
+      notes
+    `)
     .eq("id", saleId)
     .eq("edition_id", editionId)
     .eq("company_id", access.estafetaCompany.id)
@@ -2125,53 +2146,68 @@ export async function updateSaleInstallments(
     `)
     .eq("sale_id", sale.id);
 
-  const byId = new Map(
-    (installments ?? []).map((item) => [
-      item.id,
-      item,
-    ])
+  type InstallmentRow = NonNullable<
+    typeof installments
+  >[number];
+
+  const entryOf = (item: InstallmentRow) =>
+    Array.isArray(item.entry)
+      ? item.entry[0] ?? null
+      : item.entry;
+
+  const isOpen = (item: InstallmentRow) => {
+    const entry = entryOf(item);
+
+    return Boolean(
+      entry &&
+        entry.status !== "cancelled" &&
+        Number(entry.amount_paid ?? 0) <= 0
+    );
+  };
+
+  const open = (installments ?? []).filter(isOpen);
+
+  const openById = new Map(
+    open.map((item) => [item.id, item])
   );
 
-  let oldTotal = 0;
-  let newTotal = 0;
+  const usedIds = new Set<string>();
 
-  for (const change of changes) {
-    const installment = byId.get(
-      change.installmentId
-    );
-
-    if (!installment) {
-      return {
-        success: false as const,
-        message:
-          "Alguma parcela não pertence a esta venda. Atualize a página.",
-      };
+  for (const row of rows) {
+    if (!row.installmentId) {
+      continue;
     }
 
-    const entry = Array.isArray(installment.entry)
-      ? installment.entry[0]
-      : installment.entry;
-
     if (
-      !entry ||
-      entry.status === "cancelled" ||
-      Number(entry.amount_paid ?? 0) > 0
+      !openById.has(row.installmentId) ||
+      usedIds.has(row.installmentId)
     ) {
       return {
         success: false as const,
-        message: `A parcela ${installment.installment_number} já tem recebimento (ou foi cancelada) e não pode ser alterada.`,
+        message:
+          "Alguma parcela já foi paga ou não pertence a esta venda. Atualize a página.",
       };
     }
 
-    oldTotal += Number(installment.amount);
-    newTotal += change.amount;
+    usedIds.add(row.installmentId);
   }
 
-  if (roundMoney(oldTotal) !== roundMoney(newTotal)) {
+  const openTotal = roundMoney(
+    open.reduce(
+      (sum, item) => sum + Number(item.amount),
+      0
+    )
+  );
+
+  const newTotal = roundMoney(
+    rows.reduce((sum, row) => sum + row.amount, 0)
+  );
+
+  if (openTotal !== newTotal) {
     return {
       success: false as const,
-      message: `A soma das parcelas alteradas precisa continuar ${formatMoneyBR(
-        oldTotal
+      message: `A soma das parcelas em aberto precisa continuar ${formatMoneyBR(
+        openTotal
       )} (está ${formatMoneyBR(newTotal)}). Para mudar o valor da venda, use "Editar venda".`,
     };
   }
@@ -2201,18 +2237,84 @@ export async function updateSaleInstallments(
       ? `${current.trim()}\n\n${changeLog}`
       : changeLog;
 
-  for (const change of changes) {
-    const installment = byId.get(
-      change.installmentId
+  const statusFor = (dueDate: string) =>
+    dueDate < today ? "overdue" : "pending";
+
+  /*
+   * Dados pro texto dos lançamentos novos (mesmo formato da
+   * criação da venda).
+   */
+  const newRows = rows.filter(
+    (row) => !row.installmentId
+  );
+
+  let editionName = "Edição";
+  let publicationDate = today;
+  let clientName = "Cliente";
+  let sellerName = "—";
+  let paymentMethodName = "—";
+
+  if (newRows.length > 0) {
+    const [
+      { data: edition },
+      { data: client },
+      { data: seller },
+      { data: paymentMethod },
+    ] = await Promise.all([
+      supabase
+        .from("newspaper_editions")
+        .select("name, publication_date")
+        .eq("id", sale.edition_id)
+        .maybeSingle(),
+      supabase
+        .from("clients")
+        .select("name")
+        .eq("id", sale.client_id)
+        .maybeSingle(),
+      sale.seller_user_id
+        ? supabase
+            .from("user_profiles")
+            .select("name")
+            .eq("id", sale.seller_user_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+      sale.payment_method_id
+        ? supabase
+            .from("payment_methods")
+            .select("name")
+            .eq("id", sale.payment_method_id)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    editionName = edition?.name ?? editionName;
+    publicationDate =
+      edition?.publication_date ?? publicationDate;
+    clientName = client?.name ?? clientName;
+    sellerName = seller?.name ?? sellerName;
+    paymentMethodName =
+      paymentMethod?.name ?? paymentMethodName;
+  }
+
+  /*
+   * 1) Atualiza as parcelas existentes que continuam.
+   */
+  for (const row of rows) {
+    if (!row.installmentId) {
+      continue;
+    }
+
+    const installment = openById.get(
+      row.installmentId
     )!;
 
-    const amount = roundMoney(change.amount);
+    const amount = roundMoney(row.amount);
 
     const { error: installmentError } =
       await supabase
         .from("edition_sale_installments")
         .update({
-          due_date: change.dueDate,
+          due_date: row.dueDate,
           amount,
         })
         .eq("id", installment.id);
@@ -2227,17 +2329,11 @@ export async function updateSaleInstallments(
     const { error: entryError } = await supabase
       .from("financial_entries")
       .update({
-        due_date: change.dueDate,
+        due_date: row.dueDate,
         amount,
-        status:
-          change.dueDate < today
-            ? "overdue"
-            : "pending",
+        status: statusFor(row.dueDate),
         notes: appendNote(
-          (Array.isArray(installment.entry)
-            ? installment.entry[0]
-            : installment.entry
-          )?.notes ?? null
+          entryOf(installment)?.notes ?? null
         ),
         updated_at: new Date().toISOString(),
       })
@@ -2251,23 +2347,219 @@ export async function updateSaleInstallments(
     }
   }
 
-  // "Primeiro vencimento" da venda acompanha a parcela mais cedo.
-  const dueDates = (installments ?? []).map(
-    (item) =>
-      changes.find(
-        (change) =>
-          change.installmentId === item.id
-      )?.dueDate ?? item.due_date
+  /*
+   * 2) Cria as parcelas novas (número provisório; renumera no
+   * passo 4).
+   */
+  let tempNumber = 5000;
+
+  for (const row of newRows) {
+    const amount = roundMoney(row.amount);
+
+    const { data: entry, error: entryError } =
+      await supabase
+        .from("financial_entries")
+        .insert({
+          company_id: sale.company_id,
+          type: "income",
+          client_id: sale.client_id,
+          supplier_id: null,
+          contract_id: null,
+          product_id: null,
+          category_id: null,
+          cost_center_id: null,
+          financial_account_id: null,
+          description: `${editionName} - Publicidade - ${clientName} - Parcela 0/0 - Vendedor: ${sellerName}`,
+          document_number: null,
+          competence_date: publicationDate,
+          issue_date: today,
+          due_date: row.dueDate,
+          amount,
+          amount_paid: 0,
+          interest: 0,
+          fine: 0,
+          discount: 0,
+          status: statusFor(row.dueDate),
+          recurring: false,
+          recurrence_frequency: null,
+          invoice_issued: false,
+          invoice_number: null,
+          invoice_issued_at: null,
+          charge_sent: false,
+          charge_sent_at: null,
+          notes: appendNote(
+            `Venda de publicidade ${sale.id}. ${editionName}. Parcela 0/0. Forma de pagamento: ${paymentMethodName}.`
+          ),
+        })
+        .select("id")
+        .single();
+
+    if (entryError || !entry) {
+      revalidateSalePaths(editionId, sale.id);
+
+      return {
+        success: false as const,
+        message: `Erro ao criar parcela nova: ${
+          entryError?.message ?? "tente novamente"
+        }. Atualize a página e confira.`,
+      };
+    }
+
+    tempNumber += 1;
+
+    const { error: installmentError } =
+      await supabase
+        .from("edition_sale_installments")
+        .insert({
+          sale_id: sale.id,
+          installment_number: tempNumber,
+          due_date: row.dueDate,
+          amount,
+          financial_entry_id: entry.id,
+        });
+
+    if (installmentError) {
+      await supabase
+        .from("financial_entries")
+        .delete()
+        .eq("id", entry.id);
+
+      revalidateSalePaths(editionId, sale.id);
+
+      return {
+        success: false as const,
+        message: `Erro ao vincular parcela nova: ${installmentError.message}. Atualize a página e confira.`,
+      };
+    }
+  }
+
+  /*
+   * 3) Ordem final (todas as parcelas da venda, pagas
+   * inclusive), por vencimento — sem as que vão sair.
+   */
+  const removed = open.filter(
+    (item) => !usedIds.has(item.id)
   );
 
-  if (dueDates.length > 0) {
+  const removedIds = new Set(
+    removed.map((item) => item.id)
+  );
+
+  const { data: finalRows } = await supabase
+    .from("edition_sale_installments")
+    .select(`
+      id,
+      installment_number,
+      due_date,
+      financial_entry_id
+    `)
+    .eq("sale_id", sale.id);
+
+  const ordered = (finalRows ?? [])
+    .filter((item) => !removedIds.has(item.id))
+    .sort(
+      (a, b) =>
+        a.due_date.localeCompare(b.due_date) ||
+        a.installment_number - b.installment_number
+    );
+
+  const total = ordered.length;
+
+  /*
+   * 4) Renumera (em duas etapas, pra não colidir número) e
+   * acerta o "Parcela X/N" dos lançamentos.
+   */
+  for (const [index, item] of ordered.entries()) {
     await supabase
-      .from("edition_sales")
-      .update({
-        first_due_date: [...dueDates].sort()[0],
-        notes: appendNote(sale.notes),
-      })
-      .eq("id", sale.id);
+      .from("edition_sale_installments")
+      .update({ installment_number: 9000 + index })
+      .eq("id", item.id);
+  }
+
+  const { data: entryTexts } = await supabase
+    .from("financial_entries")
+    .select("id, description, notes")
+    .in(
+      "id",
+      ordered.map((item) => item.financial_entry_id)
+    );
+
+  const textById = new Map(
+    (entryTexts ?? []).map((item) => [item.id, item])
+  );
+
+  for (const [index, item] of ordered.entries()) {
+    const label = `Parcela ${index + 1}/${total}`;
+
+    await supabase
+      .from("edition_sale_installments")
+      .update({ installment_number: index + 1 })
+      .eq("id", item.id);
+
+    const text = textById.get(item.financial_entry_id);
+
+    if (text) {
+      await supabase
+        .from("financial_entries")
+        .update({
+          description: (text.description ?? "").replace(
+            /Parcela \d+\/\d+/,
+            label
+          ),
+          notes: (text.notes ?? "").replace(
+            /Parcela \d+\/\d+/,
+            label
+          ),
+        })
+        .eq("id", item.financial_entry_id);
+    }
+  }
+
+  /*
+   * 5) Venda: quantidade, 1º vencimento e lançamento da 1ª
+   * parcela (antes de apagar as removidas, que podem ser a 1ª).
+   */
+  await supabase
+    .from("edition_sales")
+    .update({
+      installments: total,
+      first_due_date: ordered[0]?.due_date ?? null,
+      financial_entry_id:
+        ordered[0]?.financial_entry_id ?? null,
+      notes: appendNote(sale.notes),
+    })
+    .eq("id", sale.id);
+
+  /*
+   * 6) Remove as parcelas em aberto que saíram do carnê.
+   */
+  for (const item of removed) {
+    await supabase
+      .from("edition_sale_installments")
+      .delete()
+      .eq("id", item.id);
+
+    const { error: deleteError } = await supabase
+      .from("financial_entries")
+      .delete()
+      .eq("id", item.financial_entry_id);
+
+    /*
+     * Se o lançamento não puder ser apagado (algo ainda aponta
+     * pra ele), cancela — não fica cobrança fantasma.
+     */
+    if (deleteError) {
+      await supabase
+        .from("financial_entries")
+        .update({
+          status: "cancelled",
+          notes: appendNote(
+            `${entryOf(item)?.notes ?? ""}\n\nParcela removida do carnê.`
+          ),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", item.financial_entry_id);
+    }
   }
 
   await createAuditLog({
@@ -2275,28 +2567,20 @@ export async function updateSaleInstallments(
     action: "update",
     entityType: "edition_sale",
     entityId: sale.id,
-    description: `Parcelas da venda de publicidade alteradas (${changes.length}).${
+    description: `Parcelas da venda de publicidade alteradas: ${open.length} em aberto viraram ${rows.length}.${
       cleanNote ? ` Observação: ${cleanNote}` : ""
     }`,
     oldData: {
-      installments: changes.map((change) => {
-        const installment = byId.get(
-          change.installmentId
-        )!;
-
-        return {
-          number: installment.installment_number,
-          dueDate: installment.due_date,
-          amount: Number(installment.amount),
-        };
-      }),
+      installments: open.map((item) => ({
+        number: item.installment_number,
+        dueDate: item.due_date,
+        amount: Number(item.amount),
+      })),
     },
     newData: {
-      installments: changes.map((change) => ({
-        number: byId.get(change.installmentId)!
-          .installment_number,
-        dueDate: change.dueDate,
-        amount: roundMoney(change.amount),
+      installments: rows.map((row) => ({
+        dueDate: row.dueDate,
+        amount: roundMoney(row.amount),
       })),
     },
   });
